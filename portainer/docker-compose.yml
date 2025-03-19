@@ -1,0 +1,20 @@
+
+name: portainer
+
+services:
+  portainer-server:
+    container_name: portainer
+    image: 6053537/portainer-ce
+    command: -H unix:///var/run/docker.sock
+    environment:
+      - TZ=Asia/Shanghai
+      - PORTAINER_ADMIN_PASSWORD=lysgwl3221
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      #- /app/usr/portainer/data:/data
+      - portainer_data:/data
+    ports:
+      - "9000:9000"
+    privileged: true	# 授予容器更高的权限  
+    restart: always
+    network_mode: bridge

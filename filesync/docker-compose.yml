@@ -1,0 +1,21 @@
+
+name: filesync
+
+services:
+  filesync-server:
+    container_name: filesync
+    image: filesync-image
+    environment:
+      - TZ=Asia/Shanghai
+    #user: "1000:1000"
+    volumes:
+      - /app/usr/filesync/data:/data/usr
+    ports:
+      - '8022:8022'
+      - '8000:8080'         # web页面端口
+      - '22000:22000/tcp'   # 文件传输端口映射（TCP）
+      - '22000:22000/udp'   # 文件传输端口映射（UDP）
+      - '21027:21027/udp'   # 设备发现端口映射（UDP）
+    hostname: C95wl  
+    restart: unless-stopped  
+    network_mode: bridge      # bridge
