@@ -6,10 +6,13 @@ services:
     container_name: filesync
     image: filesync-image
     environment:
-      - TZ=Asia/Shanghai
-    #user: "1000:1000"
+      - TZ=${TZ}
     volumes:
-      - /app/usr/filesync/data:/data/usr
+      - ${DATA_PATH}:/data
+      - ${CONFIG_PATH}:/config
+      - ${USR_PATH}:/data/usr
+    env_file:
+      - .env
     ports:
       - '8022:8022'
       - '8000:8080'         # web页面端口

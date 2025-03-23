@@ -36,137 +36,81 @@ NGINX_VERSION="1.26.3"
 # 获取nginx源码版本
 fetch_nginx_source()
 {
-	echo "获取${NGINX_SERVICE_NAME}源码文件"
+	local install_dir="${WORK_INSTALL_DIR}"
+	local downloads_dir="${WORK_DOWNLOADS_DIR}"
 	
-	# 检索文件列表
-	local fileList=$(find "${WORK_DOWNLOADS_DIR}" -name "${NGINX_SERVICE_NAME}*.tar.gz" | sort -s | tail -n 1)
-	
-	# 获取文件压缩包
-	local filePath=""
-	
-	if [ -z "${fileList}" ]; then
-		# nginx版本号
-		local version_tag="${NGINX_VERSION}"
-		
+	# 获取文件
+	local latest_file
+	latest_file=$(find_latest_archive "${downloads_dir}" "${NGINX_SERVICE_NAME}*.tar.gz") || {
 		# nginx下载url
-		local downloads_url="https://nginx.org/download/${NGINX_SERVICE_NAME}-${version_tag}.tar.gz"
+		local downloads_url="https://nginx.org/download/${NGINX_SERVICE_NAME}-${NGINX_VERSION}.tar.gz"
 		
-		echo "${NGINX_SERVICE_NAME}下载URL:${downloads_url}"
+		local nginx_config=$(jq -n \
+        --arg type "static" \
+        --argjson url "$(printf '%s' "${downloads_url}" | jq -Rs .)" \
+        '{
+            type: $type,
+            url: $url
+        }')
 		
-		if [ -z "${downloads_url}" ]; then
-			echo "无法获取${NGINX_SERVICE_NAME}下载URL, 请检查!"
-			return 1
+		if ! latest_file=$(download_package "${nginx_config}" "${WORK_DOWNLOADS_DIR}"); then
+			return $?
 		fi
-		
-		echo "正在下载${NGINX_SERVICE_NAME}..."
-		
-		# nginx下载文件
-		filePath="${WORK_DOWNLOADS_DIR}/${NGINX_SERVICE_NAME}-${version_tag}.tar.gz"
-		
-		# 下载nginx 
-		curl -L -o "${filePath}" "${downloads_url}" >/dev/null 2>&1
-	else
-		filePath="${fileList}"
-	fi
+	}
 	
-	if [ ! -f "${filePath}" ]; then
-		echo "${NGINX_SERVICE_NAME}源码文件不存在,请检查!"
-		return 1
-	fi
+	local nginx_entry=$(extract_and_validate \
+				"${latest_file}" \
+				"${downloads_dir}/output" \
+				"*${NGINX_SERVICE_NAME}*") || return 1
 	
-	tar -xzvf "${filePath}" -C "${WORK_DOWNLOADS_DIR}" >/dev/null 2>&1
-		
-	echo "获取${NGINX_SERVICE_NAME}源码完成!"
-	return 0
+	echo "${nginx_entry}"
 }
 
 # 获取pcre源码版本
 fetch_pcre_source()
 {
-	echo "获取PCRE源码文件"
+	local install_dir="${WORK_INSTALL_DIR}"
+	local downloads_dir="${WORK_DOWNLOADS_DIR}"
 	
-	# 检索文件列表
-	local fileList=$(find "${WORK_DOWNLOADS_DIR}" -name "pcre*.tar.gz" | sort -s | tail -n 1)
-	
-	# 获取文件压缩包
-	local filePath=""
-	
-	if [ -z "${fileList}" ]; then
-		# pcre版本url
-		local pcre_version_url="https://api.github.com/repos/PCRE2Project/pcre2/releases/latest"
-		
-		# 获取最新release信息
-		local latest_release=$(curl -s "${pcre_version_url}")
-		
-		# 获取最新版本号
-		local latest_tag=$(echo $latest_release | jq -r '.tag_name')
-		
-		# assets信息
-		local assets=$(echo $latest_release | jq -r '.assets[] | @base64')
-		
-		if [ -z "$latest_tag" ] || [ -z "$assets" ]; then
-			echo "无法获取pcre版本信息, 请检查!"
-			return 1
-		fi
-		
-		# pcre下载url
-		local downloads_url=""
-		
-		# 遍历assets数组，寻找匹配的文件
-		for asset in $assets; do
-			_jq() {
-				echo ${asset} | base64 --decode | jq -r ${1}
-			}
+	# 获取文件
+	local latest_file
+	latest_file=$(find_latest_archive "${downloads_dir}" "pcre*.tar.gz") || {
+		local pcre_config=$(jq -n \
+			--arg type "github" \
+			--arg repo "PCRE2Project/pcre2" \
+			--arg asset_matcher \
+				"[[ \$name =~ \\.tar\\.gz\$ ]] && 
+				 [[ ! \$name =~ \\.tar\\.gz\\. ]]" \
+			'{
+				type: $type,
+				repo: $repo,
+				asset_matcher: $asset_matcher
+			}')
 			
-			name=$(_jq '.name')
-			url=$(_jq '.browser_download_url')
-			
-			# 根据系统和架构匹配文件名
-			if [[ "$name" =~ \.tar\.gz$ ]] && [[ ! "$name" =~ \.tar\.gz\. ]]; then
-				downloads_url=$url
-			fi
-		done
-		
-		echo "PCRE下载URL:${downloads_url}"
-		
-		if [ -z "${downloads_url}" ]; then
-			echo "无法获取pcre下载URL, 请检查!"
-			return 1
+		if ! latest_file=$(download_package "${pcre_config}" "${WORK_DOWNLOADS_DIR}"); then
+			return $?
 		fi
-		
-		echo "正在下载PCRE..."
-		
-		# pcre下载文件
-		filePath="${WORK_DOWNLOADS_DIR}/${latest_tag}.tar.gz"
-		
-		# 下载nginx 
-		curl -L -o "${filePath}" "${downloads_url}" >/dev/null 2>&1
-	else
-		filePath="${fileList}"
-	fi
+	}
 	
-	if [ ! -f "${filePath}" ]; then
-		echo "pcre源码文件不存在,请检查!"
-		return 1
-	fi
+	local pcre_entry=$(extract_and_validate \
+				"${latest_file}" \
+				"${downloads_dir}/output" \
+				"*pcre*") || return 1
 	
-	tar -xzvf "${filePath}" -C "${WORK_DOWNLOADS_DIR}" >/dev/null 2>&1
-	
-	echo "获取PCRE源码完成!"
-	return 0
+	echo "${pcre_entry}"
 }
 
 # 编译安装nginx源码
 setup_nginx_source()
 {
-	echo "编译${NGINX_SERVICE_NAME}源码文件"
+	echo "[INFO] 编译${NGINX_SERVICE_NAME}源码"
 	local paths=("$@")
 	
 	local nginx_path="${paths[0]}"
 	local pcre_path="${paths[1]}"
 	
 	# 进入nginx源码目录
-	cd "${nginx_path}" || { echo "无法进入${NGINX_SERVICE_NAME}源码目录: ${nginx_path}"; return 1; }
+	cd "${nginx_path}" || { echo "[ERROR] 无法进入${NGINX_SERVICE_NAME}源码目录: ${nginx_path}"; return 1; }
 	
 	local configure_options=(
 		--prefix=${NGINX_SYSTEM_PATH}
@@ -213,28 +157,28 @@ setup_nginx_source()
 	)
 	
 	# 执行配置命令
-	 echo "正在配置${NGINX_SERVICE_NAME}..."
+	 echo "[INFO] 正在配置${NGINX_SERVICE_NAME}..."
 	./configure "${configure_options[@]}"
 	
 	if [[ $? -ne 0 ]]; then
-        echo "${NGINX_SERVICE_NAME}配置失败,请检查!"
+        echo "[ERROR] ${NGINX_SERVICE_NAME}配置失败,请检查!"
         return 1
     fi
 	
 	# 编译并安装
-    echo "正在编译${NGINX_SERVICE_NAME}..."
+    echo "[INFO] 正在编译${NGINX_SERVICE_NAME}..."
 	make -j$(nproc)
 	
     if [[ $? -ne 0 ]]; then
-        echo "${NGINX_SERVICE_NAME}编译失败,请检查!"
+        echo "[ERROR] ${NGINX_SERVICE_NAME}编译失败,请检查!"
         return 1
     fi
 	
-	echo "正在安装${NGINX_SERVICE_NAME}..."
+	echo "[INFO] 正在安装${NGINX_SERVICE_NAME}..."
     make install
 	
     if [[ $? -ne 0 ]]; then
-        echo "${NGINX_SERVICE_NAME}安装失败,请检查！"
+        echo "[ERROR] ${NGINX_SERVICE_NAME}安装失败,请检查！"
         return 1
     fi
 	
@@ -242,43 +186,44 @@ setup_nginx_source()
 }
 
 # 安装nginx环境
-build_nginx_env()
+install_nginx_env()
 {
-	local copy_path=$1
-	echo "编译${NGINX_SERVICE_NAME}服务..."
+	local arg=$1
+	echo "[INFO] 安装${NGINX_SERVICE_NAME}服务..."
 	
-	if ! fetch_nginx_source; then
-		return 1
+	if [ "$arg" = "init" ]; then
+		# 获取nginx源码路径
+		local nginx_path=$(fetch_nginx_source)
+		
+		# 获取pcre源码路径
+		local pcre_path=$(fetch_pcre_source)
+		
+		# 备份路径
+		local install_dir="${WORK_INSTALL_DIR}"
+		
+		[[ -z ${nginx_path} || -z ${pcre_path} ]] && { echo "[ERROR] 获取${NGINX_SERVICE_NAME}源码失败，请检查！" >&2; return 1; }
+		
+		# 参数数组
+		local source_array=("${nginx_path}" "${pcre_path}")
+		
+		# 编译nginx源码
+		if ! setup_nginx_source "${source_array[@]}"; then
+			echo "[ERROR] 编译${NGINX_SERVICE_NAME}源码失败,请检查!"
+			return 1
+		fi
+		
+		# 安装二进制文件
+		install_binary "${NGINX_SYSTEM_PATH}" "${install_dir}"
+		
+	elif [ "$arg" = "config" ]; then
+		local nginx_dir="${WORK_INSTALL_DIR}"
+		# 安装二进制文件
+		install_binary "${WORK_INSTALL_DIR}/${NGINX_SERVICE_NAME}" \
+					"${NGINX_SYSTEM_PATH}" \
+					"/usr/local/bin/${NGINX_SERVICE_NAME}"
 	fi
 	
-	if ! fetch_pcre_source; then
-		return 1
-	fi
-	
-	# 获取nginx源码路径
-	local nginx_path=$(find ${WORK_DOWNLOADS_DIR} -maxdepth 1 -type d -name "*${NGINX_SERVICE_NAME}*")
-	
-	# 获取pcre源码路径
-	local pcre_path=$(find ${WORK_DOWNLOADS_DIR} -maxdepth 1 -type d -name "*pcre*")
-	
-	if [ -z "${nginx_path}" ] || [ -z "${pcre_path}" ]; then
-		echo "${NGINX_SERVICE_NAME}源码路径为空,请检查!"
-		return 1
-	fi
-	
-	# 参数数组
-	local source_array=("${nginx_path}" "${pcre_path}")
-	
-	# 编译nginx源码
-	if ! setup_nginx_source "${source_array[@]}"; then
-		echo "编译${NGINX_SERVICE_NAME}源码失败,请检查!"
-		return 1
-	fi
-	
-	# 备份nginx安装目录
-	cp -rf "${NGINX_SYSTEM_PATH}" "${copy_path}"
-	
-	echo "编译${NGINX_SERVICE_NAME}完成!"
+	echo "[INFO] 编译${NGINX_SERVICE_NAME}完成!"
 	return 0
 }
 
@@ -347,11 +292,11 @@ check_nginx_conf()
             if (stack_idx > 0) {
                 current_block = stack[stack_idx]
                 if (current_block == "http") {
-                    print "错误：http块未闭合" > "/dev/stderr"
+                    print "[ERROR] http块未闭合" > "/dev/stderr"
                 } else if (current_block == "server") {
-                    print "错误：server块未闭合" > "/dev/stderr"
+                    print "[ERROR] server块未闭合" > "/dev/stderr"
                 } else {
-                    printf "错误：%s块未闭合\n", current_block > "/dev/stderr"
+                    printf "[ERROR] %s块未闭合\n", current_block > "/dev/stderr"
                 }
             }
             print 3
@@ -393,9 +338,9 @@ set_nginx_conf()
         }" "${target_file}"
 		
         if [ $? -eq 0 ]; then
-			echo "${NGINX_SERVICE_NAME}端口修改成功!"
+			echo "[INFO] ${NGINX_SERVICE_NAME}端口修改成功!"
         else
-			echo "${NGINX_SERVICE_NAME}端口修改失败!"
+			echo "[ERROR] ${NGINX_SERVICE_NAME}端口修改失败!"
         fi
 	}
 	
@@ -406,7 +351,7 @@ set_nginx_conf()
 		check_nginx_conf "${target_file}"
 		local ret=$?
 		
-		echo "检查配置文件${target_file}状态:${ret}"	
+		echo "[INFO] 检查配置文件${target_file}状态:${ret}"	
 		case "${ret}" in
 			0|2)  set_port "${target_file}"; return 0;; # 正常配置
 			1)  return 1 ;;	# 仅有http块
@@ -422,71 +367,61 @@ set_nginx_conf()
 # 设置nginx环境
 set_nginx_env()
 {
-	echo "设置${NGINX_SERVICE_NAME}服务..."
+	echo "[INFO] 设置${NGINX_SERVICE_NAME}服务..."
 	
-	if [[ -d "${WORK_CONFIG_DIR}/${NGINX_SERVICE_NAME}" && \
-		  -f "${WORK_CONFIG_DIR}/${NGINX_SERVICE_NAME}/${NGINX_SERVICE_NAME}.conf" ]]; then
+	if [ "$arg" = "config" ]; then
+		if [[ -d "${WORK_CONFIG_DIR}/${NGINX_SERVICE_NAME}" && \
+			  -f "${WORK_CONFIG_DIR}/${NGINX_SERVICE_NAME}/${NGINX_SERVICE_NAME}.conf" ]]; then
 
-		[ -f "${NGINX_ETC_FILE}" ] && mv -f "${NGINX_ETC_FILE}" "${NGINX_ETC_FILE}.bak"
+			[ -f "${NGINX_ETC_FILE}" ] && mv -f "${NGINX_ETC_FILE}" "${NGINX_ETC_FILE}.bak"
 
-		mkdir -p "${NGINX_ETC_FILE%/*}" && \
-		cp -rf "${WORK_CONFIG_DIR}/${NGINX_SERVICE_NAME}/"* "${NGINX_ETC_FILE%/*}"
+			mkdir -p "${NGINX_ETC_FILE%/*}" && \
+			cp -rf "${WORK_CONFIG_DIR}/${NGINX_SERVICE_NAME}/"* "${NGINX_ETC_FILE%/*}"
+		fi
+		
+		mkdir -p "${NGINX_SYSTEM_PATH}/temp"
+		echo "[INFO] ${NGINX_SERVICE_NAME}配置文件:${NGINX_ETC_FILE}"
+		
+		# 设置nginx配置
+		set_nginx_conf
 	fi
-	
-	echo "${NGINX_SERVICE_NAME}配置文件:${NGINX_ETC_FILE}"
-	set_nginx_conf
-	
-	echo "${NGINX_SERVICE_NAME}设置完成!"
+
+	echo "[INFO] ${NGINX_SERVICE_NAME}设置完成!"
 }
 
 # 初始化nginx环境
 init_nginx_env()
 {
 	local arg=$1
-	echo "初始化${NGINX_SERVICE_NAME}服务..."
+	echo "[INFO] 初始化${NGINX_SERVICE_NAME}服务..."
 	
-	if [ -e "${NGINX_SYSTEM_PATH}" ] && [ -e "${NGINX_BIN_FILE}" ]; then
-		return 0
-	fi
-	
-	if [ "$arg" = "init" ]; then
+	if [ ! -e "${NGINX_SYSTEM_PATH}" ] || [ ! -e "${NGINX_BIN_FILE}" ]; then
 		# 安装nginx环境
-		if ! build_nginx_env "${WORK_INSTALL_DIR}"; then
+		if ! install_nginx_env "${arg}"; then
 			return 1
-		fi
-	elif [ "$arg" = "config" ]; then
-		if [ ! -d "${WORK_INSTALL_DIR}/${NGINX_SERVICE_NAME}" ]; then
-			echo "安装目录中无法找到${NGINX_SERVICE_NAME}!"
-			return 1
-		else
-			cp -rf "${WORK_INSTALL_DIR}/${NGINX_SERVICE_NAME}" "${NGINX_SYSTEM_PATH}"
-		fi
-		
-		if [ ! -d "${NGINX_SYSTEM_PATH}/temp" ]; then
-			mkdir -p "${NGINX_SYSTEM_PATH}/temp"
 		fi
 		
 		# 设置nginx环境
-		set_nginx_env
+		set_nginx_env "${arg}"
 	fi
 	
-	echo "初始化${NGINX_SERVICE_NAME}服务成功!"
+	echo "[INFO] 初始化${NGINX_SERVICE_NAME}服务成功!"
 	return 0
 }
 
 # 运行nginx服务
 run_nginx_service()
 {
-	echo "运行${NGINX_SERVICE_NAME}服务..."
+	echo "[INFO] 运行${NGINX_SERVICE_NAME}服务..."
 
 	if [ ! -e "${NGINX_BIN_FILE}" ] || [ ! -e "${NGINX_ETC_FILE}" ]; then
-		echo "${NGINX_SERVICE_NAME}服务运行失败,请检查!"
+		echo "[ERROR] ${NGINX_SERVICE_NAME}服务运行失败,请检查!"
 		return
 	fi
 
 	# 检查服务是否已运行
 	if pgrep -f "${NGINX_SERVICE_NAME}" > /dev/null; then
-		echo "${NGINX_SERVICE_NAME}服务已经在运行!"
+		echo "[WARNING] ${NGINX_SERVICE_NAME}服务已经在运行!"
 		return
 	fi
 	
@@ -496,23 +431,23 @@ run_nginx_service()
 	# 等待 2 秒
 	sleep 2
 	
-	echo "启动${NGINX_SERVICE_NAME}服务成功!"
+	echo "[INFO] 启动${NGINX_SERVICE_NAME}服务成功!"
 }
 
 # 停止snginx服务
 close_nginx_service()
 {
-	echo "关闭${NGINX_SERVICE_NAME}服务..."
+	echo "[INFO] 关闭${NGINX_SERVICE_NAME}服务..."
 	
 	if [ ! -e "${NGINX_BIN_FILE}" ]; then
-		echo "${NGINX_SERVICE_NAME}服务不存在,请检查!"
+		echo "[ERROR] ${NGINX_SERVICE_NAME}服务不存在,请检查!"
 		return
 	fi
 	
 	for PID in $(pidof ${NGINX_SERVICE_NAME}); do
-		echo "${NGINX_SERVICE_NAME}服务进程:${PID}"
+		echo "[INFO] ${NGINX_SERVICE_NAME}服务进程:${PID}"
 		kill $PID
 	done
 	
-	echo "关闭${NGINX_SERVICE_NAME}服务成功!"
+	echo "[INFO] 关闭${NGINX_SERVICE_NAME}服务成功!"
 }

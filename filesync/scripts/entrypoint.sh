@@ -1,30 +1,30 @@
 #!/bin/bash
 
-set -e
+set -eo pipefail
 
 # 工作目录
 WORK_DIR=$(pwd)
 
 # 下载目录
-WORK_DOWNLOADS_DIR="${WORK_DIR}/downloads"
+export WORK_DOWNLOADS_DIR="${WORK_DIR}/downloads"
 
 # 安装目录
-WORK_INSTALL_DIR="${WORK_DIR}/install"
+export WORK_INSTALL_DIR="${WORK_DIR}/install"
 
 # 配置目录
-WORK_CONFIG_DIR="${WORK_DIR}/config"
+export WORK_CONFIG_DIR="${WORK_DIR}/config"
 
 # 数据目录
-SYSTEM_DATA_DIR="/data"
+export SYSTEM_DATA_DIR="/data"
 
 # 配置目录
-SYSTEM_CONFIG_DIR="/config"
+export SYSTEM_CONFIG_DIR="/config"
 
 # 系统架构
-SYSTEM_ARCH=$(uname -m)
+export SYSTEM_ARCH=$(uname -m)
 
 # 系统类型
-SYSTEM_TYPE="$(uname | tr '[A-Z]' '[a-z]')"
+export SYSTEM_TYPE="$(uname | tr '[A-Z]' '[a-z]')"
 
 # 首次运行标识
 RUN_FIRST_LOCK="/var/run/first_run_flag.pid"
@@ -41,14 +41,17 @@ source ${WORK_DIR}/scripts/set_nginx.sh
 # 加载服务脚本
 source ${WORK_DIR}/scripts/set_service.sh
 
+# 加载feature脚本
+source ${WORK_DIR}/scripts/feature.sh
+
 # 初始化模块
 init_modules()
 {
 	local param=$1
-	echo "当前用户：$(id -un)，UID：$(id -u)"
+	echo "[INFO] 当前用户:$(id -un), UID:$(id -u)"
 	
 	if [ "$(id -u)" -ne 0 ]; then
-		echo "非root用户权限无法初始环境, 请检查!"
+		echo "[ERROR] 非root用户权限无法初始环境, 请检查!"
 		return 1
 	fi
 	
@@ -73,7 +76,7 @@ init_modules()
 # 运行模块
 run_modules()
 {
-	echo "当前用户1：$(id -un)，UID：$(id -u)"
+	echo "[INFO] 当前用户:$(id -un), UID:$(id -u)"
 	
 	# alist服务
 	run_alist_service
@@ -118,11 +121,7 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
 			
 			# 启动服务
 			run_service
-			
-			# 
-			# run_modules
-			# tail -f /dev/null
-			
+
 			exec su-exec ${APP_USER}:${APP_GROUP} bash -c "
 				source /app/scripts/entrypoint.sh
 				#source /app/scripts/set_alist.sh

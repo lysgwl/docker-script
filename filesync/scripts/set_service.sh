@@ -28,7 +28,7 @@ SERVICE_APP_GID=${APP_GID:-1000}
 install_service_env()
 {
 	local arg=$1
-	echo "安装系统服务..."
+	echo "[INFO] 安装系统服务..."
 	
 	case "$arg" in
 		"init")
@@ -41,17 +41,17 @@ install_service_env()
 			;;
 	esac
 	
-	echo "安装服务完成!"
+	echo "[INFO] 安装服务完成!"
 }
 
 # 设置SSH服务
 set_ssh_service()
 {
-	echo "设置SSH服务"
+	echo "[INFO] 设置SSH服务"
 	
 	local sshd_config="/etc/ssh/sshd_config"
 	if [ ! -f "${sshd_config}" ]; then
-		echo "SSH服务没有安装,请检查!"
+		echo "[ERROR] SSH服务没有安装,请检查!"
 		return 1
 	fi
 	
@@ -125,19 +125,19 @@ set_ssh_service()
 	
 	chmod 700 "${ssh_dir}"
 	
-	echo "设置SSH完成!"
+	echo "[INFO] 设置SSH完成!"
 	return 0
 }
 
 # 设置系统用户
 set_service_user()
 {
-	echo "设置系统用户..."
+	echo "[INFO] 设置系统用户..."
 	
 	# 创建组
     if ! getent group ${SERVICE_APP_GROUP} >/dev/null; then
         addgroup -g ${SERVICE_APP_GID} ${SERVICE_APP_GROUP} || {
-            echo "无法创建组${SERVICE_APP_GROUP}, 请检查!"
+            echo "[ERROR] 无法创建组${SERVICE_APP_GROUP}, 请检查!"
             return 1
         }
     fi
@@ -145,7 +145,7 @@ set_service_user()
 	# 创建用户
 	if ! id -u ${SERVICE_APP_USER} >/dev/null 2>&1; then
         adduser -D -H -G ${SERVICE_APP_GROUP} -u ${SERVICE_APP_UID} ${SERVICE_APP_USER} || {
-            echo "无法创建用户${SERVICE_APP_USER}, 请检查!"
+            echo "[ERROR] 无法创建用户${SERVICE_APP_USER}, 请检查!"
             return 1
         }
     fi
@@ -161,22 +161,32 @@ set_service_user()
 # 设置服务
 set_service_env()
 {
-	echo "设置系统服务..."
+	local arg=$1
+	echo "[INFO] 设置系统服务..."
 	
-	# 设置SSH服务
-	if ! set_ssh_service; then
-		return 1
+	if [ "$arg" = "init" ]; then
+		# 下载目录
+		mkdir -p "${WORK_DOWNLOADS_DIR}"
+	
+		# 安装目录
+		mkdir -p "${WORK_INSTALL_DIR}"
+		
+	elif [ "$arg" = "config" ]; then
+		# 设置SSH服务
+		if ! set_ssh_service; then
+			return 1
+		fi
+		
+		# 设置root用户密码
+		echo "root:${ROOT_PASSWORD}" | chpasswd
+		
+		# 设置系统用户
+		if ! set_service_user; then
+			return 1
+		fi
 	fi
-	
-	# 设置root用户密码
-	echo "root:${ROOT_PASSWORD}" | chpasswd
-	
-	# 设置系统用户
-	if ! set_service_user; then
-		return 1
-	fi
-	
-	echo "设置服务完成!"
+
+	echo "[INFO] 设置服务完成!"
 	return 0
 }
 
@@ -189,18 +199,9 @@ init_service_env()
 	# 安装服务
 	install_service_env "${arg}"
 	
-	if [ "$arg" = "init" ]; then
-		# 下载目录
-		mkdir -p "${WORK_DOWNLOADS_DIR}"
-	
-		# 安装目录
-		mkdir -p "${WORK_INSTALL_DIR}"
-		
-	elif [ "$arg" = "config" ]; then
-		# 设置服务
-		if ! set_service_env; then
-			return 1
-		fi
+	# 设置服务
+	if ! set_service_env "${arg}"; then
+		return 1
 	fi
 	
 	# nginx服务
@@ -208,7 +209,7 @@ init_service_env()
 		return 1
 	fi
 
-	echo "初始化系统服务成功!"
+	echo "[INFO] 初始化系统服务成功!"
 	return 0
 }
 
@@ -219,7 +220,7 @@ run_service()
 	
 	# 启动 SSH 服务
 	if [ -x /usr/sbin/sshd ] && ! pgrep -x sshd > /dev/null; then
-		echo "正在启动服务sshd..."
+		echo "[INFO] 正在启动服务sshd..."
 		# exec /usr/sbin/sshd -D
 		nohup /usr/sbin/sshd -D -e "$@" > /var/log/sshd.log 2>&1 &
 	fi
@@ -227,7 +228,7 @@ run_service()
 	# 启动 nginx 服务
 	run_nginx_service
 	
-	echo "启动系统服务成功!"
+	echo "[INFO] 启动系统服务成功!"
 }
 
 # 停止服务
@@ -236,9 +237,9 @@ close_service()
 	echo "【关闭系统服务】"
 	
 	if pgrep -x "sshd" > /dev/null; then
-		echo "sshd服务即将关闭中..."
+		echo "[INFO] sshd服务即将关闭中..."
 		killall -q "sshd"
 	fi
 	
-	echo "关闭系统服务成功!"
+	echo "[INFO] 关闭系统服务成功!"
 }
