@@ -1,37 +1,34 @@
 #!/bin/bash
 
 # nginx服务
-NGINX_SERVICE_NAME="nginx"
+readonly NGINX_SERVICE_NAME="nginx"
 
 # nginx服务端口号
-NGINX_HTTP_PORT=${HTTP_PORT:-80}
+readonly NGINX_HTTP_PORT=${HTTP_PORT:-80}
 
 # nginx安装路径
-NGINX_SYSTEM_PATH="/usr/local/${NGINX_SERVICE_NAME}"
+readonly NGINX_SYSTEM_PATH="/usr/local/${NGINX_SERVICE_NAME}"
 
 # nginx运行文件
-NGINX_BIN_FILE="${NGINX_SYSTEM_PATH}/sbin/${NGINX_SERVICE_NAME}"
+readonly NGINX_BIN_FILE="${NGINX_SYSTEM_PATH}/sbin/${NGINX_SERVICE_NAME}"
 
 # nginx配置目录
-NGINX_ETC_FILE="${NGINX_SYSTEM_PATH}/conf/${NGINX_SERVICE_NAME}.conf"
+readonly NGINX_ETC_FILE="${NGINX_SYSTEM_PATH}/conf/${NGINX_SERVICE_NAME}.conf"
 
 # nginx进程标识
-NGINX_PID_FILE="${NGINX_SYSTEM_PATH}/logs/${NGINX_SERVICE_NAME}.pid"
+readonly NGINX_PID_FILE="${NGINX_SYSTEM_PATH}/logs/${NGINX_SERVICE_NAME}.pid"
 
 # nginx锁文件
-NGINX_LOCK_FILE="${NGINX_SYSTEM_PATH}/logs/${NGINX_SERVICE_NAME}.lock"
+readonly NGINX_LOCK_FILE="${NGINX_SYSTEM_PATH}/logs/${NGINX_SERVICE_NAME}.lock"
 
 # nginx错误日志
-NGINX_ERROR_FILE="${NGINX_SYSTEM_PATH}/logs/error.log"
+readonly NGINX_ERROR_FILE="${NGINX_SYSTEM_PATH}/logs/error.log"
 
 # nginx运行日志
-NGINX_ACCESS_FILE="${NGINX_SYSTEM_PATH}/logs/access.log"
-
-# nginx下载文件
-NGINX_DOWNLOADS_FILE=""
+readonly NGINX_ACCESS_FILE="${NGINX_SYSTEM_PATH}/logs/access.log"
 
 # nginx版本号
-NGINX_VERSION="1.26.3"
+readonly NGINX_VERSION="1.26.3"
 
 # 获取nginx源码版本
 fetch_nginx_source()

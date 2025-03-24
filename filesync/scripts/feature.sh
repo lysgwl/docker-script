@@ -264,7 +264,7 @@ download_package()
 			;;
 		*)
 			echo "[ERROR] 不支持的类型下载: ${type}" >&2
-			return 1
+			return 3
 			;;
 	esac
 	

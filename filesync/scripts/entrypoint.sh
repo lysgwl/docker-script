@@ -3,7 +3,7 @@
 set -eo pipefail
 
 # 工作目录
-WORK_DIR=$(pwd)
+readonly WORK_DIR=$(pwd)
 
 # 下载目录
 export WORK_DOWNLOADS_DIR="${WORK_DIR}/downloads"

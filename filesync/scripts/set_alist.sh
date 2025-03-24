@@ -1,37 +1,37 @@
 #!/bin/bash
 
 # alist服务
-ALIST_SERVICE_NAME="alist"
+readonly ALIST_SERVICE_NAME="alist"
 
 # alist服务端口号
-ALIST_HTTP_PORT=${ALIST_HTTP_PORT:-5244}
+readonly ALIST_HTTP_PORT=${ALIST_HTTP_PORT:-5244}
 
 # alist缺省密码
-ALIST_DEFAULT_PASSWD="123456"
+readonly ALIST_DEFAULT_PASSWD="123456"
 
 # alist的musl版本
-ALIST_USE_MUSL=false
+readonly ALIST_USE_MUSL=false
 
 # alist配置目录
-ALIST_PRIVATE_ETC="${SYSTEM_CONFIG_DIR}/${ALIST_SERVICE_NAME}"
+readonly ALIST_PRIVATE_ETC="${SYSTEM_CONFIG_DIR}/${ALIST_SERVICE_NAME}"
 
 # alist数据目录
-ALIST_PRIVATE_DATA="${SYSTEM_DATA_DIR}/${ALIST_SERVICE_NAME}"
+readonly ALIST_PRIVATE_DATA="${SYSTEM_DATA_DIR}/${ALIST_SERVICE_NAME}"
 
 # alist安装路径
-ALIST_SYSTEM_PATH="/usr/local/${ALIST_SERVICE_NAME}"
+readonly ALIST_SYSTEM_PATH="/usr/local/${ALIST_SERVICE_NAME}"
 
 # alist进程标识路径
-ALIST_PID_PATH="/var/run/${ALIST_SERVICE_NAME}"
+readonly ALIST_PID_PATH="/var/run/${ALIST_SERVICE_NAME}"
 
 # alist服务进程标识
-ALIST_PID_FILE="${ALIST_PID_PATH}/${ALIST_SERVICE_NAME}.pid"
+readonly ALIST_PID_FILE="${ALIST_PID_PATH}/${ALIST_SERVICE_NAME}.pid"
 
 # alist运行文件
-ALIST_BIN_FILE="${ALIST_SYSTEM_PATH}/${ALIST_SERVICE_NAME}"
+readonly ALIST_BIN_FILE="${ALIST_SYSTEM_PATH}/${ALIST_SERVICE_NAME}"
 
 # alist配置文件
-ALIST_CONFIG_FILE="${ALIST_PRIVATE_ETC}/config.json"
+readonly ALIST_CONFIG_FILE="${ALIST_PRIVATE_ETC}/config.json"
 
 # 下载alist安装包
 download_alist()
@@ -73,7 +73,7 @@ download_alist()
 	# 调用下载函数
 	local alist_file
 	if ! alist_file=$(download_package "${alist_config}" "${WORK_DOWNLOADS_DIR}"); then
-		return 1
+		return 2
 	fi
 	
 	echo "${alist_file}"
@@ -101,11 +101,11 @@ install_alist_env()
 					"${latest_file}" \
 					"${downloads_dir}/output" \
 					"${ALIST_SERVICE_NAME}*" \
-					"${ALIST_SERVICE_NAME}") || return 1
+					"${ALIST_SERVICE_NAME}") || return 2
 			
 		# 安装二进制文件
 		install_binary "${alist_file}" \
-					"${install_dir}/${ALIST_SERVICE_NAME}" || return 1
+					"${install_dir}/${ALIST_SERVICE_NAME}" || return 3
 
 		# 清理临时文件
 		rm -rf "${alist_file}" "${latest_file}"				
@@ -114,7 +114,7 @@ install_alist_env()
 		# 安装二进制文件
 		install_binary "${WORK_INSTALL_DIR}/${ALIST_SERVICE_NAME}" \
 					"${ALIST_BIN_FILE}" \
-					"/usr/local/bin/${ALIST_SERVICE_NAME}" || return 1
+					"/usr/local/bin/${ALIST_SERVICE_NAME}" || return 3
 	fi
 
 	echo "安装${ALIST_SERVICE_NAME}完成!"

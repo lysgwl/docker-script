@@ -1,37 +1,37 @@
 #!/bin/bash
 
 # syncthing服务
-SYNCTHING_SERVICE_NAME="syncthing"
+readonly SYNCTHING_SERVICE_NAME="syncthing"
 
 # syncthing服务端口
-SYNCTHING_HTTP_PORT=${SYNCTHING_HTTP_PORT:-8384}
+readonly SYNCTHING_HTTP_PORT=${SYNCTHING_HTTP_PORT:-8384}
 
 # syncthing传输端口
-SYNCTHING_TRANS_PORT=${SYNCTHING_TRANS_PORT:-22000}
+readonly SYNCTHING_TRANS_PORT=${SYNCTHING_TRANS_PORT:-22000}
 
 # syncthing缺省密码
-SYNCTHING_DEFAULT_PASSWD="123456"
+readonly SYNCTHING_DEFAULT_PASSWD="123456"
 
 # syncthing配置目录
-SYNCTHING_PRIVATE_ETC="${SYSTEM_CONFIG_DIR}/${SYNCTHING_SERVICE_NAME}"
+readonly SYNCTHING_PRIVATE_ETC="${SYSTEM_CONFIG_DIR}/${SYNCTHING_SERVICE_NAME}"
 
 # syncthing数据目录
-SYNCTHING_PRIVATE_DATA="${SYSTEM_DATA_DIR}/${SYNCTHING_SERVICE_NAME}"
+readonly SYNCTHING_PRIVATE_DATA="${SYSTEM_DATA_DIR}/${SYNCTHING_SERVICE_NAME}"
 
 # syncthing安装路径
-SYNCTHING_SYSTEM_PATH="/usr/local/${SYNCTHING_SERVICE_NAME}"
+readonly SYNCTHING_SYSTEM_PATH="/usr/local/${SYNCTHING_SERVICE_NAME}"
 
 # syncthing进程标识路径
-SYNCTHING_PID_PATH="/var/run/${SYNCTHING_SERVICE_NAME}"
+readonly SYNCTHING_PID_PATH="/var/run/${SYNCTHING_SERVICE_NAME}"
 
 # syncthing服务进程标识
-SYNCTHING_PID_FILE="${SYNCTHING_PID_PATH}/${SYNCTHING_SERVICE_NAME}.pid"
+readonly SYNCTHING_PID_FILE="${SYNCTHING_PID_PATH}/${SYNCTHING_SERVICE_NAME}.pid"
 
 # syncthing运行文件
-SYNCTHING_BIN_FILE="${SYNCTHING_SYSTEM_PATH}/${SYNCTHING_SERVICE_NAME}"
+readonly SYNCTHING_BIN_FILE="${SYNCTHING_SYSTEM_PATH}/${SYNCTHING_SERVICE_NAME}"
 
 # syncthing配置文件
-SYNCTHING_CONFIG_FILE="${SYNCTHING_PRIVATE_ETC}/config.xml"
+readonly SYNCTHING_CONFIG_FILE="${SYNCTHING_PRIVATE_ETC}/config.xml"
 
 # 下载syncthing安装包
 download_syncthing()
@@ -68,7 +68,7 @@ download_syncthing()
 	# 调用下载函数
 	local syncthing_file
 	if ! syncthing_file=$(download_package "${syncthing_config}" "${WORK_DOWNLOADS_DIR}"); then
-		return 1
+		return 2
 	fi
 	
 	echo "$syncthing_file"
@@ -96,11 +96,11 @@ install_syncthing_env()
 					"${latest_file}" \
 					"${downloads_dir}/output" \
 					"${SYNCTHING_SERVICE_NAME}-${SYSTEM_TYPE}-*" \
-					"${SYNCTHING_SERVICE_NAME}") || return 1
+					"${SYNCTHING_SERVICE_NAME}") || return 2
 					
 		# 安装二进制文件
 		install_binary "${syncthing_dir}/${SYNCTHING_SERVICE_NAME}" \
-					"${install_dir}/${SYNCTHING_SERVICE_NAME}" || return 1
+					"${install_dir}/${SYNCTHING_SERVICE_NAME}" || return 3
 					
 		# 清理临时文件
 		rm -rf "${syncthing_dir}" "${latest_file}"	
@@ -109,7 +109,7 @@ install_syncthing_env()
 		# 安装二进制文件
 		install_binary "${WORK_INSTALL_DIR}/${SYNCTHING_SERVICE_NAME}" \
 					"${SYNCTHING_BIN_FILE}" \
-					"/usr/local/bin/${SYNCTHING_SERVICE_NAME}" || return 1
+					"/usr/local/bin/${SYNCTHING_SERVICE_NAME}" || return 3
 	fi
 
 	echo "[INFO] 安装${SYNCTHING_SERVICE_NAME}完成!"

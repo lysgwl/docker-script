@@ -1,28 +1,28 @@
 #!/bin/bash
 
 # ssh端口号
-SSHD_PORT=${SSHD_PORT:-8022}
+readonly SSHD_PORT=${SSHD_PORT:-8022}
 
 # ssh监听地址
-SSHD_LISTEN_ADDRESS="0.0.0.0"
+readonly SSHD_LISTEN_ADDRESS="0.0.0.0"
 
 # ssh秘钥key文件
-SSHD_RSAKEY="/etc/ssh/ssh_host_rsa_key"
+readonly SSHD_RSAKEY="/etc/ssh/ssh_host_rsa_key"
 
 # root用户密码
-ROOT_PASSWORD="123456"
+readonly ROOT_PASSWORD="123456"
 
 # app用户
-SERVICE_APP_USER=${APP_USER:-appuser}
+readonly SERVICE_APP_USER=${APP_USER:-appuser}
 
 # app用户组
-SERVICE_APP_GROUP=${APP_GROUP:-appgroup}
+readonly SERVICE_APP_GROUP=${APP_GROUP:-appgroup}
 
 # 默认app UID
-SERVICE_APP_UID=${APP_UID:-1000}
+readonly SERVICE_APP_UID=${APP_UID:-1000}
 
 # 默认app GID
-SERVICE_APP_GID=${APP_GID:-1000}
+readonly SERVICE_APP_GID=${APP_GID:-1000}
 
 # 安装服务
 install_service_env()
