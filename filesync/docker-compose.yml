@@ -8,17 +8,19 @@ services:
     environment:
       - TZ=${TZ}
     volumes:
-      - ${DATA_PATH}:/data
       - ${CONFIG_PATH}:/config
-      - ${USR_PATH}:/data/usr
+      - ${DATA_PATH}:/data
+      - ${USR_PATH}:/mnt/usr
+      - ${FILES_PATH}:/mnt/usr/files
+      - ${PROJECT_PATH}:/mnt/usr/project
     env_file:
       - .env
     ports:
       - '8022:8022'
-      - '8000:8080'         # web页面端口
+      - '8080:8080'         # web页面端口
       - '22000:22000/tcp'   # 文件传输端口映射（TCP）
       - '22000:22000/udp'   # 文件传输端口映射（UDP）
       - '21027:21027/udp'   # 设备发现端口映射（UDP）
-    hostname: C95wl  
+    hostname: filesync  
     restart: unless-stopped  
-    network_mode: bridge      # bridge
+    network_mode: bridge    # bridge

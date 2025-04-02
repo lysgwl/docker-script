@@ -3,7 +3,7 @@ FROM alpine:latest AS builder
 LABEL stage=builder
 
 # 设置镜像源
-# RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositories
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositories
 
 # 安装软件包
 RUN apk update && apk add --no-cache \
@@ -72,7 +72,7 @@ RUN addgroup -g $APP_GID $APP_GROUP && \
     adduser -D -H -G $APP_GROUP -u $APP_UID $APP_USER	
 
 # 设置镜像源 (mirrors.ustc.edu.cn mirrors.aliyun.com)
-#RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositories
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositories
 
 # 安装软件包
 RUN apk update && \
@@ -101,7 +101,7 @@ RUN apk update && \
 WORKDIR /app
 
 # 持久化目录
-VOLUME /data /config
+VOLUME /config /data
 
 # 复制文件
 COPY --chown=$APP_USER:$APP_GROUP --from=builder /app/install /app/install
@@ -109,17 +109,15 @@ COPY --chown=$APP_USER:$APP_GROUP scripts/ /app/scripts
 COPY --chown=$APP_USER:$APP_GROUP etc/ /app/config
 
 # 创建目录并设置权限
-RUN mkdir -p /data /config && \
-    chown -R $APP_USER:$APP_GROUP /app /data /config && \
+RUN mkdir -p /config /data && \
+    chown -R $APP_USER:$APP_GROUP /app /config /data && \
     chmod +x /app/scripts/*.sh
 
 # 暴露端口
 EXPOSE ${SSHD_PORT} ${HTTP_PORT} \
-	${ALIST_HTTP_PORT} \
-	${SYNCTHING_HTTP_PORT} \
 	${SYNCTHING_TRANS_PORT}/tcp \
 	${SYNCTHING_TRANS_PORT}/udp \
-	${SYNCTHING_DISCOVERY_PORT}/udp 
+	${SYNCTHING_DISCOVERY_PORT}/udp
 
 # 启动执行脚本
 ENTRYPOINT ["/app/scripts/entrypoint.sh", "run"]

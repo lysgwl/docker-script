@@ -14,11 +14,14 @@ export WORK_INSTALL_DIR="${WORK_DIR}/install"
 # 配置目录
 export WORK_CONFIG_DIR="${WORK_DIR}/config"
 
+# 配置目录
+export SYSTEM_CONFIG_DIR="/config"
+
 # 数据目录
 export SYSTEM_DATA_DIR="/data"
 
-# 配置目录
-export SYSTEM_CONFIG_DIR="/config"
+# 用户目录
+export SYSTEM_USR_DIR="/mnt/usr"
 
 # 系统架构
 export SYSTEM_ARCH=$(uname -m)
@@ -80,7 +83,7 @@ run_modules()
 	
 	# alist服务
 	run_alist_service
-	
+
 	# syncthing服务
 	run_syncthing_service
 }
@@ -121,7 +124,7 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
 			
 			# 启动服务
 			run_service
-
+			
 			exec su-exec ${APP_USER}:${APP_GROUP} bash -c "
 				source /app/scripts/entrypoint.sh
 				#source /app/scripts/set_alist.sh

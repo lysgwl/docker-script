@@ -151,9 +151,9 @@ set_service_user()
     fi
 	
 	# 设置目录权限
-	mkdir -p "${SYSTEM_DATA_DIR}" "${SYSTEM_CONFIG_DIR}"
-	chown -R ${SERVICE_APP_USER}:${SERVICE_APP_GROUP} "${SYSTEM_DATA_DIR}" "${SYSTEM_CONFIG_DIR}"
-	chmod 755 "${SYSTEM_DATA_DIR}" "${SYSTEM_CONFIG_DIR}"
+	mkdir -p "${SYSTEM_CONFIG_DIR}" "${SYSTEM_DATA_DIR}" "${SYSTEM_USR_DIR}"
+	chown -R ${SERVICE_APP_USER}:${SERVICE_APP_GROUP} "${SYSTEM_CONFIG_DIR}" "${SYSTEM_DATA_DIR}" "${SYSTEM_USR_DIR}"
+	chmod 755 "${SYSTEM_CONFIG_DIR}" "${SYSTEM_DATA_DIR}" "${SYSTEM_USR_DIR}"
 	
 	return 0
 }
@@ -240,6 +240,9 @@ close_service()
 		echo "[INFO] sshd服务即将关闭中..."
 		killall -q "sshd"
 	fi
+	
+	# 关闭 nginx 服务
+	close_nginx_service
 	
 	echo "[INFO] 关闭系统服务成功!"
 }

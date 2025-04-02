@@ -11,6 +11,8 @@ services:
       - PUID=${PUID}
       - PGID=${PGID}
       - TZ=${TZ}
+      #- HTTP_PROXY=${PROXY_HOST}
+      #- HTTPS_PROXY=${PROXY_HOST}
     volumes:
       - ${CONFIG_PATH}:/config
       - ${CACHE_PATH}:/cache
@@ -21,9 +23,9 @@ services:
     ports:
       - 8096:8096
     privileged: true
-    hostname: C95wl  
+    hostname: jellyfin
     restart: always
-    extra_hosts:
-      - "api.themoviedb.org:31.13.85.34"
-      - "api.themoviedb.org:128.121.146.235"
+    #extra_hosts:
+    #  - "api.themoviedb.org:31.13.85.34"
+    #  - "api.themoviedb.org:128.121.146.235"
     network_mode: bridge

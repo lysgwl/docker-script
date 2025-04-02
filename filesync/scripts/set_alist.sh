@@ -125,7 +125,7 @@ install_alist_env()
 set_alist_conf()
 {
 	echo "设置${ALIST_SERVICE_NAME}配置文件..."
-	local jwt_secret=`openssl rand -base64 16`
+	local jwt_secret=`openssl rand -base64 12`
 
 	local tmp_dir="${ALIST_PRIVATE_DATA}/temp"
 	if [ ! -d "${tmp_dir}" ]; then
@@ -151,84 +151,119 @@ set_alist_conf()
 		
 		cat <<EOF > "${ALIST_CONFIG_FILE}"
 {
-    "force": false,
-    "site_url": "/${ALIST_SERVICE_NAME}",
-    "cdn": "",
-    "jwt_secret": "${jwt_secret}",
-    "token_expires_in": 48,
-    "database": {
-        "type": "sqlite3",
-        "host": "",
-        "port": 0,
-        "user": "",
-        "password": "",
-        "name": "",
-        "db_file": "${db_file}",
-        "table_prefix": "x_",
-        "ssl_mode": "",
-        "dsn": ""
+  "force": false,
+  "site_url": "/${ALIST_SERVICE_NAME}",
+  "cdn": "",
+  "jwt_secret": "${jwt_secret}",
+  "token_expires_in": 48,
+  "database": {
+    "type": "sqlite3",
+    "host": "",
+    "port": 0,
+    "user": "",
+    "password": "",
+    "name": "",
+    "db_file": "${db_file}",
+    "table_prefix": "x_",
+    "ssl_mode": "",
+    "dsn": ""
+  },
+  "meilisearch": {
+    "host": "http://localhost:7700",
+    "api_key": "",
+    "index_prefix": ""
+  },
+  "scheme": {
+    "address": "0.0.0.0",
+    "http_port": ${ALIST_HTTP_PORT},
+    "https_port": -1,
+    "force_https": false,
+    "cert_file": "",
+    "key_file": "",
+    "unix_file": "",
+    "unix_file_perm": ""
+  },
+  "temp_dir": "${tmp_dir}",
+  "bleve_dir": "${bleve_dir}",
+  "dist_dir": "",
+  "log": {
+    "enable": true,
+    "name": "${log_file}",
+    "max_size": 50,
+    "max_backups": 30,
+    "max_age": 28,
+    "compress": false
+  },
+  "delayed_start": 0,
+  "max_connections": 0,
+  "max_concurrency": 64,
+  "tls_insecure_skip_verify": true,
+  "tasks": {
+    "download": {
+      "workers": 5,
+      "max_retry": 1,
+      "task_persistant": false
     },
-    "meilisearch": {
-        "host": "http://localhost:7700",
-        "api_key": "",
-        "index_prefix": ""
+    "transfer": {
+      "workers": 5,
+      "max_retry": 2,
+      "task_persistant": false
     },
-    "scheme": {
-        "address": "0.0.0.0",
-        "http_port": ${ALIST_HTTP_PORT},
-        "https_port": -1,
-        "force_https": false,
-        "cert_file": "",
-        "key_file": "",
-        "unix_file": "",
-        "unix_file_perm": ""
+    "upload": {
+      "workers": 5,
+      "max_retry": 0,
+      "task_persistant": false
     },
-    "temp_dir": "${tmp_dir}",
-    "bleve_dir": "${bleve_dir}",
-    "dist_dir": "",
-    "log": {
-        "enable": true,
-        "name": "${log_file}",
-        "max_size": 10,
-        "max_backups": 5,
-        "max_age": 28,
-        "compress": false
+    "copy": {
+      "workers": 5,
+      "max_retry": 2,
+      "task_persistant": false
     },
-    "delayed_start": 0,
-    "max_connections": 0,
-    "tls_insecure_skip_verify": true,
-    "tasks": {
-        "download": {
-            "workers": 5,
-            "max_retry": 1,
-            "task_persistant": true
-        },
-        "transfer": {
-            "workers": 5,
-            "max_retry": 2,
-            "task_persistant": true
-        },
-        "upload": {
-            "workers": 5,
-            "max_retry": 0,
-            "task_persistant": false
-        },
-        "copy": {
-            "workers": 5,
-            "max_retry": 2,
-            "task_persistant": true
-        }
+    "decompress": {
+      "workers": 5,
+      "max_retry": 2,
+      "task_persistant": false
     },
-    "cors": {
-        "allow_origins": ["*"],
-        "allow_methods": ["*"],
-        "allow_headers": ["*"]
+    "decompress_upload": {
+      "workers": 5,
+      "max_retry": 2,
+      "task_persistant": false
     },
-    "s3": {
-        "enable": false,
-        "port": 5246,
-        "ssl": false
-    }
+    "allow_retry_canceled": false
+  },
+  "cors": {
+    "allow_origins": [
+      "*"
+    ],
+    "allow_methods": [
+      "*"
+    ],
+    "allow_headers": [
+      "*"
+    ]
+  },
+  "s3": {
+    "enable": false,
+    "port": 5246,
+    "ssl": false
+  },
+  "ftp": {
+    "enable": false,
+    "listen": ":5221",
+    "find_pasv_port_attempts": 50,
+    "active_transfer_port_non_20": false,
+    "idle_timeout": 900,
+    "connection_timeout": 30,
+    "disable_active_mode": false,
+    "default_transfer_binary": false,
+    "enable_active_conn_ip_check": true,
+    "enable_pasv_conn_ip_check": true
+  },
+  "sftp": {
+    "enable": false,
+    "listen": ":5222"
+  },
+  "last_launched_version": "AList version"
 }
 EOF
 	fi
@@ -239,8 +274,7 @@ EOF
 # 设置alist用户
 set_alist_user()
 {
-	echo "设置${ALIST_SERVICE_NAME}用户权限..."
-	
+	echo "设置${ALIST_SERVICE_NAME}用户权限..."	
 	mkdir -p "${ALIST_PID_PATH}"
 	
 	chown -R ${SERVICE_APP_USER}:${SERVICE_APP_GROUP} \
@@ -284,7 +318,7 @@ set_alist_env()
 		
 		# 查看alist管理员密码
 		su-exec ${SERVICE_APP_USER} "${ALIST_BIN_FILE}" admin --data "${ALIST_PRIVATE_ETC}"
-		
+
 		# 设置alist缺省密码	
 		su-exec ${SERVICE_APP_USER} "${ALIST_BIN_FILE}" admin --data "${ALIST_PRIVATE_ETC}" set "${ALIST_DEFAULT_PASSWD}"
 	fi
