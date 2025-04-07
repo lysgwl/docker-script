@@ -28,4 +28,8 @@ services:
     #extra_hosts:
     #  - "api.themoviedb.org:31.13.85.34"
     #  - "api.themoviedb.org:128.121.146.235"
-    network_mode: bridge
+    networks:
+      - local_network
+networks:
+  local_network:
+    external: true      

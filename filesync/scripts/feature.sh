@@ -272,3 +272,34 @@ download_package()
 	echo "${dest_file}"
 	return 0
 }
+
+# 端口检测函数
+wait_for_ports()
+{
+	local ports=("$@")
+	local timeout=${PORT_CHECK_TIMEOUT:-60} #shift
+	
+	local interval=1 	# 检测间隔1秒
+    local counter=0
+	local all_ready=false
+	
+	while ((counter < timeout)); do
+		all_ready=true
+		
+		# 检查所有端口
+        for port in "${ports[@]}"; do
+            if ! nc -z 127.0.0.1 "$port" &> /dev/null; then 
+                all_ready=false
+                break
+            fi
+        done
+		
+		${all_ready} && break
+		echo "尝试 $((counter + 1))/${timeout}: 端口未就绪，等待 ${interval} 秒..."
+		
+		sleep ${interval}
+		((counter++))
+	done
+	
+	${all_ready} && return 0 || return 1
+}

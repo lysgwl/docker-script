@@ -122,16 +122,22 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
                 touch "${RUN_FIRST_LOCK}"
             fi
 			
-			# 启动服务
-			run_service
-			
-			exec su-exec ${APP_USER}:${APP_GROUP} bash -c "
+			# 以 APP_USER 用户权限执行 run_modules
+			su-exec ${APP_USER}:${APP_GROUP} bash -c "
 				source /app/scripts/entrypoint.sh
 				#source /app/scripts/set_alist.sh
 				
 				run_modules
-				tail -f /dev/null
-			"
+			" &
+
+			# 等待 run_modules 执行完成
+			wait $!
+			
+			# 启动服务
+			run_service
+			
+			# 保持容器运行
+			tail -f /dev/null
 			;;
 	esac
 fi

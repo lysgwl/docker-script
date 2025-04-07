@@ -388,6 +388,12 @@ run_alist_service()
         echo "[ERROR] ${ALIST_SERVICE_NAME}服务启动失败, 请检查!"
         return 1
     fi
+	
+	# 启动端口检测
+	if ! wait_for_ports "${ALIST_HTTP_PORT}"; then
+        echo "[ERROR] ${ALIST_SERVICE_NAME} 端口未就绪！"
+        return 1
+    fi
 
 	echo "${alist_pid}" > "${ALIST_PID_FILE}"
 	echo "[INFO] 启动${ALIST_SERVICE_NAME}服务成功!"

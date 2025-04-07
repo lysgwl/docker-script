@@ -114,7 +114,8 @@ RUN mkdir -p /config /data && \
     chmod +x /app/scripts/*.sh
 
 # 暴露端口
-EXPOSE ${SSHD_PORT} ${HTTP_PORT} \
+EXPOSE ${SSHD_PORT} ${HTTP_PORT} 8023 \
+	${ALIST_HTTP_PORT} \
 	${SYNCTHING_TRANS_PORT}/tcp \
 	${SYNCTHING_TRANS_PORT}/udp \
 	${SYNCTHING_DISCOVERY_PORT}/udp

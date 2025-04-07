@@ -38,6 +38,9 @@ install_service_env()
 		"config")
 			# ssh服务
 			apk add --no-cache openssh openssh-server-pam shadow
+			
+			# 其他工具
+			apk add --no-cache netcat-openbsd
 			;;
 	esac
 	

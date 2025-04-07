@@ -173,7 +173,7 @@ set_syncthing_conf()
             "globalAnnounceEnabled:false"
             "localAnnounceEnabled:true"
             "natEnabled:true"
-            "urAccepted:2"
+            "urAccepted:-1"
             "startBrowser:false"
             "listenAddresses:tcp://0.0.0.0:${SYNCTHING_TRANS_PORT}, quic://0.0.0.0:${SYNCTHING_TRANS_PORT}"
             "connectionLimitEnough:32"
@@ -188,6 +188,7 @@ set_syncthing_conf()
             "maxFolderConcurrency:4"
             "sendFullIndexOnUpgrade:false"
             "stunKeepaliveStartS:300"
+			"autoUpgradeIntervalH:0"
         )
 
 		local options_args=(-s '/configuration[not(options)]' -t elem -n 'options')
@@ -230,7 +231,6 @@ set_syncthing_conf()
 set_syncthing_user()
 {
 	echo "[INFO] 设置${SYNCTHING_SERVICE_NAME}用户权限..."
-	
 	mkdir -p "${SYNCTHING_PID_PATH}"
 	
 	chown -R ${SERVICE_APP_USER}:${SERVICE_APP_GROUP} \
@@ -328,7 +328,7 @@ run_syncthing_service()
 			--no-browser \
 			--gui-address="0.0.0.0:${SYNCTHING_HTTP_PORT}" \
 			> "${SYNCTHING_PRIVATE_DATA}/${SYNCTHING_SERVICE_NAME}.log" 2>&1 &
-	
+
 	# 获取后台进程的 PID
 	local syncthing_pid=$!
 
@@ -339,6 +339,12 @@ run_syncthing_service()
 	if ! kill -0 "${syncthing_pid}" >/dev/null; then
         echo "[ERROR] ${SYNCTHING_SERVICE_NAME}服务启动失败, 请检查!"
         return 1
+    fi
+	
+	# 启动端口检测
+	if ! wait_for_ports "${SYNCTHING_HTTP_PORT}" "${SYNCTHING_TRANS_PORT}"; then
+        echo "[ERROR] 端口未就绪，查看服务日志："
+        return
     fi
 	
 	echo "${syncthing_pid}" > "${SYNCTHING_PID_FILE}"

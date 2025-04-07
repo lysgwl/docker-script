@@ -23,4 +23,9 @@ services:
       - '21027:21027/udp'   # 设备发现端口映射（UDP）
     hostname: filesync  
     restart: unless-stopped  
-    network_mode: bridge    # bridge
+    networks:
+      - local_network
+    
+networks:
+  local_network:
+    external: true
