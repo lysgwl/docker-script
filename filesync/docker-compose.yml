@@ -13,6 +13,7 @@ services:
       - ${USR_PATH}:/mnt/usr
       - ${FILES_PATH}:/mnt/usr/files
       - ${PROJECT_PATH}:/mnt/usr/project
+      - ${MEDIA_PATH}:/mnt/usr/media
     env_file:
       - .env
     ports:

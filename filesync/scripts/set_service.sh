@@ -143,6 +143,7 @@ set_service_user()
             echo "[ERROR] 无法创建组${SERVICE_APP_GROUP}, 请检查!"
             return 1
         }
+		echo "[DEBUG] 成功创建组${SERVICE_APP_GROUP}"
     fi
 	
 	# 创建用户
@@ -151,12 +152,18 @@ set_service_user()
             echo "[ERROR] 无法创建用户${SERVICE_APP_USER}, 请检查!"
             return 1
         }
+		echo "[DEBUG] 成功创建用户${SERVICE_APP_USER}"
     fi
 	
-	# 设置目录权限
+	# 创建用户目录
+	echo "[DEBUG] 正在创建用户目录"
 	mkdir -p "${SYSTEM_CONFIG_DIR}" "${SYSTEM_DATA_DIR}" "${SYSTEM_USR_DIR}"
+	# 设置目录拥有者
+	echo "[DEBUG] 正在设置目录拥有者(${SERVICE_APP_USER}:${SERVICE_APP_GROUP})"
 	chown -R ${SERVICE_APP_USER}:${SERVICE_APP_GROUP} "${SYSTEM_CONFIG_DIR}" "${SYSTEM_DATA_DIR}" "${SYSTEM_USR_DIR}"
-	chmod 755 "${SYSTEM_CONFIG_DIR}" "${SYSTEM_DATA_DIR}" "${SYSTEM_USR_DIR}"
+	# 设置目录权限
+	echo "[DEBUG] 正在设置目录权限"
+	chmod -R 755 "${SYSTEM_CONFIG_DIR}" "${SYSTEM_DATA_DIR}" "${SYSTEM_USR_DIR}"
 	
 	return 0
 }

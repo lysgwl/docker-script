@@ -16,7 +16,7 @@ services:
       - ${BACKUP_PATH}:/backups
       - ${SOURCE_PATH}:/source
       - type: bind
-        source: ${USR_PATH}
+        source: ${FILES_PATH}
         target: /source/usr
         read_only: true
     env_file:
@@ -26,4 +26,8 @@ services:
     privileged: true
     hostname: duplicati  
     restart: unless-stopped
-    network_mode: bridge
+    networks:
+      - local_network
+networks:
+  local_network:
+    external: true    
