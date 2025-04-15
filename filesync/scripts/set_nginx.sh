@@ -1,56 +1,40 @@
 #!/bin/bash
 
-# nginx服务
-readonly NGINX_SERVICE_NAME="nginx"
+# 定义nginx配置数组
+declare -A nginx_config=(
+	["name"]="nginx"				# 服务名称
+	["port"]="${HTTP_PORT:-80}"		# 端口号
+	["sys_path"]="/usr/local/nginx"	# 安装路径
+	["pid_file"]="/usr/local/nginx/logs/nginx.pid"		# 进程标识
+	["bin_file"]="/usr/local/nginx/sbin/nginx"			# 运行文件
+	["conf_file"]="/usr/local/nginx/conf/nginx.conf"	# 配置文件
+	["lock_file"]="/usr/local/nginx/logs/nginx.lock"	# 锁文件
+	["error_file"]="/usr/local/nginx/logs/error.log"	# 错误日志
+	["access_file"]="/usr/local/nginx/logs/access.log"	# 运行日志
+)
 
-# nginx服务端口号
-readonly NGINX_HTTP_PORT=${HTTP_PORT:-80}
-
-# nginx安装路径
-readonly NGINX_SYSTEM_PATH="/usr/local/${NGINX_SERVICE_NAME}"
-
-# nginx运行文件
-readonly NGINX_BIN_FILE="${NGINX_SYSTEM_PATH}/sbin/${NGINX_SERVICE_NAME}"
-
-# nginx配置目录
-readonly NGINX_ETC_FILE="${NGINX_SYSTEM_PATH}/conf/${NGINX_SERVICE_NAME}.conf"
-
-# nginx进程标识
-readonly NGINX_PID_FILE="${NGINX_SYSTEM_PATH}/logs/${NGINX_SERVICE_NAME}.pid"
-
-# nginx锁文件
-readonly NGINX_LOCK_FILE="${NGINX_SYSTEM_PATH}/logs/${NGINX_SERVICE_NAME}.lock"
-
-# nginx错误日志
-readonly NGINX_ERROR_FILE="${NGINX_SYSTEM_PATH}/logs/error.log"
-
-# nginx运行日志
-readonly NGINX_ACCESS_FILE="${NGINX_SYSTEM_PATH}/logs/access.log"
-
-# nginx版本号
-readonly NGINX_VERSION="1.26.3"
+readonly -A nginx_config
 
 # 获取nginx源码版本
 fetch_nginx_source()
 {
-	local install_dir="${WORK_INSTALL_DIR}"
-	local downloads_dir="${WORK_DOWNLOADS_DIR}"
+	local downloads_dir=$1
 	
 	# 获取文件
 	local latest_file
-	latest_file=$(find_latest_archive "${downloads_dir}" "${NGINX_SERVICE_NAME}*.tar.gz") || {
+	latest_file=$(find_latest_archive "${downloads_dir}" "${nginx_config[name]}*.tar.gz") || {
 		# nginx下载url
-		local downloads_url="https://nginx.org/download/${NGINX_SERVICE_NAME}-${NGINX_VERSION}.tar.gz"
+		local downloads_url="https://nginx.org/download/${nginx_config[name]}-1.26.3.tar.gz"
 		
-		local nginx_config=$(jq -n \
-        --arg type "static" \
-        --argjson url "$(printf '%s' "${downloads_url}" | jq -Rs .)" \
-        '{
-            type: $type,
-            url: $url
-        }')
+		local json_config=$(jq -n \
+			--arg type "static" \
+			--argjson url "$(printf '%s' "${downloads_url}" | jq -Rs .)" \
+			'{
+				type: $type,
+				url: $url
+			}')
 		
-		if ! latest_file=$(download_package "${nginx_config}" "${WORK_DOWNLOADS_DIR}"); then
+		if ! latest_file=$(download_package "${json_config}" "${downloads_dir}"); then
 			return $?
 		fi
 	}
@@ -58,7 +42,7 @@ fetch_nginx_source()
 	local nginx_entry=$(extract_and_validate \
 				"${latest_file}" \
 				"${downloads_dir}/output" \
-				"*${NGINX_SERVICE_NAME}*") || return 1
+				"*${nginx_config[name]}*") || return 1
 	
 	echo "${nginx_entry}"
 }
@@ -66,13 +50,12 @@ fetch_nginx_source()
 # 获取pcre源码版本
 fetch_pcre_source()
 {
-	local install_dir="${WORK_INSTALL_DIR}"
-	local downloads_dir="${WORK_DOWNLOADS_DIR}"
+	local downloads_dir=$1
 	
 	# 获取文件
 	local latest_file
 	latest_file=$(find_latest_archive "${downloads_dir}" "pcre*.tar.gz") || {
-		local pcre_config=$(jq -n \
+		local json_config=$(jq -n \
 			--arg type "github" \
 			--arg repo "PCRE2Project/pcre2" \
 			--arg asset_matcher \
@@ -84,7 +67,7 @@ fetch_pcre_source()
 				asset_matcher: $asset_matcher
 			}')
 			
-		if ! latest_file=$(download_package "${pcre_config}" "${WORK_DOWNLOADS_DIR}"); then
+		if ! latest_file=$(download_package "${json_config}" "${downloads_dir}"); then
 			return $?
 		fi
 	}
@@ -100,23 +83,23 @@ fetch_pcre_source()
 # 编译安装nginx源码
 setup_nginx_source()
 {
-	echo "[INFO] 编译${NGINX_SERVICE_NAME}源码"
+	echo "[INFO] 编译${nginx_config[name]}源码"
 	local paths=("$@")
 	
 	local nginx_path="${paths[0]}"
 	local pcre_path="${paths[1]}"
 	
 	# 进入nginx源码目录
-	cd "${nginx_path}" || { echo "[ERROR] 无法进入${NGINX_SERVICE_NAME}源码目录: ${nginx_path}"; return 1; }
+	cd "${nginx_path}" || { echo "[ERROR] 无法进入${nginx_config[name]}源码目录: ${nginx_path}"; return 1; }
 	
 	local configure_options=(
-		--prefix=${NGINX_SYSTEM_PATH}
-		--sbin-path=${NGINX_BIN_FILE}
-		--conf-path=${NGINX_ETC_FILE}
-		--pid-path=${NGINX_PID_FILE}
-		--lock-path=${NGINX_LOCK_FILE}
-		--error-log-path=${NGINX_ERROR_FILE}
-		--http-log-path=${NGINX_ACCESS_FILE}
+		--prefix=${nginx_config[sys_path]}
+		--sbin-path=${nginx_config[bin_file]}
+		--conf-path=${nginx_config[conf_file]}
+		--pid-path=${nginx_config[pid_file]}
+		--lock-path=${nginx_config[lock_file]}
+		--error-log-path=${nginx_config[error_file]}
+		--http-log-path=${nginx_config[access_file]}
 		--with-debug
 		--with-threads
 		--with-pcre="$pcre_path"
@@ -140,11 +123,11 @@ setup_nginx_source()
 		--with-http_secure_link_module
 		--with-http_slice_module
 		--with-http_stub_status_module
-		--http-client-body-temp-path=${NGINX_SYSTEM_PATH}/temp/client_body_temp
-		--http-proxy-temp-path=${NGINX_SYSTEM_PATH}/temp/proxy_temp
-		--http-fastcgi-temp-path=${NGINX_SYSTEM_PATH}/temp/fastcgi_temp
-		--http-scgi-temp-path=${NGINX_SYSTEM_PATH}/temp/scgi_temp
-		--http-uwsgi-temp-path=${NGINX_SYSTEM_PATH}/temp/uwsgi_temp
+		--http-client-body-temp-path=${nginx_config[sys_path]}/temp/client_body_temp
+		--http-proxy-temp-path=${nginx_config[sys_path]}/temp/proxy_temp
+		--http-fastcgi-temp-path=${nginx_config[sys_path]}/temp/fastcgi_temp
+		--http-scgi-temp-path=${nginx_config[sys_path]}/temp/scgi_temp
+		--http-uwsgi-temp-path=${nginx_config[sys_path]}/temp/uwsgi_temp
 		--with-mail
 		--with-mail_ssl_module
 		--with-stream
@@ -154,28 +137,28 @@ setup_nginx_source()
 	)
 	
 	# 执行配置命令
-	 echo "[INFO] 正在配置${NGINX_SERVICE_NAME}..."
+	 echo "[INFO] 正在配置${nginx_config[name]}..."
 	./configure "${configure_options[@]}"
 	
 	if [[ $? -ne 0 ]]; then
-        echo "[ERROR] ${NGINX_SERVICE_NAME}配置失败,请检查!"
+        echo "[ERROR] ${nginx_config[name]}配置失败,请检查!"
         return 1
     fi
 	
 	# 编译并安装
-    echo "[INFO] 正在编译${NGINX_SERVICE_NAME}..."
+    echo "[INFO] 正在编译${nginx_config[name]}..."
 	make -j$(nproc)
 	
     if [[ $? -ne 0 ]]; then
-        echo "[ERROR] ${NGINX_SERVICE_NAME}编译失败,请检查!"
+        echo "[ERROR] ${nginx_config[name]}编译失败,请检查!"
         return 1
     fi
 	
-	echo "[INFO] 正在安装${NGINX_SERVICE_NAME}..."
+	echo "[INFO] 正在安装${nginx_config[name]}..."
     make install
 	
     if [[ $? -ne 0 ]]; then
-        echo "[ERROR] ${NGINX_SERVICE_NAME}安装失败,请检查！"
+        echo "[ERROR] ${nginx_config[name]}安装失败,请检查！"
         return 1
     fi
 	
@@ -186,41 +169,43 @@ setup_nginx_source()
 install_nginx_env()
 {
 	local arg=$1
-	echo "[INFO] 安装${NGINX_SERVICE_NAME}服务..."
+	echo "[INFO] 安装${nginx_config[name]}服务..."
+	
+	local install_dir="${system_config[install_dir]}"
+	local downloads_dir="${system_config[downloads_dir]}"
 	
 	if [ "$arg" = "init" ]; then
-		# 获取nginx源码路径
-		local nginx_path=$(fetch_nginx_source)
+		if [ ! -d "${install_dir}/${nginx_config[name]}" ]; then
+			# 获取nginx源码路径
+			local nginx_path=$(fetch_nginx_source "${downloads_dir}")
 		
-		# 获取pcre源码路径
-		local pcre_path=$(fetch_pcre_source)
+			# 获取pcre源码路径
+			local pcre_path=$(fetch_pcre_source "${downloads_dir}")
 		
-		# 备份路径
-		local install_dir="${WORK_INSTALL_DIR}"
+			[[ -z ${nginx_path} || -z ${pcre_path} ]] && { echo "[ERROR] 获取${nginx_config[name]}源码失败，请检查！" >&2; return 1; }
 		
-		[[ -z ${nginx_path} || -z ${pcre_path} ]] && { echo "[ERROR] 获取${NGINX_SERVICE_NAME}源码失败，请检查！" >&2; return 1; }
+			# 参数数组
+			local source_array=("${nginx_path}" "${pcre_path}")
 		
-		# 参数数组
-		local source_array=("${nginx_path}" "${pcre_path}")
-		
-		# 编译nginx源码
-		if ! setup_nginx_source "${source_array[@]}"; then
-			echo "[ERROR] 编译${NGINX_SERVICE_NAME}源码失败,请检查!"
-			return 1
+			# 编译nginx源码
+			if ! setup_nginx_source "${source_array[@]}"; then
+				echo "[ERROR] 编译${nginx_config[name]}源码失败,请检查!"
+				return 1
+			fi
+			
+			# 安装二进制文件
+			install_binary "${nginx_config[sys_path]}" "${install_dir}" || return 1
 		fi
-		
-		# 安装二进制文件
-		install_binary "${NGINX_SYSTEM_PATH}" "${install_dir}"
-		
 	elif [ "$arg" = "config" ]; then
-		local nginx_dir="${WORK_INSTALL_DIR}"
-		# 安装二进制文件
-		install_binary "${WORK_INSTALL_DIR}/${NGINX_SERVICE_NAME}" \
-					"${NGINX_SYSTEM_PATH}" \
-					"/usr/local/bin/${NGINX_SERVICE_NAME}"
+		if [ ! -e "${nginx_config[bin_file]}" ]; then
+			# 安装二进制文件
+			install_binary "${install_dir}/${nginx_config[name]}" \
+						"${nginx_config[sys_path]}" \
+						"/usr/local/bin/${nginx_config[name]}" || return 1
+		fi
 	fi
 	
-	echo "[INFO] 编译${NGINX_SERVICE_NAME}完成!"
+	echo "[INFO] 编译${nginx_config[name]}完成!"
 	return 0
 }
 
@@ -315,7 +300,7 @@ check_nginx_conf()
 # 设置nginx配置
 set_nginx_conf()
 {
-	if [ ! -f "${NGINX_ETC_FILE}" ]; then
+	if [ ! -f "${nginx_config[conf_file]}" ]; then
 		return
 	fi
 	
@@ -324,7 +309,7 @@ set_nginx_conf()
 		local target_file="$1"
 		
 		# 安全转义端口
-        local safe_port=$(sed 's/[\/&]/\\&/g' <<< "${NGINX_HTTP_PORT}")
+        local safe_port=$(sed 's/[\/&]/\\&/g' <<< "${nginx_config[port]}")
 		
 		# 执行替换
 		sed -i -E \
@@ -335,9 +320,9 @@ set_nginx_conf()
         }" "${target_file}"
 		
         if [ $? -eq 0 ]; then
-			echo "[INFO] ${NGINX_SERVICE_NAME}端口修改成功!"
+			echo "[INFO] ${nginx_config[name]}端口修改成功!"
         else
-			echo "[ERROR] ${NGINX_SERVICE_NAME}端口修改失败!"
+			echo "[ERROR] ${nginx_config[name]}端口修改失败!"
         fi
 	}
 	
@@ -357,94 +342,92 @@ set_nginx_conf()
 	}
 	
 	# 检查处理文件
-    check_process "${NGINX_ETC_FILE}" || \
-	check_process "${NGINX_ETC_FILE%/*}/extra/www.conf"
+    check_process "${nginx_config[conf_file]}" || \
+	check_process "${nginx_config[conf_file]%/*}/extra/www.conf"
 }
 
 # 设置nginx环境
 set_nginx_env()
 {
-	echo "[INFO] 设置${NGINX_SERVICE_NAME}服务..."
+	echo "[INFO] 设置${nginx_config[name]}服务..."
 	
 	if [ "$arg" = "config" ]; then
-		if [[ -d "${WORK_CONFIG_DIR}/${NGINX_SERVICE_NAME}" && \
-			  -f "${WORK_CONFIG_DIR}/${NGINX_SERVICE_NAME}/${NGINX_SERVICE_NAME}.conf" ]]; then
+		if [[ -d "${system_config[conf_dir]}/${nginx_config[name]}" && \
+			  -f "${system_config[conf_dir]}/${nginx_config[name]}/${nginx_config[name]}.conf" ]]; then
 
-			[ -f "${NGINX_ETC_FILE}" ] && mv -f "${NGINX_ETC_FILE}" "${NGINX_ETC_FILE}.bak"
+			[ -f "${nginx_config[conf_file]}" ] && mv -f "${nginx_config[conf_file]}" "${nginx_config[conf_file]}.bak"
 
-			mkdir -p "${NGINX_ETC_FILE%/*}" && \
-			cp -rf "${WORK_CONFIG_DIR}/${NGINX_SERVICE_NAME}/"* "${NGINX_ETC_FILE%/*}"
+			mkdir -p "${nginx_config[conf_file]%/*}" && \
+			cp -rf "${system_config[conf_dir]}/${nginx_config[name]}/"* "${nginx_config[conf_file]%/*}"
 		fi
 		
-		mkdir -p "${NGINX_SYSTEM_PATH}/temp"
-		echo "[INFO] ${NGINX_SERVICE_NAME}配置文件:${NGINX_ETC_FILE}"
+		mkdir -p "${nginx_config[sys_path]}/temp"
+		echo "[INFO] ${nginx_config[name]}配置文件:${nginx_config[conf_file]}"
 		
 		# 设置nginx配置
 		set_nginx_conf
 	fi
 
-	echo "[INFO] ${NGINX_SERVICE_NAME}设置完成!"
+	echo "[INFO] ${nginx_config[name]}设置完成!"
 }
 
 # 初始化nginx环境
 init_nginx_env()
 {
 	local arg=$1
-	echo "[INFO] 初始化${NGINX_SERVICE_NAME}服务..."
+	echo "[INFO] 初始化${nginx_config[name]}服务..."
 	
-	if [ ! -e "${NGINX_SYSTEM_PATH}" ] || [ ! -e "${NGINX_BIN_FILE}" ]; then
-		# 安装nginx环境
-		if ! install_nginx_env "${arg}"; then
-			return 1
-		fi
-		
-		# 设置nginx环境
-		set_nginx_env "${arg}"
+	# 安装nginx环境
+	if ! install_nginx_env "${arg}"; then
+		return 1
 	fi
 	
-	echo "[INFO] 初始化${NGINX_SERVICE_NAME}服务成功!"
+	# 设置nginx环境
+	set_nginx_env "${arg}"
+	
+	echo "[INFO] 初始化${nginx_config[name]}服务成功!"
 	return 0
 }
 
 # 运行nginx服务
 run_nginx_service()
 {
-	echo "[INFO] 运行${NGINX_SERVICE_NAME}服务..."
+	echo "[INFO] 运行${nginx_config[name]}服务..."
 
-	if [ ! -e "${NGINX_BIN_FILE}" ] || [ ! -e "${NGINX_ETC_FILE}" ]; then
-		echo "[ERROR] ${NGINX_SERVICE_NAME}服务运行失败,请检查!"
+	if [ ! -e "${nginx_config[bin_file]}" ] || [ ! -e "${nginx_config[conf_file]}" ]; then
+		echo "[ERROR] ${nginx_config[name]}服务运行失败,请检查!"
 		return
 	fi
 
 	# 检查服务是否已运行
-	if pgrep -f "${NGINX_SERVICE_NAME}" > /dev/null; then
-		echo "[WARNING] ${NGINX_SERVICE_NAME}服务已经在运行!"
+	if pgrep -f "${nginx_config[name]}" > /dev/null; then
+		echo "[WARNING] ${nginx_config[name]}服务已经在运行!"
 		return
 	fi
 	
 	# 后台运行nginx
-	nohup ${NGINX_BIN_FILE} -c ${NGINX_ETC_FILE} > /dev/null 2>&1 &
+	nohup ${nginx_config[bin_file]} -c ${nginx_config[conf_file]} > /dev/null 2>&1 &
 	
 	# 等待 2 秒
 	sleep 2
 	
-	echo "[INFO] 启动${NGINX_SERVICE_NAME}服务成功!"
+	echo "[INFO] 启动${nginx_config[name]}服务成功!"
 }
 
 # 停止snginx服务
 close_nginx_service()
 {
-	echo "[INFO] 关闭${NGINX_SERVICE_NAME}服务..."
+	echo "[INFO] 关闭${nginx_config[name]}服务..."
 	
-	if [ ! -e "${NGINX_BIN_FILE}" ]; then
-		echo "[ERROR] ${NGINX_SERVICE_NAME}服务不存在,请检查!"
+	if [ ! -e "${nginx_config[bin_file]}" ]; then
+		echo "[ERROR] ${nginx_config[name]}服务不存在,请检查!"
 		return
 	fi
 	
-	for PID in $(pidof ${NGINX_SERVICE_NAME}); do
-		echo "[INFO] ${NGINX_SERVICE_NAME}服务进程:${PID}"
+	for PID in $(pidof ${nginx_config[name]}); do
+		echo "[INFO] ${nginx_config[name]}服务进程:${PID}"
 		kill $PID
 	done
 	
-	echo "[INFO] 关闭${NGINX_SERVICE_NAME}服务成功!"
+	echo "[INFO] 关闭${nginx_config[name]}服务成功!"
 }

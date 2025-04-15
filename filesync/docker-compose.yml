@@ -7,13 +7,15 @@ services:
     image: filesync-image
     environment:
       - TZ=${TZ}
+      - HTTP_PROXY=${PROXY_HOST}
+      - HTTPS_PROXY=${PROXY_HOST}
     volumes:
       - ${CONFIG_PATH}:/config
       - ${DATA_PATH}:/data
       - ${USR_PATH}:/mnt/usr
-      - ${FILES_PATH}:/mnt/usr/files
-      - ${PROJECT_PATH}:/mnt/usr/project
-      - ${MEDIA_PATH}:/mnt/usr/media
+      #- ${FILES_PATH}:/mnt/usr/files
+      #- ${PROJECT_PATH}:/mnt/usr/project
+      #- ${MEDIA_PATH}:/mnt/usr/media
     env_file:
       - .env
     ports:

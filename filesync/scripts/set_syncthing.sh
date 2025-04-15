@@ -1,53 +1,40 @@
 #!/bin/bash
 
-# syncthing服务
-readonly SYNCTHING_SERVICE_NAME="syncthing"
+# 定义syncthing配置数组
+declare -A syncthing_config=(
+	["name"]="syncthing"
+	["passwd"]="123456"
+	["http_port"]="${SYNCTHING_HTTP_PORT:-8384}"
+	["trans_port"]="${SYNCTHING_TRANS_PORT:-22000}"
+	["etc_path"]="${system_config[config_dir]}/syncthing"
+	["data_path"]="${system_config[data_dir]}/syncthing"
+	["sys_path"]="/usr/local/syncthing"
+	["pid_path"]="/var/run/syncthing"
+	["pid_file"]="/var/run/syncthing/syncthing.pid"
+	["bin_file"]="/usr/local/syncthing/syncthing"
+	["conf_file"]="{system_config[config_dir]}/syncthing/config.xml"
+)
 
-# syncthing服务端口
-readonly SYNCTHING_HTTP_PORT=${SYNCTHING_HTTP_PORT:-8384}
-
-# syncthing传输端口
-readonly SYNCTHING_TRANS_PORT=${SYNCTHING_TRANS_PORT:-22000}
-
-# syncthing缺省密码
-readonly SYNCTHING_DEFAULT_PASSWD="123456"
-
-# syncthing配置目录
-readonly SYNCTHING_PRIVATE_ETC="${SYSTEM_CONFIG_DIR}/${SYNCTHING_SERVICE_NAME}"
-
-# syncthing数据目录
-readonly SYNCTHING_PRIVATE_DATA="${SYSTEM_DATA_DIR}/${SYNCTHING_SERVICE_NAME}"
-
-# syncthing安装路径
-readonly SYNCTHING_SYSTEM_PATH="/usr/local/${SYNCTHING_SERVICE_NAME}"
-
-# syncthing进程标识路径
-readonly SYNCTHING_PID_PATH="/var/run/${SYNCTHING_SERVICE_NAME}"
-
-# syncthing服务进程标识
-readonly SYNCTHING_PID_FILE="${SYNCTHING_PID_PATH}/${SYNCTHING_SERVICE_NAME}.pid"
-
-# syncthing运行文件
-readonly SYNCTHING_BIN_FILE="${SYNCTHING_SYSTEM_PATH}/${SYNCTHING_SERVICE_NAME}"
-
-# syncthing配置文件
-readonly SYNCTHING_CONFIG_FILE="${SYNCTHING_PRIVATE_ETC}/config.xml"
+readonly -A syncthing_config
 
 # 下载syncthing安装包
 download_syncthing()
 {
+	local downloads_dir=$1
+	echo "[INFO] 下载${syncthing_config[name]}安装包..." >&2
+	
 	# 动态生成配置
 	local arch_map='{"x86_64":"amd64","aarch64":"arm64","armv7l":"arm"}'
-	local mapped_arch=$(jq -r ".\"${SYSTEM_ARCH}\" // empty" <<< "$arch_map")
+	local mapped_arch=$(jq -r ".\"${system_config[arch]}\" // empty" <<< "$arch_map")
 	
 	if [ -z "$mapped_arch" ]; then
-		echo "[ERROR] 不支持的架构${SYSTEM_ARCH},请检查!" >&2
+		echo "[ERROR] 不支持的架构${system_config[arch]},请检查!" >&2
 		return 1
 	fi
 	
 	# 动态生成匹配条件
     local matcher_conditions=(
-        "[[ \$name =~ ${SYSTEM_TYPE} ]]"
+        "[[ \$name =~ ${system_config[type]} ]]"
         "[[ \$name =~ ${mapped_arch} ]]"
     )
 	
@@ -55,7 +42,7 @@ download_syncthing()
 	local asset_matcher
 	asset_matcher=$(printf "%s && " "${matcher_conditions[@]}" | sed 's/ && $//')
 	
-	local syncthing_config=$(jq -n \
+	local json_config=$(jq -n \
         --arg type "github" \
         --arg repo "syncthing/syncthing" \
         --argjson asset_matcher "$(printf '%s' "${asset_matcher}" | jq -Rs .)" \
@@ -66,12 +53,12 @@ download_syncthing()
         }')
 		
 	# 调用下载函数
-	local syncthing_file
-	if ! syncthing_file=$(download_package "${syncthing_config}" "${WORK_DOWNLOADS_DIR}"); then
+	local latest_file
+	if ! latest_file=$(download_package "${json_config}" "${downloads_dir}"); then
 		return 2
 	fi
 	
-	echo "$syncthing_file"
+	echo "$latest_file"
 	return 0
 }
 
@@ -79,78 +66,81 @@ download_syncthing()
 install_syncthing_env()
 {
 	local arg=$1
-	echo "[INFO] 安装${SYNCTHING_SERVICE_NAME}服务环境..."
+	echo "[INFO] 安装${syncthing_config[name]}服务环境..."
 	
+	local install_dir="${system_config[install_dir]}"
+	local downloads_dir="${system_config[downloads_dir]}"
+		
 	if [ "$arg" = "init" ]; then
-		local install_dir="${WORK_INSTALL_DIR}"
-		local downloads_dir="${WORK_DOWNLOADS_DIR}"
-		
-		# 获取文件
-		local latest_file
-		latest_file=$(find_latest_archive "${downloads_dir}" "${SYNCTHING_SERVICE_NAME}-*.tar.gz") || {
-			latest_file=$(download_syncthing) || return 1
-		}
-		
-		# 获取安装目录
-		local syncthing_dir=$(extract_and_validate \
-					"${latest_file}" \
-					"${downloads_dir}/output" \
-					"${SYNCTHING_SERVICE_NAME}-${SYSTEM_TYPE}-*" \
-					"${SYNCTHING_SERVICE_NAME}") || return 2
+		if [ ! -e "${install_dir}/${syncthing_config[name]}" ]; then
+			# 获取文件
+			local latest_file
+			latest_file=$(find_latest_archive "${downloads_dir}" "${syncthing_config[name]}-*.tar.gz") || {
+				latest_file=$(download_syncthing "${downloads_dir}") || return 1
+			}
+			
+			# 获取安装目录
+			local syncthing_entry=$(extract_and_validate \
+						"${latest_file}" \
+						"${downloads_dir}/output" \
+						"${syncthing_config[name]}-${system_config[type]}-*" \
+						"${syncthing_config[name]}") || return 2
+						
+			# 安装二进制文件
+			install_binary "${syncthing_entry}/${syncthing_config[name]}" \
+					"${install_dir}/${syncthing_config[name]}" || return 3
 					
-		# 安装二进制文件
-		install_binary "${syncthing_dir}/${SYNCTHING_SERVICE_NAME}" \
-					"${install_dir}/${SYNCTHING_SERVICE_NAME}" || return 3
-					
-		# 清理临时文件
-		rm -rf "${syncthing_dir}" "${latest_file}"	
-
+			# 清理临时文件
+			rm -rf "${syncthing_entry}" "${latest_file}"		
+		fi
 	elif [ "$arg" = "config" ]; then
-		# 安装二进制文件
-		install_binary "${WORK_INSTALL_DIR}/${SYNCTHING_SERVICE_NAME}" \
-					"${SYNCTHING_BIN_FILE}" \
-					"/usr/local/bin/${SYNCTHING_SERVICE_NAME}" || return 3
+		if [ ! -e "${syncthing_config[bin_file]}" ]; then
+			# 安装二进制文件
+			install_binary "${install_dir}/${syncthing_config[name]}" \
+					"${syncthing_config[bin_file]}" \
+					"/usr/local/bin/${syncthing_config[name]}" || return 3
+		fi
 	fi
 
-	echo "[INFO] 安装${SYNCTHING_SERVICE_NAME}完成!"
+	echo "[INFO] 安装${syncthing_config[name]}完成!"
 	return 0
 }
 
 # 设置syncthing配置
 set_syncthing_conf()
 {
-	echo "[INFO] 设置${SYNCTHING_SERVICE_NAME}配置文件..."
+	echo "[INFO] 设置${syncthing_config[name]}配置文件..."
 	
-	if [ ! -f "${SYNCTHING_BIN_FILE}" ]; then
-		echo "[ERROR] ${SYNCTHING_SERVICE_NAME}可执行文件不存在,请检查!"
+	if [ ! -f "${syncthing_config[bin_file]}" ]; then
+		echo "[ERROR] ${syncthing_config[name]}可执行文件不存在,请检查!"
 		return 1
 	fi
 	
-	if [ ! -f "${SYNCTHING_CONFIG_FILE}" ]; then
-		#echo '<?xml version="1.0" encoding="UTF-8"?><configuration version="37"></configuration>' > "${SYNCTHING_CONFIG_FILE}"
+	if [ ! -f "${syncthing_config[conf_file]}" ]; then
+		#echo '<?xml version="1.0" encoding="UTF-8"?><configuration version="37"></configuration>' > "${syncthing_config[conf_file]}"
 
-		"${SYNCTHING_BIN_FILE}" generate \
-			--home="${SYNCTHING_PRIVATE_ETC}" \
+		"${syncthing_config[bin_file]}" generate \
+			--home="${syncthing_config[etc_path]}" \
 			--gui-user="admin" \
-			--gui-password="${SYNCTHING_DEFAULT_PASSWD}"
+			--gui-password="${syncthing_config[passwd]}"
 		if [ $? -ne 0 ]; then
-			echo "[ERROR] ${SYNCTHING_SERVICE_NAME}配置文件生成失败, 请检查!"
+			echo "[ERROR] ${syncthing_config[name]}配置文件生成失败, 请检查!"
 			return 1
 		fi
 	fi
 	
 	# 等待3次，每次5秒
 	for ((retry=3; retry>0; retry--)); do
-	  [ -f "${SYNCTHING_CONFIG_FILE}" ] && break
+	  [ -f "${syncthing_config[conf_file]}" ] && break
 	  sleep 5
 	done
 	
-	echo "[INFO] ${SYNCTHING_SERVICE_NAME}配置文件:${SYNCTHING_CONFIG_FILE}"
+	echo "[INFO] ${syncthing_config[name]}配置文件:${syncthing_config[conf_file]}"
 	
 	# 修改 Syncthing 配置
-	if [ -f "${SYNCTHING_CONFIG_FILE}" ]; then
+	if [ -f "${syncthing_config[conf_file]}" ]; then
 		# 停止正在运行的进程
-        pkill -f "${SYNCTHING_BIN_FILE}"
+        pkill -f "${syncthing_config[bin_file]}"
         sleep 2
 		
 		# GUI配置
@@ -159,11 +149,11 @@ set_syncthing_conf()
 			--subnode '/configuration/gui[not(address)]' -t elem -n 'address' -v "" \
 			--subnode '/configuration/gui[not(tls)]' -t elem -n 'tls' -v "" \
 			--subnode '/configuration/gui[not(urlbase)]' -t elem -n 'urlbase' -v "" \
-			-u '/configuration/gui/address' -v "0.0.0.0:${SYNCTHING_HTTP_PORT}" \
+			-u '/configuration/gui/address' -v "0.0.0.0:${syncthing_config[http_port]}" \
 			-u '/configuration/gui/tls' -v "false" \
 			-u '/configuration/gui/urlbase' -v "/syncthing" \
-			"${SYNCTHING_CONFIG_FILE}" || {
-			echo "[ERROR] ${SYNCTHING_SERVICE_NAME} GUI配置失败, 请检查!"
+			"${syncthing_config[conf_file]}" || {
+			echo "[ERROR] ${syncthing_config[name]} GUI配置失败, 请检查!"
 			return 1
 		}
 	
@@ -175,7 +165,7 @@ set_syncthing_conf()
             "natEnabled:true"
             "urAccepted:-1"
             "startBrowser:false"
-            "listenAddresses:tcp://0.0.0.0:${SYNCTHING_TRANS_PORT}, quic://0.0.0.0:${SYNCTHING_TRANS_PORT}"
+            "listenAddresses:tcp://0.0.0.0:${syncthing_config[trans_port]}, quic://0.0.0.0:${syncthing_config[trans_port]}"
             "connectionLimitEnough:32"
             "connectionLimitMax:64"
             "maxSendKbps:0"
@@ -202,8 +192,8 @@ set_syncthing_conf()
 		
 		xmlstarlet ed -L \
             "${options_args[@]}" \
-            "${SYNCTHING_CONFIG_FILE}" || {
-            echo "[ERROR] ${SYNCTHING_SERVICE_NAME}全局选项配置失败, 请检查!"
+            "${syncthing_config[conf_file]}" || {
+            echo "[ERROR] ${syncthing_config[name]}全局选项配置失败, 请检查!"
             return 1
         }
 			
@@ -211,41 +201,41 @@ set_syncthing_conf()
 		xmlstarlet ed -L --pf \
             -s "/configuration[not(folder[@id='default'])]" -t elem -n "folder" \
             -i "/configuration/folder[last()][not(@id)]" -t attr -n "id" -v "default" \
-            -i "/configuration/folder[@id='default'][not(@path)]" -t attr -n "path" -v "${SYNCTHING_PRIVATE_DATA}/default" \
-            -u "/configuration/folder[@id='default']/@path" -v "${SYNCTHING_PRIVATE_DATA}/default" \
+            -i "/configuration/folder[@id='default'][not(@path)]" -t attr -n "path" -v "${syncthing_config[data_path]}/default" \
+            -u "/configuration/folder[@id='default']/@path" -v "${syncthing_config[data_path]}/default" \
 			-s "/configuration/folder[@id='default'][not(label)]" -t elem -n "label" -v "默认目录" \
             -s "/configuration/folder[@id='default'][not(minDiskFree)]" -t elem -n "minDiskFree" -v "5" \
             -s "/configuration/folder[@id='default'][not(copiers)]" -t elem -n "copiers" -v "4" \
             -s "/configuration/folder[@id='default'][not(pullerMaxPendingKiB)]" -t elem -n "pullerMaxPendingKiB" -v "102400" \
-            "${SYNCTHING_CONFIG_FILE}" || {
-            echo "[ERROR] ${SYNCTHING_SERVICE_NAME}文件夹配置失败, 请检查!"
+            "${syncthing_config[conf_file]}" || {
+            echo "[ERROR] ${syncthing_config[name]}文件夹配置失败, 请检查!"
             return 1
         }		
 	fi
 	
-	echo "[INFO] 设置${SYNCTHING_SERVICE_NAME}配置完成!"
+	echo "[INFO] 设置${syncthing_config[name]}配置完成!"
 	return 0
 }
 
 # 设置syncthing用户
 set_syncthing_user()
 {
-	echo "[INFO] 设置${SYNCTHING_SERVICE_NAME}用户权限..."
-	mkdir -p "${SYNCTHING_PID_PATH}"
+	echo "[INFO] 设置${syncthing_config[name]}用户权限..."
+	mkdir -p "${syncthing_config[pid_path]}"
 	
-	chown -R ${SERVICE_APP_USER}:${SERVICE_APP_GROUP} \
-		"${SYNCTHING_SYSTEM_PATH}" \
-        "${SYNCTHING_PRIVATE_ETC}" \
-        "${SYNCTHING_PRIVATE_DATA}" \
-		"${SYNCTHING_PID_PATH}" 2>/dev/null || return 1
+	chown -R ${user_config[user]}:${user_config[group]} \
+		"${syncthing_config[sys_path]}" \
+        "${syncthing_config[etc_path]}" \
+        "${syncthing_config[data_path]}" \
+		"${syncthing_config[pid_path]}" 2>/dev/null || return 1
 		
 	chmod 750 \
-		"${SYNCTHING_SYSTEM_PATH}" \
-        "${SYNCTHING_PRIVATE_ETC}" \
-        "${SYNCTHING_PRIVATE_DATA}" \
-		"${SYNCTHING_PID_PATH}" 2>/dev/null || return 1
+		"${syncthing_config[sys_path]}" \
+        "${syncthing_config[etc_path]}" \
+        "${syncthing_config[data_path]}" \
+		"${syncthing_config[pid_path]}" 2>/dev/null || return 1
 
-	echo "[INFO] 设置${SYNCTHING_SERVICE_NAME}权限完成!"
+	echo "[INFO] 设置${syncthing_config[name]}权限完成!"
 	return 0		
 }
 
@@ -253,11 +243,11 @@ set_syncthing_user()
 set_syncthing_env()
 {
 	local arg=$1
-	echo "[INFO] 设置${SYNCTHING_SERVICE_NAME}服务环境..."
+	echo "[INFO] 设置${syncthing_config[name]}服务环境..."
 
 	if [ "$arg" = "config" ]; then
 		# 创建环境目录
-		mkdir -p "${SYNCTHING_PRIVATE_ETC}" "${SYNCTHING_PRIVATE_DATA}"
+		mkdir -p "${syncthing_config[etc_path]}" "${syncthing_config[data_path]}"
 		
 		# 设置syncthing配置
 		if ! set_syncthing_conf; then
@@ -270,7 +260,7 @@ set_syncthing_env()
 		fi
 	fi
 
-	echo "[INFO] 设置${SYNCTHING_SERVICE_NAME}完成!"
+	echo "[INFO] 设置${syncthing_config[name]}完成!"
 	return 0
 }
 
@@ -278,56 +268,54 @@ set_syncthing_env()
 init_syncthing_env()
 {
 	local arg=$1
-	echo "【初始化${SYNCTHING_SERVICE_NAME}服务】"
+	echo "【初始化${syncthing_config[name]}服务】"
 	
-	if [ ! -e "${SYNCTHING_BIN_FILE}" ]; then
-		# 安装syncthing环境
-		if ! install_syncthing_env "$arg"; then
-			return 1
-		fi
-		
-		# 设置syncthing环境
-		if ! set_syncthing_env "$arg"; then
-			return 1
-		fi
+	# 安装syncthing环境
+	if ! install_syncthing_env "$arg"; then
+		return 1
 	fi
 	
-	echo "[INFO] 初始化${SYNCTHING_SERVICE_NAME}服务成功!"
+	# 设置syncthing环境
+	if ! set_syncthing_env "$arg"; then
+		return 1
+	fi
+	
+	echo "[INFO] 初始化${syncthing_config[name]}服务成功!"
 	return 0
 }
 
 # 运行syncthing服务
 run_syncthing_service()
 {
-	echo "【运行${SYNCTHING_SERVICE_NAME}服务】"
+	echo "【运行${syncthing_config[name]}服务】"
 	
-	if [ ! -e "${SYNCTHING_BIN_FILE}" ]; then
-		echo "[ERROR] ${SYNCTHING_SERVICE_NAME}服务运行失败,请检查!"
+	if [ ! -e "${syncthing_config[bin_file]}" ]; then
+		echo "[ERROR] ${syncthing_config[name]}服务运行失败,请检查!"
 		return 1
 	fi
 	
 	# 检查服务是否已运行
-	if [ -f "${SYNCTHING_PID_FILE}" ]; then
-		local pid=$(cat "${SYNCTHING_PID_FILE}")
+	if [ -f "${syncthing_config[pid_file]}" ]; then
+		local pid=$(cat "${syncthing_config[pid_file]}")
 		if ! kill -0 "${pid}" >/dev/null 2>&1; then
-			rm -f "${SYNCTHING_PID_FILE}"
+			rm -f "${syncthing_config[pid_file]}"
 		else
-			if ! grep -qF "${SYNCTHING_SERVICE_NAME}" "/proc/${pid}/cmdline" 2>/dev/null; then
-				rm -f "${SYNCTHING_PID_FILE}"
+			if ! grep -qF "${syncthing_config[name]}" "/proc/${pid}/cmdline" 2>/dev/null; then
+				rm -f "${syncthing_config[pid_file]}"
 			else
-				echo "[WARNING] ${SYNCTHING_SERVICE_NAME}服务已经在运行(PID:${pid}), 请检查!"
+				echo "[WARNING] ${syncthing_config[name]}服务已经在运行(PID:${pid}), 请检查!"
 				return 0
 			fi
 		fi
 	fi
 	
 	# 后台运行syncthing服务		# sudo -u ${SERVICE_APP_USER} --
-	nohup "${SYNCTHING_BIN_FILE}" \
-			--config "${SYNCTHING_PRIVATE_ETC}" \
-			--data "${SYNCTHING_PRIVATE_DATA}" \
+	nohup "${syncthing_config[bin_file]}" \
+			--config "${syncthing_config[etc_path]}" \
+			--data "${syncthing_config[data_path]}" \
 			--no-browser \
-			--gui-address="0.0.0.0:${SYNCTHING_HTTP_PORT}" \
-			> "${SYNCTHING_PRIVATE_DATA}/${SYNCTHING_SERVICE_NAME}.log" 2>&1 &
+			--gui-address="0.0.0.0:${syncthing_config[http_port]}" \
+			> "${syncthing_config[data_path]}/${syncthing_config[name]}.log" 2>&1 &
 
 	# 获取后台进程的 PID
 	local syncthing_pid=$!
@@ -337,45 +325,45 @@ run_syncthing_service()
 	
 	# 验证 PID 有效性
 	if ! kill -0 "${syncthing_pid}" >/dev/null; then
-        echo "[ERROR] ${SYNCTHING_SERVICE_NAME}服务启动失败, 请检查!"
+        echo "[ERROR] ${syncthing_config[name]}服务启动失败, 请检查!"
         return 1
     fi
 	
 	# 启动端口检测
-	if ! wait_for_ports "${SYNCTHING_HTTP_PORT}" "${SYNCTHING_TRANS_PORT}"; then
+	if ! wait_for_ports "${syncthing_config[http_port]}" "${syncthing_config[trans_port]}"; then
         echo "[ERROR] 端口未就绪，查看服务日志："
         return
     fi
 	
-	echo "${syncthing_pid}" > "${SYNCTHING_PID_FILE}"
-	echo "[INFO] 启动${SYNCTHING_SERVICE_NAME}服务成功!"
+	echo "${syncthing_pid}" > "${syncthing_config[pid_file]}"
+	echo "[INFO] 启动${syncthing_config[name]}服务成功!"
 }
 
 # 停止syncthing服务
 close_syncthing_service()
 {
-	echo "【关闭${SYNCTHING_SERVICE_NAME}服务】"
+	echo "【关闭${syncthing_config[name]}服务】"
 	
-	if [ ! -x "${SYNCTHING_BIN_FILE}" ]; then
-		echo "[ERROR] ${SYNCTHING_SERVICE_NAME}服务不存在,请检查!"
+	if [ ! -x "${syncthing_config[bin_file]}" ]; then
+		echo "[ERROR] ${syncthing_config[name]}服务不存在,请检查!"
 		return
 	fi
 	
 	# 检查syncthing服务进程
-	if [ -e "${SYNCTHING_PID_FILE}" ]; then
+	if [ -e "${syncthing_config[pid_file]}" ]; then
 		# 关闭syncthingt服务进程
-		for PID in $(cat "${SYNCTHING_PID_FILE}"); do
-			echo "[INFO] ${SYNCTHING_SERVICE_NAME}服务进程:${PID}"
+		for PID in $(cat "${syncthing_config[pid_file]}"); do
+			echo "[INFO] ${syncthing_config[name]}服务进程:${PID}"
 			kill $PID
 		done
 		
-		rm -rf "${SYNCTHING_PID_FILE}"
+		rm -rf "${syncthing_config[pid_file]}"
 	fi
 	
-	for PID in $(pidof ${SYNCTHING_SERVICE_NAME}); do
-		echo "[INFO] ${SYNCTHING_SERVICE_NAME}服务进程:${PID}"
+	for PID in $(pidof ${syncthing_config[name]}); do
+		echo "[INFO] ${syncthing_config[name]}服务进程:${PID}"
 		kill $PID
 	done
 	
-	echo "[INFO] 关闭${SYNCTHING_SERVICE_NAME}服务成功!"
+	echo "[INFO] 关闭${syncthing_config[name]}服务成功!"
 }

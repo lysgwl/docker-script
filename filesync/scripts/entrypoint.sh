@@ -5,47 +5,37 @@ set -eo pipefail
 # 工作目录
 readonly WORK_DIR=$(pwd)
 
-# 下载目录
-export WORK_DOWNLOADS_DIR="${WORK_DIR}/downloads"
-
-# 安装目录
-export WORK_INSTALL_DIR="${WORK_DIR}/install"
-
-# 配置目录
-export WORK_CONFIG_DIR="${WORK_DIR}/config"
-
-# 配置目录
-export SYSTEM_CONFIG_DIR="/config"
-
-# 数据目录
-export SYSTEM_DATA_DIR="/data"
-
-# 用户目录
-export SYSTEM_USR_DIR="/mnt/usr"
-
-# 系统架构
-export SYSTEM_ARCH=$(uname -m)
-
-# 系统类型
-export SYSTEM_TYPE="$(uname | tr '[A-Z]' '[a-z]')"
-
 # 首次运行标识
-RUN_FIRST_LOCK="/var/run/first_run_flag.pid"
+readonly RUN_FIRST_LOCK="/var/run/first_run_flag.pid"
+
+# 定义系统配置数组
+declare -A system_config=(
+	["downloads_dir"]="${WORK_DIR}/downloads"		# 下载目录
+	["install_dir"]="${WORK_DIR}/install"			# 安装目录
+	["conf_dir"]="${WORK_DIR}/config"				# 预配置目录
+	["config_dir"]="/config"						# 配置目录
+	["data_dir"]="/data"							# 数据目录
+	["usr_dir"]="/mnt/usr"							# 用户目录
+	["arch"]="$(uname -m)"							# 系统架构
+	["type"]="$(uname | tr '[A-Z]' '[a-z]')"		# 系统类型
+)
+
+readonly -A system_config
+
+# 加载feature脚本
+source ${WORK_DIR}/scripts/feature.sh
+
+# 加载服务脚本
+source ${WORK_DIR}/scripts/set_service.sh
+
+# 加载nginx脚本
+source ${WORK_DIR}/scripts/set_nginx.sh
 
 # 加载alist脚本
 source ${WORK_DIR}/scripts/set_alist.sh
 
 # 加载syncthing脚本
 source ${WORK_DIR}/scripts/set_syncthing.sh
-
-# 加载nginx脚本
-source ${WORK_DIR}/scripts/set_nginx.sh
-
-# 加载服务脚本
-source ${WORK_DIR}/scripts/set_service.sh
-
-# 加载feature脚本
-source ${WORK_DIR}/scripts/feature.sh
 
 # 初始化模块
 init_modules()
@@ -123,10 +113,8 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
             fi
 			
 			# 以 APP_USER 用户权限执行 run_modules
-			su-exec ${APP_USER}:${APP_GROUP} bash -c "
+			su-exec ${user_config[user]}:${user_config[group]} bash -c "
 				source /app/scripts/entrypoint.sh
-				#source /app/scripts/set_alist.sh
-				
 				run_modules
 			" &
 

@@ -1,28 +1,26 @@
 #!/bin/bash
 
-# ssh端口号
-readonly SSHD_PORT=${SSHD_PORT:-8022}
-
-# ssh监听地址
-readonly SSHD_LISTEN_ADDRESS="0.0.0.0"
-
-# ssh秘钥key文件
-readonly SSHD_RSAKEY="/etc/ssh/ssh_host_rsa_key"
-
 # root用户密码
 readonly ROOT_PASSWORD="123456"
 
-# app用户
-readonly SERVICE_APP_USER=${APP_USER:-appuser}
+# 定义用户配置数组
+declare -A user_config=(
+	["user"]="${APP_USER:-appuser}"
+    ["group"]="${APP_GROUP:-appgroup}"
+    ["uid"]="${APP_UID:-1000}"
+    ["gid"]="${APP_GID:-1000}"
+)
 
-# app用户组
-readonly SERVICE_APP_GROUP=${APP_GROUP:-appgroup}
+# 定义SSHD配置数组
+declare -A sshd_config=(
+	["port"]="${SSHD_PORT:-8022}"
+	["listen"]="0.0.0.0"
+	["confile"]="/etc/ssh/sshd_config"
+	["hostkey"]="/etc/ssh/ssh_host_rsa_key"
+)
 
-# 默认app UID
-readonly SERVICE_APP_UID=${APP_UID:-1000}
-
-# 默认app GID
-readonly SERVICE_APP_GID=${APP_GID:-1000}
+readonly -A user_config
+readonly -A sshd_config
 
 # 安装服务
 install_service_env()
@@ -47,123 +45,27 @@ install_service_env()
 	echo "[INFO] 安装服务完成!"
 }
 
-# 设置SSH服务
-set_ssh_service()
-{
-	echo "[INFO] 设置SSH服务"
-	
-	local sshd_config="/etc/ssh/sshd_config"
-	if [ ! -f "${sshd_config}" ]; then
-		echo "[ERROR] SSH服务没有安装,请检查!"
-		return 1
-	fi
-	
-	# 备份配置
-    cp -f "${sshd_config}" "${sshd_config}.bak"
-	
-	# 设置ssh端口号
-	if [ -n "${SSHD_PORT}" ]; then
-		ssh_port=$(grep -E '^(#?)Port [[:digit:]]*$' "${sshd_config}")
-		if [ -n "${ssh_port}" ]; then
-			sed -E -i "s/^(#?)Port [[:digit:]]*$/Port ${SSHD_PORT}/" "${sshd_config}"
-		else
-			echo -e "Port ${SSHD_PORT}" >> "${sshd_config}"
-		fi
-	else
-		sed -i -E '/^Port[[:space:]]+[0-9]+/s/^/#/' "${sshd_config}"
-	fi
-	
-	# 设置监听IP地址
-	if [ -n "${SSHD_LISTEN_ADDRESS}" ]; then
-		# grep -Po '^.*ListenAddress\s+([^\s]+)' "${sshd_config}" | grep -Po '([0-9]{1,3}\.){3}[0-9]{1,3}'
-		# grep -Eo '^.*ListenAddress[[:space:]]+([^[:space:]]+)' ${sshd_config} | grep -Eo '([0-9]{1,3}\.){3}[0-9]{1,3}'
-		ipv4_address=$(awk '/ListenAddress[[:space:]]+/ {print $2}' ${sshd_config} | grep -Eo '([0-9]{1,3}\.){3}[0-9]{1,3}')
-		if [ -n "${ipv4_address}" ]; then
-			sed -i -E 's/^(\s*)#?(ListenAddress)\s+([0-9]{1,3}\.){3}[0-9]{1,3}/\1\2 '"${SSHD_LISTEN_ADDRESS}"'/' "${sshd_config}"
-		else
-			echo "ListenAddress ${SSHD_LISTEN_ADDRESS}" >> "${sshd_config}"
-		fi
-	else
-		sed -i -E '/^ListenAddress\s+[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/s/^/#/' "${sshd_config}"
-	fi
-	
-	# 设置ssh密钥KEY
-	if [ ! -f "${SSHD_RSAKEY}" ]; then
-		ssh-keygen -t rsa -N "" -f "${SSHD_RSAKEY}"
-	fi
-	
-	# 注释密钥ssh_host_ecdsa_key
-	if [ -z "`sed -n '/^#.*HostKey .*ecdsa_key/p' ${sshd_config}`" ]; then
-		sed -i '/^HostKey .*ecdsa_key$/s/^/#/' "${sshd_config}"
-	fi
-	
-	# 注释密钥ssh_host_ed25519_key
-	if [ -z "`sed -n '/^#.*HostKey .*ed25519_key/p' ${sshd_config}`" ]; then
-		sed -i '/^HostKey .*ed25519_key$/s/^/#/' "${sshd_config}"
-	fi
-	
-	# 设置PermitRootLogin管理员权限登录
-	if grep -q -E "^#?PermitRootLogin" "${sshd_config}"; then
-		sed -i -E 's/^(#?PermitRootLogin).*/PermitRootLogin yes/' "${sshd_config}"
-	else
-		echo "PermitRootLogin yes" >> "${sshd_config}"
-	fi
-	
-	# 设置PasswordAuthentication密码身份验证
-	if grep -q -E "^#?PasswordAuthentication" "${sshd_config}"; then
-		sed -i -E 's/^(#?PasswordAuthentication).*/PasswordAuthentication yes/' "${sshd_config}"
-	else
-		echo "PasswordAuthentication yes" >> "${sshd_config}"
-	fi
-	
-	# 设置SSHD进程pid文件路径
-	if [ -z "$(awk '/#PidFile /{getline a; print a}' "${sshd_config}" | sed -n '/^PidFile \/var\/run\/sshd.pid/p')" ]; then
-		sed -i '/^#PidFile / a\PidFile \/var\/run\/sshd.pid' "${sshd_config}"
-	fi
-	
-	ssh_dir="/root/.ssh"
-	if [ ! -d "${ssh_dir}" ]; then
-		mkdir -p "${ssh_dir}"
-	fi
-	
-	chmod 700 "${ssh_dir}"
-	
-	echo "[INFO] 设置SSH完成!"
-	return 0
-}
-
 # 设置系统用户
 set_service_user()
 {
 	echo "[INFO] 设置系统用户..."
 	
-	# 创建组
-    if ! getent group ${SERVICE_APP_GROUP} >/dev/null; then
-        addgroup -g ${SERVICE_APP_GID} ${SERVICE_APP_GROUP} || {
-            echo "[ERROR] 无法创建组${SERVICE_APP_GROUP}, 请检查!"
-            return 1
-        }
-		echo "[DEBUG] 成功创建组${SERVICE_APP_GROUP}"
-    fi
-	
-	# 创建用户
-	if ! id -u ${SERVICE_APP_USER} >/dev/null 2>&1; then
-        adduser -D -H -G ${SERVICE_APP_GROUP} -u ${SERVICE_APP_UID} ${SERVICE_APP_USER} || {
-            echo "[ERROR] 无法创建用户${SERVICE_APP_USER}, 请检查!"
-            return 1
-        }
-		echo "[DEBUG] 成功创建用户${SERVICE_APP_USER}"
-    fi
+	local params=("${user_config[user]}" "${user_config[group]}" "${user_config[uid]}" "${user_config[gid]}")
+	if ! add_service_user "${params[@]}"; then
+		return 1
+	fi
 	
 	# 创建用户目录
 	echo "[DEBUG] 正在创建用户目录"
-	mkdir -p "${SYSTEM_CONFIG_DIR}" "${SYSTEM_DATA_DIR}" "${SYSTEM_USR_DIR}"
+	mkdir -p "${system_config[config_dir]}" "${system_config[data_dir]}" "${system_config[usr_dir]}"
+	
 	# 设置目录拥有者
-	echo "[DEBUG] 正在设置目录拥有者(${SERVICE_APP_USER}:${SERVICE_APP_GROUP})"
-	chown -R ${SERVICE_APP_USER}:${SERVICE_APP_GROUP} "${SYSTEM_CONFIG_DIR}" "${SYSTEM_DATA_DIR}" "${SYSTEM_USR_DIR}"
+	echo "[DEBUG] 正在设置目录拥有者(${alist_config[user]}:${alist_config[group]})"
+	chown -R ${alist_config[user]}:${alist_config[group]} "${system_config[config_dir]}" "${system_config[data_dir]}" "${system_config[usr_dir]}"
+
 	# 设置目录权限
 	echo "[DEBUG] 正在设置目录权限"
-	chmod -R 755 "${SYSTEM_CONFIG_DIR}" "${SYSTEM_DATA_DIR}" "${SYSTEM_USR_DIR}"
+	chmod -R 755 "${system_config[config_dir]}" "${system_config[data_dir]}" "${system_config[usr_dir]}"
 	
 	return 0
 }
@@ -176,14 +78,15 @@ set_service_env()
 	
 	if [ "$arg" = "init" ]; then
 		# 下载目录
-		mkdir -p "${WORK_DOWNLOADS_DIR}"
+		mkdir -p "${system_config[downloads_dir]}"
 	
 		# 安装目录
-		mkdir -p "${WORK_INSTALL_DIR}"
+		mkdir -p "${system_config[install_dir]}"
 		
 	elif [ "$arg" = "config" ]; then
 		# 设置SSH服务
-		if ! set_ssh_service; then
+		local params=("${sshd_config[port]}" "${sshd_config[listen]}" "${sshd_config[confile]}" "${sshd_config[hostkey]}")
+		if ! set_ssh_service "${params[@]}"; then
 			return 1
 		fi
 		

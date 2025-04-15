@@ -2,6 +2,8 @@ FROM alpine:latest AS builder
 
 LABEL stage=builder
 
+# ENV HTTP_PROXY=http://192.168.2.11:10809
+# ENV HTTPS_PROXY=http://192.168.2.11:10809
 # 设置镜像源
 RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositories
 
@@ -25,7 +27,6 @@ RUN chmod +x /app/scripts/*.sh
 # 执行初始化
 RUN /app/scripts/entrypoint.sh init
 
-#RUN /bin/bash -c "source /app/scripts/entrypoint.sh && init_modules init"
 #CMD ["/bin/sh", "-c", "while true; do echo 'Running...'; sleep 60; done"]
 
 FROM alpine:latest
