@@ -48,17 +48,17 @@ init_modules()
 		return 1
 	fi
 	
-	# 基础服务
+	# 初始服务环境
 	if ! init_service_env "${param}"; then
 		return 1
 	fi
 	
-	# alist环境
+	# 初始alist环境
 	if ! init_alist_env "${param}"; then
 		return 1
 	fi
 	
-	# syncthing环境
+	# 初始syncthing环境
 	if ! init_syncthing_env "${param}"; then
 		return 1
 	fi

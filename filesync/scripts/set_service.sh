@@ -50,6 +50,7 @@ set_service_user()
 {
 	echo "[INFO] 设置系统用户..."
 	
+	# 增加系统用户
 	local params=("${user_config[user]}" "${user_config[group]}" "${user_config[uid]}" "${user_config[gid]}")
 	if ! add_service_user "${params[@]}"; then
 		return 1
@@ -60,8 +61,8 @@ set_service_user()
 	mkdir -p "${system_config[config_dir]}" "${system_config[data_dir]}" "${system_config[usr_dir]}"
 	
 	# 设置目录拥有者
-	echo "[DEBUG] 正在设置目录拥有者(${alist_config[user]}:${alist_config[group]})"
-	chown -R ${alist_config[user]}:${alist_config[group]} "${system_config[config_dir]}" "${system_config[data_dir]}" "${system_config[usr_dir]}"
+	echo "[DEBUG] 正在设置目录拥有者(${user_config[user]}:${user_config[group]})"
+	chown -R ${user_config[user]}:${user_config[group]} "${system_config[config_dir]}" "${system_config[data_dir]}" "${system_config[usr_dir]}"
 
 	# 设置目录权限
 	echo "[DEBUG] 正在设置目录权限"
