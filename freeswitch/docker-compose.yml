@@ -1,0 +1,20 @@
+
+name: freeswitch
+
+services:
+  freeswitch-server:
+    container_name: freeswitch
+    image: freeswitch-image
+    environment:
+      - TZ=${TZ}
+    volumes:
+      - ${CONFIG_PATH}:/config
+      - ${DATA_PATH}:/data
+    hostname: freeswitch  
+    restart: unless-stopped  
+    networks:
+      - local_network
+    
+networks:
+  local_network:
+    external: true
