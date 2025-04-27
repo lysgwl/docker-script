@@ -33,28 +33,33 @@ download_syncthing()
 	fi
 	
 	# 动态生成匹配条件
-    local matcher_conditions=(
-        "[[ \$name =~ ${system_config[type]} ]]"
-        "[[ \$name =~ ${mapped_arch} ]]"
-    )
+	local matcher_conditions=(
+		"[[ \$name =~ ${system_config[type]} ]]"
+		"[[ \$name =~ $mapped_arch ]]"
+	)
+	
+	local name_value="${syncthing_config[name]}"
 	
 	# 拼接条件（安全格式化）
 	local asset_matcher
 	asset_matcher=$(printf "%s && " "${matcher_conditions[@]}" | sed 's/ && $//')
 	
 	local json_config=$(jq -n \
-        --arg type "github" \
-        --arg repo "syncthing/syncthing" \
-        --argjson asset_matcher "$(printf '%s' "${asset_matcher}" | jq -Rs .)" \
-        '{
-            type: $type,
-            repo: $repo,
-            asset_matcher: $asset_matcher
-        }')
+		--arg type "github" \
+		--arg name "$name_value" \
+		--arg repo "syncthing/syncthing" \
+		--argjson asset_matcher "$(printf '%s' "$asset_matcher" | jq -Rs .)" \
+		'{
+			type: $type,
+			name: $name,
+			repo: $repo,
+			asset_matcher: $asset_matcher,
+			tags: "release"
+		}')
 		
 	# 调用下载函数
 	local latest_file
-	if ! latest_file=$(download_package "${json_config}" "${downloads_dir}"); then
+	if ! latest_file=$(download_package "$json_config" "$downloads_dir"); then
 		return 2
 	fi
 	
@@ -70,35 +75,60 @@ install_syncthing_env()
 	
 	local install_dir="${system_config[install_dir]}"
 	local downloads_dir="${system_config[downloads_dir]}"
+	
+	local name="${syncthing_config[name]}"
+	local output_dir="${downloads_dir}/output"
+	local target_dir="${install_dir}/$name"
 		
 	if [ "$arg" = "init" ]; then
-		if [ ! -e "${install_dir}/${syncthing_config[name]}" ]; then
-			# 获取文件
-			local latest_file
-			latest_file=$(find_latest_archive "${downloads_dir}" "${syncthing_config[name]}-*.tar.gz") || {
-				latest_file=$(download_syncthing "${downloads_dir}") || return 1
-			}
+		if [ -z "$(find "$install_dir" -maxdepth 1 -type f -name "${name}*" -print -quit 2>/dev/null)" ]; then
+			local findpath latest_path download_file
+			if ! findpath=$(find_latest_archive "$downloads_dir" "$name.*"); then
+				echo "[WARNING] 未匹配到${name}软件包..." >&2
+				
+				download_file=$(download_syncthing "$downloads_dir") || {
+					echo "[ERROR] 下载$name软件包失败,请检查!"
+					return 2
+				}
+				
+				latest_path=$(extract_and_validate "$download_file" "$output_dir" "$name-${system_config[type]}.*") || return 3
+			else
+				local archive_type=$(jq -r '.filetype' <<< "$findpath")
+				local archive_path=$(jq -r '.filepath' <<< "$findpath")
+				
+				if [[ -z "$archive_type" ]] || ! [[ "$archive_type" =~ ^(file|directory)$ ]]; then
+					return 1
+				fi
+				
+				if [ "$archive_type" = "file" ]; then
+					latest_path=$(extract_and_validate "$archive_path" "$output_dir" "$name-${system_config[type]}.*") || return 3
+				else
+					local filepath=$(find "$archive_path" -maxdepth 1 -mindepth 1 -type f -name "${name}*" -print -quit 2>/dev/null)
+					if [[ -z "$filepath" ]]; then
+						echo "[ERROR] $name可执行文件不存在,请检查!"
+						return 1
+					fi
+					
+					local archive_name=$(basename "$archive_path")
+					if [ ! -d "$output_dir/$archive_name" ]; then
+						mkdir -p "$output_dir"
+						rsync -a --no-relative "$filepath" "$output_dir/"
+					fi
+					
+					latest_path="$output_dir/$archive_name"
+				fi
+			fi
 			
-			# 获取安装目录
-			local syncthing_entry=$(extract_and_validate \
-						"${latest_file}" \
-						"${downloads_dir}/output" \
-						"${syncthing_config[name]}-${system_config[type]}-*" \
-						"${syncthing_config[name]}") || return 2
-						
 			# 安装二进制文件
-			install_binary "${syncthing_entry}/${syncthing_config[name]}" \
-					"${install_dir}/${syncthing_config[name]}" || return 3
+			install_binary "$latest_path/$name" "$target_dir" || return 4
 					
 			# 清理临时文件
-			rm -rf "${syncthing_entry}" "${latest_file}"		
+			rm -rf  "$latest_path" "$output_dir"
 		fi
 	elif [ "$arg" = "config" ]; then
-		if [ ! -e "${syncthing_config[bin_file]}" ]; then
+		if [[ ! -d "${syncthing_config[sys_path]}" || ! -e "${syncthing_config[bin_file]}" ]]; then
 			# 安装二进制文件
-			install_binary "${install_dir}/${syncthing_config[name]}" \
-					"${syncthing_config[bin_file]}" \
-					"/usr/local/bin/${syncthing_config[name]}" || return 3
+			install_binary "$target_dir" "${syncthing_config[bin_file]}" "/usr/local/bin/$name" || return 4
 		fi
 	fi
 
@@ -159,58 +189,58 @@ set_syncthing_conf()
 	
 		# 全局选项配置
         local options_config=(
-            # 格式："元素名:元素值"
-            "globalAnnounceEnabled:false"
-            "localAnnounceEnabled:true"
-            "natEnabled:true"
-            "urAccepted:-1"
-            "startBrowser:false"
-            "listenAddresses:tcp://0.0.0.0:${syncthing_config[trans_port]}, quic://0.0.0.0:${syncthing_config[trans_port]}"
-            "connectionLimitEnough:32"
-            "connectionLimitMax:64"
-            "maxSendKbps:0"
-            "maxRecvKbps:0"
-            "fsWatcherEnabled:true"
-            "fsWatcherDelayS:5"
-            "maxConcurrentWrites:4"
-            "dbBlockCacheSize:8388608"
-            "setLowPriority:true"
-            "maxFolderConcurrency:4"
-            "sendFullIndexOnUpgrade:false"
-            "stunKeepaliveStartS:300"
+			# 格式："元素名:元素值"
+			"globalAnnounceEnabled:false"
+			"localAnnounceEnabled:true"
+			"natEnabled:true"
+			"urAccepted:-1"
+			"startBrowser:false"
+			"listenAddresses:tcp://0.0.0.0:${syncthing_config[trans_port]}, quic://0.0.0.0:${syncthing_config[trans_port]}"
+			"connectionLimitEnough:32"
+			"connectionLimitMax:64"
+			"maxSendKbps:0"
+			"maxRecvKbps:0"
+			"fsWatcherEnabled:true"
+			"fsWatcherDelayS:5"
+			"maxConcurrentWrites:4"
+			"dbBlockCacheSize:8388608"
+			"setLowPriority:true"
+			"maxFolderConcurrency:4"
+			"sendFullIndexOnUpgrade:false"
+			"stunKeepaliveStartS:300"
 			"autoUpgradeIntervalH:0"
-        )
+		)
 
 		local options_args=(-s '/configuration[not(options)]' -t elem -n 'options')
 		for item in "${options_config[@]}"; do
-            IFS=":" read -r name value <<< "$item"
-            options_args+=(
-                -s "/configuration/options[not($name)]" -t elem -n "$name" -v ""
-                -u "/configuration/options/$name" -v "$value"
-            )
-        done
+			IFS=":" read -r name value <<< "$item"
+			options_args+=(
+				-s "/configuration/options[not($name)]" -t elem -n "$name" -v ""
+				-u "/configuration/options/$name" -v "$value"
+			)
+		done
 		
 		xmlstarlet ed -L \
-            "${options_args[@]}" \
-            "${syncthing_config[conf_file]}" || {
-            echo "[ERROR] ${syncthing_config[name]}全局选项配置失败, 请检查!"
-            return 1
-        }
+			"${options_args[@]}" \
+			"${syncthing_config[conf_file]}" || {
+			echo "[ERROR] ${syncthing_config[name]}全局选项配置失败, 请检查!"
+			return 1
+		}
 			
 		# 文件夹配置
 		xmlstarlet ed -L --pf \
-            -s "/configuration[not(folder[@id='default'])]" -t elem -n "folder" \
-            -i "/configuration/folder[last()][not(@id)]" -t attr -n "id" -v "default" \
-            -i "/configuration/folder[@id='default'][not(@path)]" -t attr -n "path" -v "${syncthing_config[data_path]}/default" \
-            -u "/configuration/folder[@id='default']/@path" -v "${syncthing_config[data_path]}/default" \
+			-s "/configuration[not(folder[@id='default'])]" -t elem -n "folder" \
+			-i "/configuration/folder[last()][not(@id)]" -t attr -n "id" -v "default" \
+			-i "/configuration/folder[@id='default'][not(@path)]" -t attr -n "path" -v "${syncthing_config[data_path]}/default" \
+			-u "/configuration/folder[@id='default']/@path" -v "${syncthing_config[data_path]}/default" \
 			-s "/configuration/folder[@id='default'][not(label)]" -t elem -n "label" -v "默认目录" \
-            -s "/configuration/folder[@id='default'][not(minDiskFree)]" -t elem -n "minDiskFree" -v "5" \
-            -s "/configuration/folder[@id='default'][not(copiers)]" -t elem -n "copiers" -v "4" \
-            -s "/configuration/folder[@id='default'][not(pullerMaxPendingKiB)]" -t elem -n "pullerMaxPendingKiB" -v "102400" \
-            "${syncthing_config[conf_file]}" || {
-            echo "[ERROR] ${syncthing_config[name]}文件夹配置失败, 请检查!"
-            return 1
-        }		
+			-s "/configuration/folder[@id='default'][not(minDiskFree)]" -t elem -n "minDiskFree" -v "5" \
+			-s "/configuration/folder[@id='default'][not(copiers)]" -t elem -n "copiers" -v "4" \
+			-s "/configuration/folder[@id='default'][not(pullerMaxPendingKiB)]" -t elem -n "pullerMaxPendingKiB" -v "102400" \
+			"${syncthing_config[conf_file]}" || {
+			echo "[ERROR] ${syncthing_config[name]}文件夹配置失败, 请检查!"
+			return 1
+		}		
 	fi
 	
 	echo "[INFO] 设置${syncthing_config[name]}配置完成!"
@@ -297,13 +327,13 @@ run_syncthing_service()
 	# 检查服务是否已运行
 	if [ -f "${syncthing_config[pid_file]}" ]; then
 		local pid=$(cat "${syncthing_config[pid_file]}")
-		if ! kill -0 "${pid}" >/dev/null 2>&1; then
+		if ! kill -0 "$pid" >/dev/null 2>&1; then
 			rm -f "${syncthing_config[pid_file]}"
 		else
-			if ! grep -qF "${syncthing_config[name]}" "/proc/${pid}/cmdline" 2>/dev/null; then
+			if ! grep -qF "${syncthing_config[name]}" "/proc/$pid/cmdline" 2>/dev/null; then
 				rm -f "${syncthing_config[pid_file]}"
 			else
-				echo "[WARNING] ${syncthing_config[name]}服务已经在运行(PID:${pid}), 请检查!"
+				echo "[WARNING] ${syncthing_config[name]}服务已经在运行(PID:$pid), 请检查!"
 				return 0
 			fi
 		fi
@@ -324,18 +354,18 @@ run_syncthing_service()
 	sleep 2
 	
 	# 验证 PID 有效性
-	if ! kill -0 "${syncthing_pid}" >/dev/null; then
-        echo "[ERROR] ${syncthing_config[name]}服务启动失败, 请检查!"
-        return 1
-    fi
+	if ! kill -0 "$syncthing_pid" >/dev/null; then
+		echo "[ERROR] ${syncthing_config[name]}服务启动失败, 请检查!"
+		return 1
+	fi
 	
 	# 启动端口检测
 	if ! wait_for_ports "${syncthing_config[http_port]}" "${syncthing_config[trans_port]}"; then
-        echo "[ERROR] 端口未就绪，查看服务日志："
-        return
-    fi
+		echo "[ERROR] 端口未就绪，查看服务日志："
+		return 1
+	fi
 	
-	echo "${syncthing_pid}" > "${syncthing_config[pid_file]}"
+	echo "$syncthing_pid" > "${syncthing_config[pid_file]}"
 	echo "[INFO] 启动${syncthing_config[name]}服务成功!"
 }
 
@@ -353,16 +383,16 @@ close_syncthing_service()
 	if [ -e "${syncthing_config[pid_file]}" ]; then
 		# 关闭syncthingt服务进程
 		for PID in $(cat "${syncthing_config[pid_file]}"); do
-			echo "[INFO] ${syncthing_config[name]}服务进程:${PID}"
-			kill $PID
+			echo "[INFO] ${syncthing_config[name]}服务进程:$PID"
+			kill "$PID"
 		done
 		
 		rm -rf "${syncthing_config[pid_file]}"
 	fi
 	
 	for PID in $(pidof ${syncthing_config[name]}); do
-		echo "[INFO] ${syncthing_config[name]}服务进程:${PID}"
-		kill $PID
+		echo "[INFO] ${syncthing_config[name]}服务进程:$PID"
+		kill "$PID"
 	done
 	
 	echo "[INFO] 关闭${syncthing_config[name]}服务成功!"

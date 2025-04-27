@@ -119,7 +119,8 @@ set_service_user()
 	
 	# 设置目录权限
 	echo "[DEBUG] 正在设置目录权限"
-	chmod -R 755 "${system_config[config_dir]}" "${system_config[data_dir]}"
+	chmod -R 755 "${system_config[config_dir]}" \
+				 "${system_config[data_dir]}"
 }
 
 # 设置服务

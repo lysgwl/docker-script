@@ -4,8 +4,8 @@
 declare -A alist_config=(
 	["name"]="alist"		# 服务名称
 	["passwd"]="123456"		# 缺省密码
-    ["port"]="${ALIST_HTTP_PORT:-5244}"			# 端口号
-    ["etc_path"]="${system_config[config_dir]}/alist"	# 配置目录
+	["port"]="${ALIST_HTTP_PORT:-5244}"			# 端口号
+	["etc_path"]="${system_config[config_dir]}/alist"	# 配置目录
 	["data_path"]="${system_config[data_dir]}/alist"	# 数据目录
 	["sys_path"]="/usr/local/alist"				# 安装路径
 	["pid_path"]="/var/run/alist"				# 进程标识路径
@@ -31,42 +31,43 @@ download_alist()
 	fi
 	
 	# 动态生成匹配条件
-    local matcher_conditions=(
-        "[[ \$name =~ ${system_config[type]} ]]"
-        "[[ \$name =~ ${mapped_arch} ]]"
-    )
+	local matcher_conditions=(
+		"[[ \$name =~ ${system_config[type]} ]]"
+		"[[ \$name =~ $mapped_arch ]]"
+	)
 	
 	local name_value="${alist_config[name]}"
 	name_value+="-musl"
 	
 	# 检测musl
-    if { ldd --version 2>&1 || true; } | grep -q "musl"; then
-        matcher_conditions+=("[[ \$name =~ musl ]]")
-    fi
+	if { ldd --version 2>&1 || true; } | grep -q "musl"; then
+		matcher_conditions+=("[[ \$name =~ musl ]]")
+	fi
 	
 	# 拼接条件（安全格式化）
 	local asset_matcher
 	asset_matcher=$(printf "%s && " "${matcher_conditions[@]}" | sed 's/ && $//')
 	
 	local json_config=$(jq -n \
-        --arg type "github" \
-		--arg name "${name_value}" \
-        --arg repo "AlistGo/alist" \
-        --argjson asset_matcher "$(printf '%s' "${asset_matcher}" | jq -Rs .)" \
-        '{
-            type: $type,
-            repo: $repo,
+		--arg type "github" \
+		--arg name "$name_value" \
+		--arg repo "AlistGo/alist" \
+		--argjson asset_matcher "$(printf '%s' "$asset_matcher" | jq -Rs .)" \
+		'{
+			type: $type,
 			name: $name,
-            asset_matcher: $asset_matcher
-        }')
+			repo: $repo,
+			asset_matcher: $asset_matcher,
+			tags: "release"
+		}')
 	
 	# 调用下载函数
 	local latest_file
-	if ! latest_file=$(download_package "${json_config}" "${downloads_dir}"); then
+	if ! latest_file=$(download_package "$json_config" "$downloads_dir"); then
 		return 2
 	fi
 	
-	echo "${latest_file}"
+	echo "$latest_file"
 	return 0
 }
 
@@ -79,34 +80,59 @@ install_alist_env()
 	local install_dir="${system_config[install_dir]}"
 	local downloads_dir="${system_config[downloads_dir]}"
 	
+	local name="${alist_config[name]}"
+	local output_dir="$downloads_dir/output"
+	local target_dir="$install_dir/$name"
+	
 	if [ "$arg" = "init" ]; then
-		if [ ! -e "${install_dir}/${alist_config[name]}" ]; then
-			# 获取文件
-			local latest_file
-			latest_file=$(find_latest_archive "${downloads_dir}" "${alist_config[name]}-*.tar.gz") || {
-				latest_file=$(download_alist "${downloads_dir}") || return 1
-			}
+		if [ -z "$(find "$install_dir" -maxdepth 1 -type f -name "${name}*" -print -quit 2>/dev/null)" ]; then
+			local findpath latest_path  download_file
+			if ! findpath=$(find_latest_archive "$downloads_dir" "${name}.*"); then
+				echo "[WARNING] 未匹配到$name软件包..." >&2
+				
+				download_file=$(download_alist "$downloads_dir") && [ -n "$download_file" ] || {
+					echo "[ERROR] 下载$name软件包失败,请检查!"
+					return 2
+				}
+				
+				latest_path=$(extract_and_validate "$download_file" "$output_dir" "${name}.*") || return 3
+			else
+				local archive_type=$(jq -r '.filetype' <<< "$findpath")
+				local archive_path=$(jq -r '.filepath' <<< "$findpath")
+				
+				if [[ -z "$archive_type" ]] || ! [[ "$archive_type" =~ ^(file|directory)$ ]]; then
+					return 1
+				fi
+				
+				if [ "$archive_type" = "file" ]; then
+					latest_path=$(extract_and_validate "$archive_path" "$output_dir" "${name}.*") || return 3
+				else
+					local filepath=$(find "$archive_path" -maxdepth 1 -mindepth 1 -type f -name "${name}*" -print -quit 2>/dev/null)
+					if [[ -z "$filepath" ]]; then
+						echo "[ERROR] $name可执行文件不存在,请检查!"
+						return 1
+					fi
+					
+					local archive_name=$(basename "$filepath")
+					if [ ! -d "$output_dir/$archive_name" ]; then
+						mkdir -p "$output_dir"
+						rsync -a --no-relative "$filepath" "$output_dir/"
+					fi
+					
+					latest_path="$output_dir/$archive_name"
+				fi
+			fi
 			
-			# 获取安装文件
-			local alist_entry=$(extract_and_validate \
-						"${latest_file}" \
-						"${downloads_dir}/output" \
-						"${alist_config[name]}*" \
-						"${alist_config[name]}") || return 2
-						
 			# 安装二进制文件
-			install_binary "${alist_entry}" \
-					"${install_dir}/${alist_config[name]}" || return 3
- 
+			install_binary "$latest_path" "$target_dir" || return 4
+					
 			# 清理临时文件
-			rm -rf "${alist_entry}" "${latest_file}"					
+			rm -rf  "$latest_path" "$output_dir"
 		fi
 	elif [ "$arg" = "config" ]; then
-		if [ ! -e "${alist_config[bin_file]}" ]; then
+		if [[ ! -d "${alist_config[sys_path]}" && ! -e "${alist_config[bin_file]}" ]]; then
 			# 安装二进制文件
-			install_binary "${install_dir}/${alist_config[name]}" \
-					"${alist_config[bin_file]}" \
-					"/usr/local/bin/${alist_config[name]}" || return 3
+			install_binary "$target_dir" "${alist_config[bin_file]}" "/usr/local/bin/$name" || return 4
 		fi
 	fi
 
@@ -121,22 +147,22 @@ set_alist_conf()
 	local jwt_secret=`openssl rand -base64 12`
 
 	local tmp_dir="${alist_config[data_path]}/temp"
-	if [ ! -d "${tmp_dir}" ]; then
-		mkdir -p ${tmp_dir}
+	if [ ! -d "$tmp_dir" ]; then
+		mkdir -p "$tmp_dir"
 	fi
 	
 	local bleve_dir="${alist_config[data_path]}/bleve"
-	if [ ! -d "${bleve_dir}" ]; then
-		mkdir -p ${bleve_dir}
+	if [ ! -d "$bleve_dir" ]; then
+		mkdir -p "$bleve_dir"
 	fi
 	
 	local log_dir="${alist_config[data_path]}/log"
-	if [ ! -d "${log_dir}" ]; then
-		mkdir -p ${log_dir}
+	if [ ! -d "$log_dir" ]; then
+		mkdir -p "$log_dir"
 	fi
 	
 	local db_file="${alist_config[data_path]}/data.db"
-	local log_file="${log_dir}/log.log"
+	local log_file="$log_dir/log.log"
 	
 	# alist 默认配置
 	if [ ! -e "${alist_config[conf_file]}" ]; then
@@ -147,7 +173,7 @@ set_alist_conf()
   "force": false,
   "site_url": "/${alist_config[name]}",
   "cdn": "",
-  "jwt_secret": "${jwt_secret}",
+  "jwt_secret": "$jwt_secret",
   "token_expires_in": 48,
   "database": {
     "type": "sqlite3",
@@ -156,7 +182,7 @@ set_alist_conf()
     "user": "",
     "password": "",
     "name": "",
-    "db_file": "${db_file}",
+    "db_file": "$db_file",
     "table_prefix": "x_",
     "ssl_mode": "",
     "dsn": ""
@@ -176,12 +202,12 @@ set_alist_conf()
     "unix_file": "",
     "unix_file_perm": ""
   },
-  "temp_dir": "${tmp_dir}",
-  "bleve_dir": "${bleve_dir}",
+  "temp_dir": "$tmp_dir",
+  "bleve_dir": "$bleve_dir",
   "dist_dir": "",
   "log": {
     "enable": true,
-    "name": "${log_file}",
+    "name": "$log_file",
     "max_size": 50,
     "max_backups": 30,
     "max_age": 28,
@@ -272,18 +298,18 @@ set_alist_user()
 	
 	chown -R ${user_config[user]}:${user_config[group]} \
 		"${alist_config[sys_path]}" \
-        "${alist_config[etc_path]}" \
-        "${alist_config[data_path]}" \
+		"${alist_config[etc_path]}" \
+		"${alist_config[data_path]}" \
 		"${alist_config[pid_path]}" 2>/dev/null || return 1
 		
 	chmod 750 \
 		"${alist_config[sys_path]}" \
-        "${alist_config[etc_path]}" \
-        "${alist_config[data_path]}" \
+		"${alist_config[etc_path]}" \
+		"${alist_config[data_path]}" \
 		"${alist_config[pid_path]}" 2>/dev/null || return 1
 
 	echo "设置${alist_config[name]}权限完成!"
-	return 0		
+	return 0
 }
 
 # 设置alist环境
@@ -353,13 +379,13 @@ run_alist_service()
 	# 检查服务是否已运行
 	if [ -f "${alist_config[pid_file]}" ]; then
 		local pid=$(cat "${alist_config[pid_file]}")
-		if ! kill -0 "${pid}" >/dev/null 2>&1; then
+		if ! kill -0 "$pid" >/dev/null 2>&1; then
 			rm -f "${alist_config[pid_file]}"
 		else
-			if ! grep -qF "${alist_config[name]}" "/proc/${pid}/cmdline" 2>/dev/null; then
+			if ! grep -qF "${alist_config[name]}" "/proc/$pid/cmdline" 2>/dev/null; then
 				rm -f "${alist_config[pid_file]}"
 			else
-				echo "[WARNING] ${alist_config[name]}服务已经在运行!(PID:${pid})"
+				echo "[WARNING] ${alist_config[name]}服务已经在运行!(PID:$pid)"
 				return 0
 			fi
 		fi
@@ -375,7 +401,7 @@ run_alist_service()
 	sleep 2
 	
 	# 验证 PID 有效性
-	if ! kill -0 "${alist_pid}" >/dev/null; then
+	if ! kill -0 "$alist_pid" >/dev/null; then
         echo "[ERROR] ${alist_config[name]}服务启动失败, 请检查!"
         return 1
     fi
@@ -386,7 +412,7 @@ run_alist_service()
         return 1
     fi
 
-	echo "${alist_pid}" > "${alist_config[pid_file]}"
+	echo "$alist_pid" > "${alist_config[pid_file]}"
 	echo "[INFO] 启动${alist_config[name]}服务成功!"
 }
 

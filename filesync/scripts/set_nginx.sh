@@ -13,84 +13,135 @@ declare -A nginx_config=(
 	["access_file"]="/usr/local/nginx/logs/access.log"	# 运行日志
 )
 
+# nginx源码数组
+declare -A nginx_sources=(
+	["pcre"]='{"repo":"PCRE2Project/pcre2", "version":"latest"}'
+	["nginx"]='{"repo":"nginx/nginx", "version":"latest"}'
+)
+
 readonly -A nginx_config
 
 # 获取nginx源码版本
 fetch_nginx_source()
 {
 	local downloads_dir=$1
+	echo "[INFO] 获取${nginx_config[name]}源码" >&2
 	
-	# 获取文件
-	local latest_file
-	latest_file=$(find_latest_archive "${downloads_dir}" "${nginx_config[name]}*.tar.gz") || {
-		# nginx下载url
-		local downloads_url="https://nginx.org/download/${nginx_config[name]}-1.26.3.tar.gz"
+	local output_dir="${downloads_dir}/output"
+	if [ ! -d "$output_dir" ]; then
+		mkdir -p "$output_dir"
+	fi	
+	
+	local ret=0
+	for key in "${!nginx_sources[@]}"; do
+		local name="$key"
+		local source_config="${nginx_sources[$name]}"
 		
-		local json_config=$(jq -n \
-			--arg type "static" \
-			--argjson url "$(printf '%s' "${downloads_url}" | jq -Rs .)" \
-			'{
-				type: $type,
-				url: $url
-			}')
+		# 解析JSON配置
+		local repo=$(jq -r '.repo // empty' <<< "$source_config")
+		local version=$(jq -r '.version // empty' <<< "$source_config")
 		
-		if ! latest_file=$(download_package "${json_config}" "${downloads_dir}"); then
-			return $?
-		fi
-	}
-	
-	local nginx_entry=$(extract_and_validate \
-				"${latest_file}" \
-				"${downloads_dir}/output" \
-				"*${nginx_config[name]}*") || return 1
-	
-	echo "${nginx_entry}"
-}
+		local url="https://github.com/$repo.git"
+		
+		local findpath latest_path
+		if ! findpath=$(find_latest_archive "$downloads_dir" "$name.*"); then
+			echo "[WARNING] 未匹配到$name软件包..." >&2
 
-# 获取pcre源码版本
-fetch_pcre_source()
-{
-	local downloads_dir=$1
-	
-	# 获取文件
-	local latest_file
-	latest_file=$(find_latest_archive "${downloads_dir}" "pcre*.tar.gz") || {
-		local json_config=$(jq -n \
-			--arg type "github" \
-			--arg repo "PCRE2Project/pcre2" \
-			--arg asset_matcher \
-				"[[ \$name =~ \\.tar\\.gz\$ ]] && 
-				 [[ ! \$name =~ \\.tar\\.gz\\. ]]" \
-			'{
-				type: $type,
-				repo: $repo,
-				asset_matcher: $asset_matcher
-			}')
+			if [ -n "$url" ] || [ -n "$repo" ]; then
+				local jq_args=(
+					--arg type "$([ -n "$repo" ] && echo "github" || echo "static")"
+					--arg name "$name"
+					--arg repo "${repo:-}"
+					--arg version "${version}"
+					--arg url "${url:-}"
+				)
+				
+				local json_config=$(jq -n "${jq_args[@]}" '{ type: $type, name: $name, repo: $repo, version: $version, url: $url }')
+				
+: <<'COMMENT_BLOCK'
+				local matcher_value=""
+				if [ -n "$repo" ]; then
+					matcher_value="[[ \$name =~ \\.tar\\.gz\$ ]] && [[ ! \$name =~ \\.tar\\.gz\\. ]]"
+				fi
+				
+				jq_args+=(
+					--arg url "${url:-}"
+					--arg repo "${repo:-}"
+					--arg asset_matcher "${matcher_value}"
+				)
+				
+				# 动态生成JSON配置
+				local json_config=$(jq -n "${jq_args[@]}" '
+					{ type: $type, name: $name, version: $version } +
+					if $type == "github" then
+						{ repo: $repo, asset_matcher: $asset_matcher }
+					else
+						{ url: $url }
+					end |
+					with_entries(select(.value != "")) ')
+COMMENT_BLOCK
+				if ! clone_path=$(clone_repo "$json_config" "$downloads_dir"); then
+					ret=2; break
+				fi
+				
+				local clone_name="$(basename "$clone_path")"
+				if [ ! -d "$output_dir/$clone_name" ]; then
+					#cp -rf "$clone_path" "$output_dir"
+					rsync -a --exclude '.*' "$clone_path" "$output_dir"/
+				fi
+				
+				latest_path="$output_dir/$clone_name"
+			fi
+		else
+			local archive_type=$(jq -r '.filetype' <<< "$findpath")
+			local archive_path=$(jq -r '.filepath' <<< "$findpath")
 			
-		if ! latest_file=$(download_package "${json_config}" "${downloads_dir}"); then
-			return $?
+			if [[ -z "$archive_type" ]] || ! [[ "$archive_type" =~ ^(file|directory)$ ]]; then
+				ret=1; break
+			fi
+			
+			if [ "$archive_type" = "file" ]; then
+				if ! latest_path=$(extract_and_validate "$archive_path" "$output_dir" "$name.*"); then
+					ret=3; break 
+				fi
+			else
+				local archive_name=$(jq -r '.name' <<< "$findpath")
+				if [ ! -d "$output_dir/$archive_name" ]; then
+					# cp -rf "$archive_path" "$output_dir"
+					rsync -a --exclude '.*' "$archive_path" "$output_dir"/
+				fi
+				latest_path="$output_dir/$archive_name"
+			fi
 		fi
-	}
-	
-	local pcre_entry=$(extract_and_validate \
-				"${latest_file}" \
-				"${downloads_dir}/output" \
-				"*pcre*") || return 1
-	
-	echo "${pcre_entry}"
+		
+		nginx_sources[$name]=$(jq --arg path "$latest_path" '. + {path: $path}' <<< "$source_config")
+	done
 }
-
 # 编译安装nginx源码
 setup_nginx_source()
 {
 	echo "[INFO] 编译${nginx_config[name]}源码"
-	local paths=("$@")
 	
-	local nginx_path="${paths[0]}"
-	local pcre_path="${paths[1]}"
+	local pcre_path=""
+	local nginx_path=""
+
+	local pcre_json="${nginx_sources[pcre]}"
+	if [ -n "$pcre_json" ]; then
+		pcre_path=$(jq -r '.path // empty' <<< "$pcre_json")
+	fi
+	
+	local nginx_json="${nginx_sources[nginx]}"
+	if [ -n "$nginx_json" ]; then
+		nginx_path=$(jq -r '.path // empty' <<< "$nginx_json")
+	fi
+	
+	if [[ -z "$pcre_path" || -z "$nginx_path" ]]; then
+		echo "[ERROR] 获取${nginx_config[name]}源码路径为空,请检查!"
+		return 1
+	fi
 	
 	# 进入nginx源码目录
-	cd "${nginx_path}" || { echo "[ERROR] 无法进入${nginx_config[name]}源码目录: ${nginx_path}"; return 1; }
+	cd "$nginx_path" || { echo "[ERROR] 无法进入${nginx_config[name]}源码目录: $nginx_path"; return 1; }
 	
 	local configure_options=(
 		--prefix=${nginx_config[sys_path]}
@@ -138,30 +189,25 @@ setup_nginx_source()
 	
 	# 执行配置命令
 	 echo "[INFO] 正在配置${nginx_config[name]}..."
-	./configure "${configure_options[@]}"
-	
-	if [[ $? -ne 0 ]]; then
-        echo "[ERROR] ${nginx_config[name]}配置失败,请检查!"
-        return 1
-    fi
+	./configure "${configure_options[@]}" || {
+		echo "[ERROR] ${nginx_config[name]}配置失败,请检查!"
+		return 2
+	}
 	
 	# 编译并安装
-    echo "[INFO] 正在编译${nginx_config[name]}..."
-	make -j$(nproc)
-	
-    if [[ $? -ne 0 ]]; then
-        echo "[ERROR] ${nginx_config[name]}编译失败,请检查!"
-        return 1
-    fi
-	
+	echo "[INFO] 正在编译${nginx_config[name]}..."
+	make -j$(nproc) || {
+		echo "[ERROR] ${nginx_config[name]}编译失败,请检查!"
+		return 3
+	}
+
 	echo "[INFO] 正在安装${nginx_config[name]}..."
-    make install
+	make install || {
+		echo "[ERROR] ${nginx_config[name]}安装失败,请检查！"
+		return 4
+	}
 	
-    if [[ $? -ne 0 ]]; then
-        echo "[ERROR] ${nginx_config[name]}安装失败,请检查！"
-        return 1
-    fi
-	
+	rm -rf "$pcre_path" "nginx_path"
 	return 0
 }
 
@@ -174,35 +220,32 @@ install_nginx_env()
 	local install_dir="${system_config[install_dir]}"
 	local downloads_dir="${system_config[downloads_dir]}"
 	
+	local target_dir="$install_dir/${nginx_config[name]}"
 	if [ "$arg" = "init" ]; then
-		if [ ! -d "${install_dir}/${nginx_config[name]}" ]; then
+		if [ ! -d "${target_dir}" ]; then
 			# 获取nginx源码路径
-			local nginx_path=$(fetch_nginx_source "${downloads_dir}")
-		
-			# 获取pcre源码路径
-			local pcre_path=$(fetch_pcre_source "${downloads_dir}")
-		
-			[[ -z ${nginx_path} || -z ${pcre_path} ]] && { echo "[ERROR] 获取${nginx_config[name]}源码失败，请检查！" >&2; return 1; }
-		
-			# 参数数组
-			local source_array=("${nginx_path}" "${pcre_path}")
-		
+			if ! fetch_nginx_source "$downloads_dir"; then
+				echo "[ERROR] 获取${nginx_config[name]}失败,请检查!"
+				return 2
+			fi
+
 			# 编译nginx源码
-			if ! setup_nginx_source "${source_array[@]}"; then
+			if ! setup_nginx_source; then
 				echo "[ERROR] 编译${nginx_config[name]}源码失败,请检查!"
-				return 1
+				return 3
 			fi
 			
 			# 安装二进制文件
-			install_binary "${nginx_config[sys_path]}" "${install_dir}" || return 1
+			install_binary "${nginx_config[sys_path]}" "$install_dir" || return 4
 		fi
 	elif [ "$arg" = "config" ]; then
-		if [ ! -e "${nginx_config[bin_file]}" ]; then
+		if [[ ! -d "${nginx_config[sys_path]}" || ! -e "${nginx_config[bin_file]}" ]]; then	
 			# 安装二进制文件
-			install_binary "${install_dir}/${nginx_config[name]}" \
-						"${nginx_config[sys_path]}" \
-						"/usr/local/bin/${nginx_config[name]}" || return 1
+			install_binary "$target_dir" "${nginx_config[sys_path]}" "/usr/local/bin/${nginx_config[name]}" || return 4
 		fi
+	else
+		echo "[ERROR] 无效的未知参数:$arg"
+		return 1
 	fi
 	
 	echo "[INFO] 编译${nginx_config[name]}完成!"
@@ -213,17 +256,17 @@ install_nginx_env()
 check_nginx_conf()
 {
 	local conf_file="$1"
-    local status_code=0
-    
-    status_code=$(gawk '
-    BEGIN {
-        stack_idx = 0          # 括号堆栈索引
+	local status_code=0
+	
+	status_code=$(gawk '
+	BEGIN {
+		stack_idx = 0          # 括号堆栈索引
 		has_http = 0           # 存在未注释的http块
-        has_server = 0         # 存在未注释的server块
+		has_server = 0         # 存在未注释的server块
 		invalid_config = 0     # 配置是否无效
-        line_num = 0           # 当前行号
-        delete stack           # 初始化堆栈
-    }
+		line_num = 0           # 当前行号
+		delete stack           # 初始化堆栈
+	}
 
 	{
 		line_num++
@@ -233,10 +276,10 @@ check_nginx_conf()
 	}
 
 	# 检测块开始
-    #match($0, /^([a-zA-Z_][a-zA-Z0-9_-]*)[ \t]+(.*)[ \t]*\{/, arr) {
+	#match($0, /^([a-zA-Z_][a-zA-Z0-9_-]*)[ \t]+(.*)[ \t]*\{/, arr) {
 	match($0, /^([a-zA-Z_][a-zA-Z0-9_-]*)[ \t]+([^{}]*)[ \t]*\{[ \t]*$/, arr) {
 		block_type = arr[1]
-        block_param = arr[2]
+		block_param = arr[2]
 		
 		if (block_type == "location") {
 			sub(/^[[:space:]]*[=~*]+[[:space:]]*/, "", block_param)  # 移除前缀修饰符
@@ -260,7 +303,7 @@ check_nginx_conf()
 	/^[[:blank:]]*\}/ {
 		if (stack_idx == 0) {
 			invalid_config = 1
-            next
+			next
 		}
 		
 		current_block = stack[stack_idx]
@@ -269,32 +312,31 @@ check_nginx_conf()
 	}
 	
 	END {
-        # 错误优先级：括号不匹配 > 块存在性
-        if (invalid_config || stack_idx != 0) {
-            if (stack_idx > 0) {
-                current_block = stack[stack_idx]
-                if (current_block == "http") {
-                    print "[ERROR] http块未闭合" > "/dev/stderr"
-                } else if (current_block == "server") {
-                    print "[ERROR] server块未闭合" > "/dev/stderr"
-                } else {
-                    printf "[ERROR] %s块未闭合\n", current_block > "/dev/stderr"
-                }
-            }
-            print 3
-            exit
-        }
+		# 错误优先级：括号不匹配 > 块存在性
+		if (invalid_config || stack_idx != 0) {
+			if (stack_idx > 0) {
+				current_block = stack[stack_idx]
+				if (current_block == "http") {
+					print "[ERROR] http块未闭合" > "/dev/stderr"
+				} else if (current_block == "server") {
+					print "[ERROR] server块未闭合" > "/dev/stderr"
+				} else {
+					printf "[ERROR] %s块未闭合\n", current_block > "/dev/stderr"
+				}
+			}
+			print 3
+			exit
+		}
 		
-        # 有效配置判断
-        if (has_http && has_server) { print 0 }     # 完整配置
-        else if (has_http)          { print 1 }     # 仅有http块
-		else if (has_server)        { print 2 }     # server块不在http内
-        else                        { print 3 }     # 无有效块
-    }
-	
-    ' "$conf_file")
+		# 有效配置判断
+		if (has_http && has_server)	{ print 0 }		# 完整配置
+		else if (has_http)			{ print 1 }		# 仅有http块
+		else if (has_server)		{ print 2 }		# server块不在http内
+		else						{ print 3 }		# 无有效块
+	}
+	' "$conf_file")
 
-    return $status_code
+	return $status_code
 }
 
 # 设置nginx配置
@@ -309,32 +351,32 @@ set_nginx_conf()
 		local target_file="$1"
 		
 		# 安全转义端口
-        local safe_port=$(sed 's/[\/&]/\\&/g' <<< "${nginx_config[port]}")
+		local safe_port=$(sed 's/[\/&]/\\&/g' <<< "${nginx_config[port]}")
 		
 		# 执行替换
 		sed -i -E \
-        -e "/^[[:space:]]*listen[[:space:]]*/ { 
-            s/^([[:space:]]*listen[[:space:]]+)((([0-9]{1,3}\\.){3}[0-9]{1,3}:)?[0-9]+)?([^;]*)([;]?)/\1\4${safe_port}\5;/ 
-            t 
-            s//\1${safe_port};/ 
-        }" "${target_file}"
+		-e "/^[[:space:]]*listen[[:space:]]*/ { 
+			s/^([[:space:]]*listen[[:space:]]+)((([0-9]{1,3}\\.){3}[0-9]{1,3}:)?[0-9]+)?([^;]*)([;]?)/\1\4$safe_port\5;/ 
+			t 
+			s//\1$safe_port;/ 
+		}" "${target_file}"
 		
-        if [ $? -eq 0 ]; then
+		if [ $? -eq 0 ]; then
 			echo "[INFO] ${nginx_config[name]}端口修改成功!"
-        else
+		else
 			echo "[ERROR] ${nginx_config[name]}端口修改失败!"
-        fi
+		fi
 	}
 	
 	check_process() {
 		local target_file=$1
-		[ ! -f "${target_file}" ] && return 1
+		[ ! -f "$target_file" ] && return 1
 		
-		check_nginx_conf "${target_file}"
+		check_nginx_conf "$target_file"
 		local ret=$?
 		
-		echo "[INFO] 检查配置文件${target_file}状态:${ret}"	
-		case "${ret}" in
+		echo "[WARNING] 检查配置文件$target_file状态:$ret"	
+		case "$ret" in
 			0|2)  set_port "${target_file}"; return 0;; # 正常配置
 			1)  return 1 ;;	# 仅有http块
 			*)  return 2 ;;	# 无效配置
@@ -342,7 +384,7 @@ set_nginx_conf()
 	}
 	
 	# 检查处理文件
-    check_process "${nginx_config[conf_file]}" || \
+	check_process "${nginx_config[conf_file]}" || \
 	check_process "${nginx_config[conf_file]%/*}/extra/www.conf"
 }
 
@@ -378,12 +420,12 @@ init_nginx_env()
 	echo "[INFO] 初始化${nginx_config[name]}服务..."
 	
 	# 安装nginx环境
-	if ! install_nginx_env "${arg}"; then
+	if ! install_nginx_env "$arg"; then
 		return 1
 	fi
 	
 	# 设置nginx环境
-	set_nginx_env "${arg}"
+	set_nginx_env "$arg"
 	
 	echo "[INFO] 初始化${nginx_config[name]}服务成功!"
 	return 0

@@ -10,38 +10,50 @@ find_latest_archive()
 	local matched_entries=()
 	
 	# 查找并处理匹配项
-	while IFS= read -r -d $'\0' path; do
-		local name=$(basename "$path")
-		local type="unknown"
+	while IFS= read -r -d $'\0' filepath; do
+		local filetype="unknown"
+		local filename=$(basename "$filepath")
 		
-		[[ -f "$path" ]] && type="file"
-		[[ -d "$path" ]] && type="directory"
+		[[ -f "$filepath" ]] && filetype="file"
+		[[ -d "$filepath" ]] && filetype="directory"
 		
+		local suffix="" name="$filename"
+		if [[ "$filename" =~ \.([[:alpha:]]{3,})\.([[:alpha:]]{2,3})$ ]]; then
+			# 匹配两段式后缀（如 .tar.gz）
+			suffix=".${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
+			base_name="${filename%$suffix}"
+		elif [[ "$filename" =~ \.([[:alpha:]]{2,})$ ]]; then
+			# 匹配单一段式后缀（如 .gz）
+			suffix=".${BASH_REMATCH[1]}"
+			base_name="${filename%$suffix}"
+		fi
 		# 获取修改时间戳
 		local mtime
 		if [[ "$OSTYPE" == "darwin"* ]]; then
-			mtime=$(stat -f %m "$path")
+			mtime=$(stat -f %m "$filepath")
 		else
-			mtime=$(stat -c %Y "$path")
+			mtime=$(stat -c %Y "$filepath")
 		fi
 		
 		local json_config=$(jq -n \
 				--arg name "$name" \
-				--arg path "$path" \
-				--arg type "$type" \
+				--arg filename "$filename" \
+				--arg filepath "$filepath" \
+				--arg filetype "$filetype" \
 				--argjson mtime "$mtime" \
 				'{
 					name: $name,
-					path: $path,
-					type: $type,
+					filename: $filename,
+					filepath: $filepath,
+					filetype: $filetype,
 					mtime: $mtime
 				}')
 		
 		matched_entries+=("${json_config}")
-	done < <(find "${search_dir}" -maxdepth 1 -name "${pattern}" -print0 2>/dev/null)
+	done < <(find "${search_dir}" -maxdepth 1 -regex ".*/${pattern}" -print0 2>/dev/null)
 	
 	if [[ ${#matched_entries[@]} -eq 0 ]]; then
-		return 2
+		return 1
 	fi
 	
 	# 按修改时间降序排序
@@ -70,12 +82,12 @@ extract_and_validate()
 	}
 	
 	mkdir -p "$extract_dir" || {
-        echo "[ERROR] 无法创建目录: $extract_dir" >&2
-        return 1
-    }
+		echo "[ERROR] 无法创建目录: $extract_dir" >&2
+		return 1
+	}
 	
 	##############################
-    # 预检：检查是否已存在符合要求的条目
+	# 预检：检查是否已存在符合要求的条目
 	##############################
 	local existing_entries=()
 	while IFS= read -r -d $'\0' file; do
@@ -88,7 +100,7 @@ extract_and_validate()
 			# 严格全字匹配
 			if [[ "$entry_name" =~ ^${pattern}$ ]]; then
 				echo "$entry"
-                return 0
+				return 0
 			fi
 		done
 	fi
@@ -99,36 +111,39 @@ extract_and_validate()
 	find "$extract_dir" -mindepth 1 -maxdepth 1 -print0 2>/dev/null | sort -z > "$pre_list"
 	
 	##############################
-    # 解压操作
+	# 解压操作
 	local archive_name=$(basename "$archive_file")
-    echo "正在解压: $archive_name → $extract_dir" >&2
+	echo "正在解压: $archive_name → $extract_dir" >&2
 	
+	local extracted_entry
+	if [[ ! "$archive_name" =~ \.(tar\.gz|tar)$ ]]; then
+		mv -f "$archive_file" "$extract_dir/"
+	else
 	if ! tar -zxvf "$archive_file" -C "$extract_dir" --no-same-owner >/dev/null 2>&1; then
-        echo "[ERROR] 解压失败: $archive_name" >&2
-        rm -f "$pre_list"
-        return 1
-    fi
+		echo "[ERROR] 解压失败: $archive_name" >&2
+		rm -f "$pre_list"
+		return 1
+	fi
 	
 	##############################
-    # 获取解压后的新增内容列表
+	# 获取解压后的新增内容列表
 	local post_list=$(mktemp)
-    find "$extract_dir" -mindepth 1 -maxdepth 1 -print0 2>/dev/null | sort -z > "$post_list"
+	find "$extract_dir" -mindepth 1 -maxdepth 1 -print0 2>/dev/null | sort -z > "$post_list"
 	
 	# 计算新增条目
 	local new_entries=()
 	while IFS= read -r -d $'\0' entry; do
-        new_entries+=("$entry")
-    done < <(comm -13 -z "$pre_list" "$post_list")
+		new_entries+=("$entry")
+	done < <(comm -13 -z "$pre_list" "$post_list")
 	
-    trap 'rm -f "$pre_list" "$post_list"' EXIT
+	trap 'rm -f "$pre_list" "$post_list"' EXIT
 	
 	# 检查是否有新增内容
 	if [[ ${#new_entries[@]} -eq 0 ]]; then
-        echo "[ERROR] 压缩包释放内容为空: $archive_name" >&2
-        return 1
-    fi
+		echo "[ERROR] 压缩包释放内容为空: $archive_name" >&2
+		return 1
+	fi
 	
-	local extracted_entry
 	if [[ ${#new_entries[@]} -eq 1 ]]; then
 		extracted_entry="${new_entries[0]}"
 	else
@@ -149,6 +164,7 @@ extract_and_validate()
 		fi
 		
 		extracted_entry="$subdir_path"
+		fi
 	fi
 	
 	echo "$extracted_entry"
@@ -265,11 +281,12 @@ get_github_releases()
 	fi
 	
 	# 返回解析后的数据
-	jq -c '.' <<< "${content}" 2>/dev/null || {
+	jq -c '.' <<< "$content" 2>/dev/null || {
 		echo "[ERROR] Releases数据解析失败,请检查!" >&2
 		return 3
 	}
 	
+	echo "$content"
 	return 0
 }
 
@@ -300,11 +317,11 @@ get_github_tag()
 	
 	if [[ "$version" == "latest" ]]; then
 		tag_name=$(jq -r '
-            map(.name | select(test("^v?[0-9]")))
-            | sort_by(. | sub("^v";"") | split(".") | map(tonumber? // 0))
-            | reverse
-            | .[0] // empty
-        ' <<< "$content")
+			map(.name | select(test("^v?[0-9]")))
+			| sort_by(. | sub("^v";"") | split(".") | map(tonumber? // 0))
+			| reverse
+			| .[0] // empty
+		' <<< "$content")
 	else
 		tag_name=$(jq -r --arg ver "$version" '.[] | select(.name == $ver).name' <<< "$content")
 	fi
@@ -362,11 +379,11 @@ match_github_assets()
 resolve_github_version()
 {
 	local repo="$1"
-    local version="$2"
-    local pattern="$3"
+	local version="$2"
+	local pattern="$3"
 	local asset_matcher="$4"
 	local -n __out_tag="$5"    # nameref 输出参数
-    local -n __out_url="$6"    # nameref 输出参数
+	local -n __out_url="$6"    # nameref 输出参数
 	
 	# 获取发布信息
 	local release_info tag_name download_url
@@ -406,9 +423,9 @@ resolve_github_version()
 resolve_git_version()
 {
 	local repo_url="$1"
-    local version="$2"
+	local version="$2"
 	local -n __out_tag="$3"    # nameref 输出参数
-    local -n __out_url="$4"    # nameref 输出参数
+	local -n __out_url="$4"    # nameref 输出参数
 	
 	# 获取远程引用信息
 	local remote_refs=$(git ls-remote --tags --heads --refs "$repo_url" 2>/dev/null) || {
@@ -441,7 +458,7 @@ resolve_git_version()
 	local repo_domain repo_path
 	[[ "$repo_url" =~ ^(https?://[^/]+)/(.*)\.git$ ]] && {
 		repo_domain="${BASH_REMATCH[1]}"
-        repo_path="${BASH_REMATCH[2]}"
+		repo_path="${BASH_REMATCH[2]}"
 	}
 	
 	# 生成归档URL
@@ -491,7 +508,7 @@ download_package()
 	
 	# 校验工具
 	command -v jq >/dev/null || { echo "[ERROR] jq解析包未安装,请检查!" >&2; return 1; }
-    
+
 	# 预处理环境变量
 	#local processed_config=$(echo "$json_config" | 
 	#	sed \
