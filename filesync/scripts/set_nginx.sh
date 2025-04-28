@@ -42,6 +42,7 @@ fetch_nginx_source()
 		local version=$(jq -r '.version // empty' <<< "$source_config")
 		
 		local url="https://github.com/$repo.git"
+		echo "[INFO] 正在获取$name源码..." >&2
 		
 		local findpath latest_path
 		if ! findpath=$(find_latest_archive "$downloads_dir" "$name.*"); then
@@ -80,6 +81,7 @@ fetch_nginx_source()
 					end |
 					with_entries(select(.value != "")) ')
 COMMENT_BLOCK
+				local clone_path
 				if ! clone_path=$(clone_repo "$json_config" "$downloads_dir"); then
 					ret=2; break
 				fi
@@ -359,7 +361,7 @@ set_nginx_conf()
 			s/^([[:space:]]*listen[[:space:]]+)((([0-9]{1,3}\\.){3}[0-9]{1,3}:)?[0-9]+)?([^;]*)([;]?)/\1\4$safe_port\5;/ 
 			t 
 			s//\1$safe_port;/ 
-		}" "${target_file}"
+		}" "$target_file"
 		
 		if [ $? -eq 0 ]; then
 			echo "[INFO] ${nginx_config[name]}端口修改成功!"
@@ -377,7 +379,7 @@ set_nginx_conf()
 		
 		echo "[WARNING] 检查配置文件$target_file状态:$ret"	
 		case "$ret" in
-			0|2)  set_port "${target_file}"; return 0;; # 正常配置
+			0|2)  set_port "$target_file"; return 0;; # 正常配置
 			1)  return 1 ;;	# 仅有http块
 			*)  return 2 ;;	# 无效配置
 		esac

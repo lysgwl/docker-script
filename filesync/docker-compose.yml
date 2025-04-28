@@ -10,22 +10,50 @@ services:
       - HTTP_PROXY=${PROXY_HOST}
       - HTTPS_PROXY=${PROXY_HOST}
     volumes:
-      - ${CONFIG_PATH}:/config
-      - ${DATA_PATH}:/data
-      - ${USR_PATH}:/mnt/usr
+      - ${FILESYNC_PATH}/config:/config
+      - ${FILESYNC_PATH}/data:/data
+      - ${FILESYNC_PATH}/usr:/mnt/usr
       #- ${FILES_PATH}:/mnt/usr/files
       #- ${PROJECT_PATH}:/mnt/usr/project
       #- ${MEDIA_PATH}:/mnt/usr/media
     env_file:
       - .env
     ports:
-      - '8022:8022'
+      - '8022:22'
       - '8080:8080'         # web页面端口
       - '22000:22000/tcp'   # 文件传输端口映射（TCP）
       - '22000:22000/udp'   # 文件传输端口映射（UDP）
       - '21027:21027/udp'   # 设备发现端口映射（UDP）
     hostname: filesync  
     restart: unless-stopped  
+    networks:
+      - local_network
+      
+  duplicati:
+    container_name: duplicati
+    image: lscr.io/linuxserver/duplicati:latest
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - CLI_ARGS= --log-level=verbose --webservice-log-level=verbose
+      - DUPLICATI__WEBSERVICE_PASSWORD=${WEB_PASSWD_KEY}
+      - SETTINGS_ENCRYPTION_KEY=${DB_PASSWD_KEY}
+    volumes:
+      - ${BACKUP_PATH}/config:/config
+      - ${BACKUP_PATH}/backup:/backups
+      - ${BACKUP_PATH}/source:/source
+      #- type: bind
+      #  source: ${FILES_PATH}
+      #  target: /source/usr
+      #  read_only: true
+    env_file:
+      - .env
+    ports:
+      - 8200:8200
+    privileged: true
+    hostname: duplicati
+    restart: unless-stopped
     networks:
       - local_network
     
