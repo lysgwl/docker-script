@@ -79,7 +79,7 @@ RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositorie
 RUN apk update && apk add --no-cache bash ca-certificates coreutils gawk openssl sqlite tzdata shadow su-exec
  
 # 安装运维工具
-RUN apk add --no-cache cifs-utils curl git jq netcat-openbsd openssh openssh-server-pam samba tar vsftpd wget xmlstarlet
+RUN apk add --no-cache bc cifs-utils curl git jq netcat-openbsd openssh openssh-server-pam samba tar vsftpd wget xmlstarlet
 
 RUN rm -rf /var/cache/apk/*
 	
