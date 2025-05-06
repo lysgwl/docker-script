@@ -28,9 +28,6 @@ source $WORK_DIR/scripts/feature.sh
 # 加载服务脚本
 source $WORK_DIR/scripts/set_service.sh
 
-# 加载nginx脚本
-source $WORK_DIR/scripts/set_nginx.sh
-
 # 加载alist脚本
 source $WORK_DIR/scripts/set_alist.sh
 
@@ -122,7 +119,7 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
 			wait $!
 			
 			# 启动服务
-			run_service
+			# run_service
 			
 			# 保持容器运行
 			tail -f /dev/null

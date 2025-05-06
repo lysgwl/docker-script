@@ -11,9 +11,6 @@ RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositorie
 # 安装软件包
 RUN apk update && apk add --no-cache bash curl coreutils jq rsync
 
-# 安装编译选项
-RUN apk add --no-cache build-base linux-headers pcre-dev zlib-dev openssl-dev libaio-dev
-	
 # 工作目录
 WORKDIR /app
 
@@ -42,8 +39,6 @@ ARG APP_UID=1000
 ARG APP_GID=1000
 
 # 定义端口号
-ARG SSHD_PORT=22
-ARG HTTP_PORT=8080
 ARG ALIST_HTTP_PORT=5244
 ARG SYNCTHING_HTTP_PORT=8384
 ARG SYNCTHING_TRANS_PORT=22000
@@ -56,9 +51,7 @@ ENV APP_USER=$APP_USER \
 	APP_GID=$APP_GID
 	
 # 导出端口号
-ENV SSHD_PORT=$SSHD_PORT \
-	HTTP_PORT=$HTTP_PORT \
-	ALIST_HTTP_PORT=$ALIST_HTTP_PORT \
+ENV ALIST_HTTP_PORT=$ALIST_HTTP_PORT \
 	SYNCTHING_HTTP_PORT=$SYNCTHING_HTTP_PORT \
 	SYNCTHING_TRANS_PORT=$SYNCTHING_TRANS_PORT \
 	SYNCTHING_DISCOVERY_PORT=$SYNCTHING_DISCOVERY_PORT
@@ -75,11 +68,11 @@ RUN addgroup -g $APP_GID $APP_GROUP && \
 # 设置镜像源 (mirrors.ustc.edu.cn mirrors.aliyun.com)
 RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositories
 
-# 安装核心依赖库
-RUN apk update && apk add --no-cache bash ca-certificates coreutils gawk openssl sqlite tzdata shadow su-exec
+# 安装核心依赖库 - gawk shadow
+RUN apk update && apk add --no-cache bash ca-certificates coreutils openssl sqlite tzdata su-exec
  
-# 安装运维工具
-RUN apk add --no-cache bc cifs-utils curl git jq netcat-openbsd openssh openssh-server-pam samba tar vsftpd wget xmlstarlet
+# 安装运维工具 - cifs-utils git netcat-openbsd openssh openssh-server-pam samba vsftpd
+RUN apk add --no-cache bc curl jq tar wget xmlstarlet
 
 RUN rm -rf /var/cache/apk/*
 	
@@ -95,13 +88,12 @@ COPY --chown=$APP_USER:$APP_GROUP etc/ /app/config
 VOLUME /config /data
 
 # 创建目录并设置权限
-RUN mkdir -p /config /data && \
-	chown -R $APP_USER:$APP_GROUP /app /config /data && \
+RUN chown -R $APP_USER:$APP_GROUP /app && \
 	chmod +x /app/scripts/*.sh
 
 # 暴露端口
-EXPOSE ${SSHD_PORT} ${HTTP_PORT} \
-	${ALIST_HTTP_PORT} \
+EXPOSE ${ALIST_HTTP_PORT} \
+	${SYNCTHING_HTTP_PORT} \
 	${SYNCTHING_TRANS_PORT}/tcp \
 	${SYNCTHING_TRANS_PORT}/udp \
 	${SYNCTHING_DISCOVERY_PORT}/udp
