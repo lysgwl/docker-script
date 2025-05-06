@@ -94,7 +94,7 @@ RUN chown -R $APP_USER:$APP_GROUP /app && \
 	chmod +x /app/scripts/*.sh
 
 # 暴露端口
-EXPOSE ${SSHD_PORT} ${HTTP_PORT}
+EXPOSE ${HTTP_PORT}
 
 # 启动执行脚本
 ENTRYPOINT ["/app/scripts/entrypoint.sh", "run"]

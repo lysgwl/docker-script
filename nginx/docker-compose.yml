@@ -13,7 +13,6 @@ services:
     env_file:
       - .env
     ports:
-      - '8022:22'
       - '8080:80'
     hostname: nginx
     restart: unless-stopped

@@ -29,7 +29,7 @@ set_service_user()
 	echo "[INFO] 设置系统用户..."
 	
 	# 创建用户目录
-	#echo "[DEBUG] 正在创建用户目录"
+	echo "[DEBUG] 正在创建用户目录"
 	mkdir -p "${system_config[downloads_dir]}" \
 			 "${system_config[install_dir]}" \
 			 "${system_config[config_dir]}" \
@@ -37,14 +37,14 @@ set_service_user()
 			 "${system_config[usr_dir]}"
 	
 	# 设置目录拥有者
-	#echo "[DEBUG] 正在设置目录拥有者(${user_config[user]}:${user_config[group]})"
+	echo "[DEBUG] 正在设置目录拥有者(${user_config[user]}:${user_config[group]})"
 	chown -R ${user_config[user]}:${user_config[group]} \
 			"${system_config[config_dir]}" \
 			"${system_config[data_dir]}" \
 			"${system_config[usr_dir]}"
 
 	# 设置目录权限
-	#echo "[DEBUG] 正在设置目录权限"
+	echo "[DEBUG] 正在设置目录权限"
 	chmod -R 755 "${system_config[config_dir]}" \
 				 "${system_config[data_dir]}" \
 				 "${system_config[usr_dir]}"
@@ -60,11 +60,13 @@ set_service_env()
 	set_service_user
 	
 	if [ "$arg" = "config" ]; then
+: <<'COMMENT_BLOCK'	
 		# 设置SSH服务
 		local params=("${sshd_config[port]}" "${sshd_config[listen]}" "${sshd_config[confile]}" "${sshd_config[hostkey]}")
 		if ! set_ssh_service "${params[@]}"; then
 			return 1
 		fi
+COMMENT_BLOCK
 		
 		# 设置root用户密码
 		echo "root:$ROOT_PASSWORD" | chpasswd

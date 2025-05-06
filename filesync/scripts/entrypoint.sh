@@ -118,9 +118,6 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
 			# 等待 run_modules 执行完成
 			wait $!
 			
-			# 启动服务
-			# run_service
-			
 			# 保持容器运行
 			tail -f /dev/null
 			;;
