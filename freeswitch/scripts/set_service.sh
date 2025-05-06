@@ -87,8 +87,8 @@ install_service_env()
 		# 系统库
 		echo "[INFO] === 安装系统基础库 ==="
 		
-		# libspandsp-dev libxml2-dev (libtpl-dev)
-		apt-get install -y --no-install-recommends erlang-dev libedit-dev libexpat1-dev liblua5.4-dev libncurses5-dev libpcre3-dev libssl-dev lsb-release uuid-dev zlib1g-dev || {
+		# libspandsp-dev (libtpl-dev)
+		apt-get install -y --no-install-recommends erlang-dev libedit-dev libexpat1-dev liblua5.4-dev libncurses5-dev libpcre3-dev libssl-dev libxml2-dev lsb-release uuid-dev zlib1g-dev || {
 			echo "[ERROR] 系统基础库安装失败,请检查!"
 			return 1
 		}
@@ -104,7 +104,7 @@ set_service_user()
 	echo "[INFO] 设置系统用户..."
 	
 	# 创建用户目录
-	echo "[DEBUG] 正在创建用户目录"
+	#echo "[DEBUG] 正在创建用户目录"
 	mkdir -p "${system_config[downloads_dir]}" \
 			 "${system_config[install_dir]}" \
 			 "${system_config[config_dir]}" \
@@ -112,15 +112,14 @@ set_service_user()
 	
 			 
 	# 设置目录拥有者
-	echo "[DEBUG] 正在设置目录拥有者(${user_config[user]}:${user_config[group]})"
+	#echo "[DEBUG] 正在设置目录拥有者(${user_config[user]}:${user_config[group]})"
 	chown -R ${user_config[user]}:${user_config[group]} \
 			"${system_config[config_dir]}" \
 			"${system_config[data_dir]}"
 	
 	# 设置目录权限
-	echo "[DEBUG] 正在设置目录权限"
-	chmod -R 755 "${system_config[config_dir]}" \
-				 "${system_config[data_dir]}"
+	#echo "[DEBUG] 正在设置目录权限"
+	chmod -R 755 "${system_config[config_dir]}" "${system_config[data_dir]}"
 }
 
 # 设置服务
@@ -142,6 +141,11 @@ set_service_env()
 		# 设置root用户密码
 		echo "root:${ROOT_PASSWORD}" | chpasswd	
 		
+		# perl模块
+		# export PERL5LIB=/usr/local/perl/lib/perl5
+		echo "export PERL5LIB=/usr/local/perl/lib/perl5" >> ~/.bashrc
+		
+		#
 		export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:${PKG_CONFIG_PATH}
 		echo "export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:${PKG_CONFIG_PATH}" >> /etc/profile
 		ldconfig

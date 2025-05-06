@@ -27,6 +27,7 @@ find_latest_archive()
 			suffix=".${BASH_REMATCH[1]}"
 			base_name="${filename%$suffix}"
 		fi
+		
 		# 获取修改时间戳
 		local mtime
 		if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -49,8 +50,8 @@ find_latest_archive()
 					mtime: $mtime
 				}')
 		
-		matched_entries+=("${json_config}")
-	done < <(find "${search_dir}" -maxdepth 1 -regex ".*/${pattern}" -print0 2>/dev/null)
+		matched_entries+=("$json_config")
+	done < <(find "$search_dir" -maxdepth 1 -regex ".*/$pattern" -print0 2>/dev/null)
 	
 	if [[ ${#matched_entries[@]} -eq 0 ]]; then
 		return 1
@@ -65,7 +66,7 @@ find_latest_archive()
 	# 构建 JSON 输出
 	local json_output=$(printf '%s\n' "${sorted[@]}" | jq '.[0]')
 	
-	echo "${json_output}"
+	echo "$json_output"
 	return 0
 }
 
@@ -119,51 +120,51 @@ extract_and_validate()
 	if [[ ! "$archive_name" =~ \.(tar\.gz|tar)$ ]]; then
 		mv -f "$archive_file" "$extract_dir/"
 	else
-	if ! tar -zxvf "$archive_file" -C "$extract_dir" --no-same-owner >/dev/null 2>&1; then
-		echo "[ERROR] 解压失败: $archive_name" >&2
-		rm -f "$pre_list"
-		return 1
-	fi
-	
-	##############################
-	# 获取解压后的新增内容列表
-	local post_list=$(mktemp)
-	find "$extract_dir" -mindepth 1 -maxdepth 1 -print0 2>/dev/null | sort -z > "$post_list"
-	
-	# 计算新增条目
-	local new_entries=()
-	while IFS= read -r -d $'\0' entry; do
-		new_entries+=("$entry")
-	done < <(comm -13 -z "$pre_list" "$post_list")
-	
-	trap 'rm -f "$pre_list" "$post_list"' EXIT
-	
-	# 检查是否有新增内容
-	if [[ ${#new_entries[@]} -eq 0 ]]; then
-		echo "[ERROR] 压缩包释放内容为空: $archive_name" >&2
-		return 1
-	fi
-	
-	if [[ ${#new_entries[@]} -eq 1 ]]; then
-		extracted_entry="${new_entries[0]}"
-	else
-		local subdir_name="${archive_name%.tar.gz}"
-		subdir_name="${subdir_name%.tgz}"
-		subdir_name="${subdir_name%.zip}"
-			
-		local subdir_path="${extract_dir}/${subdir_name}"
-		if [[ ! -d "$subdir_path" ]]; then
-			mkdir -p "$subdir_path"
-			
-			for entry in "${new_entries[@]}"; do
-				mv -f "$entry" "$subdir_path/" || {
-					echo "[ERROR] 移动文件失败: $entry" >&2
-					return 1
-				}
-			done
+		if ! tar -zxvf "$archive_file" -C "$extract_dir" --no-same-owner >/dev/null 2>&1; then
+			echo "[ERROR] 解压失败: $archive_name" >&2
+			rm -f "$pre_list" 
+			return 1
 		fi
 		
-		extracted_entry="$subdir_path"
+		##############################
+		# 获取解压后的新增内容列表
+		local post_list=$(mktemp)
+		find "$extract_dir" -mindepth 1 -maxdepth 1 -print0 2>/dev/null | sort -z > "$post_list"
+		
+		# 计算新增条目
+		local new_entries=()
+		while IFS= read -r -d $'\0' entry; do
+			new_entries+=("$entry")
+		done < <(comm -13 -z "$pre_list" "$post_list")
+		
+		trap 'rm -f "$pre_list" "$post_list"' EXIT
+		
+		# 检查是否有新增内容
+		if [[ ${#new_entries[@]} -eq 0 ]]; then
+			echo "[ERROR] 压缩包释放内容为空: $archive_name" >&2
+			return 1
+		fi
+		
+		if [[ ${#new_entries[@]} -eq 1 ]]; then
+			extracted_entry="${new_entries[0]}"
+		else
+			local subdir_name="${archive_name%.tar.gz}"
+			subdir_name="${subdir_name%.tgz}"
+			subdir_name="${subdir_name%.zip}"
+				
+			local subdir_path="$extract_dir/$subdir_name"
+			if [[ ! -d "$subdir_path" ]]; then
+				mkdir -p "$subdir_path"
+				
+				for entry in "${new_entries[@]}"; do
+					mv -f "$entry" "$subdir_path/" || {
+						echo "[ERROR] 移动文件失败: $entry" >&2
+						return 1
+					}
+				done
+			fi
+			
+			extracted_entry="$subdir_path"
 		fi
 	fi
 	
@@ -179,7 +180,7 @@ install_binary()
 	local symlink_path=${3:-}
 	
 	# 校验源路径类型
-	[[ -f "${src_path}" || -d "${src_path}" ]] || {
+	[[ -f "$src_path" || -d "$src_path" ]] || {
 		echo "[ERROR] 源文件不存在,请检查!" >&2
 		return 1
 	}
@@ -191,19 +192,19 @@ install_binary()
 		}
 		
 		# 复制文件/目录
-		cp -a "${src_path}" "${dest_path}" || {
+		cp -a "$src_path" "$dest_path" || {
 			echo "[ERROR] 文件复制失败,请检查!" >&2
 			return 1
 		}
 		
 		# 设置可执行权限 (仅文件)
-		[[ -f "${dest_path}" ]] && chmod +x "${dest_path}"
+		[[ -f "$dest_path" ]] && chmod +x "$dest_path"
 		
 		# 创建符号链接
-		[[ -n "${symlink_path}" ]] && ln -sf "${dest_path}" "${symlink_path}" 2>/dev/null || :
+		[[ -n "$symlink_path" ]] && ln -sf "$dest_path" "$symlink_path" 2>/dev/null || :
 	else
 		# 创建符号链接
-		[[ -n "${symlink_path}" ]] && ln -sf "${src_path}" "${symlink_path}" 2>/dev/null || :
+		[[ -n "$symlink_path" ]] && ln -sf "$src_path" "$symlink_path" 2>/dev/null || :
 	fi
 	
 	return 0
@@ -215,7 +216,7 @@ download_file()
 	local url=$1
 	local dest_path=$2
 	
-	if [ -z "${url}" ]; then
+	if [ -z "$url" ]; then
 		echo "[ERROR]下载URL参数为空,请检查!" >&2
 		return 1
 	fi
@@ -237,7 +238,7 @@ download_file()
 		--max-time 300 \
 		--retry 3 \
 		--retry-delay 5 \
-		--output "${dest_path}" "${url}" 2>/dev/null || {
+		--output "$dest_path" "$url" 2>/dev/null || {
 		echo "[ERROR] 下载失败,请检查!${url}" >&2
 		return 1
 	}
@@ -263,11 +264,11 @@ get_github_releases()
 	else
 		release_url="https://api.github.com/repos/${repo}/releases/tags/${version}"
 	fi
-	
+
 	# 获取发布信息
 	local response
-	response=$(curl -fsSL -w "%{http_code}" "${release_url}" 2>/dev/null) || {
-		echo "[WARNING] Releases API请求失败:${release_url}" >&2
+	response=$(curl -fsSL -w "%{http_code}" "$release_url" 2>/dev/null) && [ -n "$response" ] || {
+		echo "[WARNING] Releases API请求失败:$release_url" >&2
 		return 1
 	}
 	
@@ -276,7 +277,7 @@ get_github_releases()
 	
 	# 处理非200响应
 	if [[ "$http_code" != 200 ]]; then
-		echo "[ERROR] Releases API异常状态码:${http_code}" >&2
+		echo "[ERROR] Releases API异常状态码:$http_code" >&2
 		return 2
 	fi
 	
@@ -286,7 +287,6 @@ get_github_releases()
 		return 3
 	}
 	
-	echo "$content"
 	return 0
 }
 
@@ -301,17 +301,17 @@ get_github_tag()
 	
 	# 获取tags数据
 	local response
-	if ! response=$(curl -fsSL -w "%{http_code}" "$tags_url" 2>/dev/null); then
-		echo "[WARNING] Tags API请求失败:${tags_url}" >&2
+	response=$(curl -fsSL -w "%{http_code}" "$tags_url" 2>/dev/null) && [ -n "$response" ] || {
+		echo "[WARNING] Tags API请求失败:$tags_url" >&2
 		return 1
-	fi
+	}
 	
 	local http_code=${response: -3}
 	local content=${response%???}
-	
+
 	# 处理非200响应
 	if [[ "$http_code" != 200 ]]; then
-		echo "[ERROR] Tags API异常状态码:${http_code}" >&2
+		echo "[ERROR] Tags API异常状态码:$http_code" >&2
 		return 2
 	fi
 	
@@ -330,7 +330,7 @@ get_github_tag()
 		echo "[ERROR] 未找到匹配的Tag: $version" >&2
 		return 3
 	}
-	
+
 	echo "$tag_name"
 	return 0
 }
@@ -342,14 +342,12 @@ match_github_assets()
 	local pattern=$2
 	local asset_matcher=$3
 	
-	if [[ -n "${pattern}" && -n "${asset_matcher}" ]]; then
+	if [[ -n "$pattern" && -n "$asset_matcher" ]]; then
 		return 0
 	fi
 	
-	# 下载URL
-	local download_url=""
-	
-	local assets=$(jq -r '.assets[] | @base64' <<< "${release_info}")
+	local assets download_url=""
+	assets=$(jq -r '.assets[] | @base64' <<< "$release_info")
 	for asset in $assets; do
 		_decode() { 
 			echo "$asset" | base64 -d | jq -r "$1" 
@@ -360,57 +358,66 @@ match_github_assets()
 		
 		# 双重匹配逻辑
 		if [[ -n "$pattern" && "$name" =~ $pattern ]]; then
-			download_url="${url}";break
+			download_url="$url";break
 		elif [[ -n "$asset_matcher" ]] && eval "$asset_matcher"; then
-			download_url="${url}";break
+			download_url="$url";break
 		fi
 	done
 	
-	if [ -z "${download_url}" ]; then
+	if [ -z "$download_url" ]; then
 		echo "[ERROR] 未找到匹配资源,请检查！" >&2
 		return 1
 	fi
 	
-	echo "${download_url}"
+	echo "$download_url"
 	return 0
 }
 
 # 解析github的API
 resolve_github_version()
 {
-	local repo="$1"
-	local version="$2"
-	local pattern="$3"
-	local asset_matcher="$4"
-	local -n __out_tag="$5"    # nameref 输出参数
-	local -n __out_url="$6"    # nameref 输出参数
+	local json_config="$1"
+	local -n __out_tag="$2"		# nameref 输出参数
+	local -n __out_url="$3"		# nameref 输出参数
+	
+	local repo=$(jq -r '.repo // empty' <<< "$json_config")
+	local version=$(jq -r '.version // "latest"' <<< "$json_config")
+	local pattern=$(jq -r '.pattern // empty' <<< "$json_config")
+	local asset_matcher=$(jq -r '.asset_matcher // empty' <<< "$json_config")
+	local tags_value=$(jq -r '.tags // empty' <<< "$json_config")
 	
 	# 获取发布信息
 	local release_info tag_name download_url
 	
-	# 尝试通过 Releases API 解析
-	if release_info=$(get_github_releases "$repo" "$version"); then
-		tag_name=$(jq -r '.tag_name' <<< "${release_info}")
+	# 尝试 Releases API 解析
+	if ! release_info=$(get_github_releases "$repo" "$version"); then
+		echo "[WARNING] 尝试使用Tags API请求..." >&2
 		
-		if [[ -n "$tag_name" && "$tag_name" != "null" ]]; then
-			# 资源匹配逻辑
-			if download_url=$(match_github_assets "$release_info" "$pattern" "$asset_matcher"); then
-				__out_url="$download_url"
-			else
-				echo "[NOTICE] 资源匹配失败，使用默认地址" >&2
-				__out_url="https://github.com/${repo}/archive/refs/tags/${tag_name}.tar.gz"
-			fi
-			
-			__out_tag="$tag_name"
-			return 0
+		# 尝试 Tags API 解析
+		if ! tag_name=$(get_github_tag "$repo" "$version"); then
+			return 2
 		fi
+	else
+		tag_name=$(jq -r '.tag_name' <<< "$release_info")
 	fi
 	
-	echo "[WARNING] Releases标签无效，尝试回退Tags API..." >&2
-	
-	# 回退到 Tags API
-	if ! tag_name=$(get_github_tag "$repo" "$version"); then
+	if [[ -z "$tag_name" || "$tag_name" == "null" ]]; then
+		echo "[ERROR] 解析Github Tags名称失败:$repo" >&2
 		return 1
+	fi
+	
+	if [ -n "$release_info" ]; then
+		download_url=$(match_github_assets "$release_info" "$pattern" "$asset_matcher")	
+	fi
+	
+	if [ -z "$download_url" ]; then
+		if [[ "$tags_value" = "" || "$tags_value" = "release" ]]; then
+			echo "[ERROR] Releases API 资源匹配失败:$repo" >&2
+			return 3
+		elif [[ "$tags_value" = "sources" ]]; then
+			download_url="https://github.com/$repo/archive/refs/tags/$tag_name.tar.gz"
+			echo "[NOTICE] Releases API 资源信息获取失败,默认地址:$download_url" >&2
+		fi
 	fi
 	
 	__out_tag="$tag_name"
@@ -422,30 +429,40 @@ resolve_github_version()
 # Git 版本解析器
 resolve_git_version()
 {
-	local repo_url="$1"
-	local version="$2"
-	local -n __out_tag="$3"    # nameref 输出参数
-	local -n __out_url="$4"    # nameref 输出参数
+	local json_config="$1"
+	local -n __out_tag="$2"
+	local -n __out_url="$3"
+	
+	local repo_url=$(jq -r '.url // empty' <<< "$json_config")
+	local version=$(jq -r '.version // "master"' <<< "$json_config")
+	
+	if [[ -z "$repo_url" || -z "$version" ]]; then
+		echo "[ERROR] 远程仓库信息不能为空:url=$repo_url,version=$version" >&2
+		return 1
+	fi
+	
+	echo "[INFO] 获取远程仓库信息:$repo_url" >&2
 	
 	# 获取远程引用信息
-	local remote_refs=$(git ls-remote --tags --heads --refs "$repo_url" 2>/dev/null) || {
+	local remote_refs
+	remote_refs=$(git ls-remote --tags --heads --refs "$repo_url" 2>/dev/null) && [ -n "$remote_refs" ] || {
 		echo "[ERROR] 无法访问远程仓库信息:$repo_url" >&2
-		return 1
+		return 2
 	}
 	
-	local tag_name download_url
+	local tag_name
 	if [[ "$version" = "latest" ]]; then
 		tag_name=$(echo "$remote_refs" | awk -F/ '{print $3}' | \
-				grep -E '^v?[0-9]+\.[0-9]+(\.[0-9]+)?$' | \
+				grep -E '^(v|.*-)[0-9]+\.[0-9]+(\.[0-9]+)?$' | \
 				sort -Vr | \
 				head -n1)
-			
+		
 		[[ -z "$tag_name" ]] && {
 			tag_name="master"
 		}
 	else
 		if [[ ! "$version" =~ ^[0-9a-f]{7,40}$ ]]; then
-			if ! grep -q "refs/heads/${version}" <<< "$remote_refs"; then
+			if ! grep -q "refs/heads/$version" <<< "$remote_refs"; then
 				echo "[ERROR] 远程仓库的分支不存在:$version" >&2
 				return 1
 			fi
@@ -454,18 +471,19 @@ resolve_git_version()
 		tag_name="$version"
 	fi
 	
-	#
-	local repo_domain repo_path
-	[[ "$repo_url" =~ ^(https?://[^/]+)/(.*)\.git$ ]] && {
-		repo_domain="${BASH_REMATCH[1]}"
-		repo_path="${BASH_REMATCH[2]}"
-	}
-	
-	# 生成归档URL
-	download_url="${repo_domain}/${repo_path}/archive/${tag_name}.tar.gz"
-	
+: <<'COMMENT_BLOCK'
+		local repo_domain repo_path
+		[[ "$repo_url" =~ ^(https?://[^/]+)/(.*)\.git$ ]] && {
+			repo_domain="${BASH_REMATCH[1]}"
+			repo_path="${BASH_REMATCH[2]}"
+		}
+		
+		# 生成归档URL
+		local download_url="$repo_domain/$repo_path/archive/$tag_name.tar.gz"
+COMMENT_BLOCK
+
 	__out_tag="$tag_name"
-	__out_url="$download_url"
+	__out_url="$repo_url"
 	return 0
 }
 
@@ -476,25 +494,14 @@ get_github_info()
 	local -n __result_tag=$2	# nameref 直接引用外部变量
 	local -n __result_url=$3
 	
-	# 解析配置参数
-	local repo=$(jq -r '.repo' <<< "$json_config")
-	local version=$(jq -r '.version // "latest"' <<< "$json_config")
-	local pattern=$(jq -r '.pattern // ""' <<< "$json_config")
-	local asset_matcher=$(jq -r '.asset_matcher // ""' <<< "$json_config")
-
-	if [[ -n "$pattern" || -n "$asset_matcher" ]]; then
-		if ! resolve_github_api "$repo" "$version" "$pattern" "$asset_matcher" __result_tag __result_url; then
-			echo "[ERROR] 无法解析github的API: repo=${repo}, version=${version}" >&2
+	if jq -e 'has("pattern") or has("asset_matcher")' <<< "$json_config" >/dev/null 2>&1; then
+		if ! resolve_github_version "$json_config" __result_tag __result_url; then
 			return 1
 		fi
 	else
-		local github_repo_url="https://github.com/${repo}.git"
-		if ! resolve_git_version "$github_repo_url" "$version" __result_tag __result_url; then
-			echo "[ERROR] 无法解析git的版本: repo=${repo}, version=${version}" >&2
+		if ! resolve_git_version "$json_config" __result_tag __result_url; then
 			return 1
 		fi
-		
-		__result_url="$github_repo_url"
 	fi
 	
 	return 0
@@ -523,31 +530,32 @@ download_package()
 		--arg VERSION "$VERSION" \
 		'$config | 
 		walk(if type == "string" then 
-			gsub("\\${SYSTEM_ARCH}"; $SYSTEM_ARCH) |
-			gsub("\\${SYSTEM_TYPE}"; $SYSTEM_TYPE) |
-			gsub("\\${VERSION}"; $VERSION)
+			gsub("\\$SYSTEM_ARCH"; $SYSTEM_ARCH) |
+			gsub("\\$SYSTEM_TYPE"; $SYSTEM_TYPE) |
+			gsub("\\$VERSION"; $VERSION)
 		else . end)')
 
 	# 解析配置	
 	local type=$(echo "$processed_config" | jq -r '.type // empty')
 	local name=$(echo "$processed_config" | jq -r '.name // empty')
 	
-	case ${type} in
+	case $type in
 		"static")
-			local url=$(jq -r '.url' <<< "${processed_config}")
-			local filename=$(jq -r '.filename // empty' <<< "${processed_config}")
-			local dest_file="${downloads_path}/${filename:-$(basename "${url}")}"
+			local url=$(jq -r '.url // empty' <<< "${processed_config}")
 			
-			download_file "${url}" "${dest_file}" || return 2
+			local filename="${name:-$(basename "$url")}"
+			local dest_file="$downloads_path/$filename"
+			
+			download_file "$url" "$dest_file" || return 2
 			;;
 		"github")
-			local github_tag github_url
-			if ! get_github_info "${processed_config}" github_tag github_url; then
-				return 1
+			local repo_branch repo_url
+			if ! get_github_info "$processed_config" repo_branch repo_url; then
+				return 3
 			fi
 			
 			# 原始文件名
-			local filename=$(basename "${github_url}")
+			local filename=$(basename "$repo_url")
 			
 			# 拆分文件名和扩展名
 			local base_name extension
@@ -561,35 +569,35 @@ download_package()
 			fi
 			
 			# 定义新文件名
-			local new_filename
+			local new_filename=""
 			
-			if [[ -n "${name}" && "${name}" != "null" ]]; then
-				new_filename="${name}-${github_tag}.${extension}"
+			if [ -n "$name" ]; then
+				new_filename="$name-$repo_branch.$extension"
 			else
-				new_filename="${filename}"
+				new_filename="$filename"
 				
 				# 检查原始文件名是否已包含版本号
-				if [[ "${new_filename}" != *"${github_tag}"* ]]; then
-					if [[ "${new_filename}" =~ \.tar\.gz$ ]]; then
+				if [[ "$new_filename" != *"$repo_branch"* ]]; then
+					if [[ "$new_filename" =~ \.tar\.gz$ ]]; then
 						local new_base="${base_name%.tar}"
-						new_filename="${new_base}-${github_tag}.tar.gz"
+						new_filename="$new_base-$repo_branch.tar.gz"
 					else
-						new_filename="${base_name}-${github_tag}.${extension}"
+						new_filename="$base_name-$repo_branch.$extension"
 					fi
 				fi
 			fi
-
-			local dest_file="${downloads_path}/${new_filename}"
-			download_file "${github_url}" "${dest_file}" || return 2
+			
+			local dest_file="$downloads_path/$new_filename"
+			download_file "$repo_url" "$dest_file" || return 2
 			;;
 		*)
-			echo "[ERROR] 不支持的类型下载: ${type}" >&2
-			return 3
+			echo "[ERROR] 不支持的类型下载: $type" >&2
+			return 1
 			;;
 	esac
 	
 	# 设置输出变量
-	echo "${dest_file}"
+	echo "$dest_file"
 	return 0
 }
 
@@ -604,59 +612,60 @@ clone_repo()
 		--arg VERSION "$VERSION" \
 		'$config | 
 		walk(if type == "string" then 
-			gsub("\\${VERSION}"; $VERSION)
+			gsub("\\$VERSION"; $VERSION)
 		else . end)')
 		
 	# 解析配置	
 	local type=$(jq -r '.type // empty' <<< "$processed_config")
 	local name=$(jq -r '.name // empty' <<< "$processed_config")
-	local repo=$(jq -r '.repo // empty' <<< "$processed_config")
-	local version=$(jq -r '.version // "master"' <<< "$processed_config")
-	
-	if [[ -z "$type" || -z "$name" || -z "$repo" ]]; then
+
+	if [[ -z "$type" || -z "$name" ]]; then
 		echo "[ERROR] 缺少必要的克隆参数: type或repo" >&2
 		return 1
 	fi
 	
+	local repo_branch repo_url
 	echo "[INFO] 获取${name}版本信息..." >&2
 	
-	local repo_branch repo_url
 	case ${type} in
 		"github")
 			if ! get_github_info "$processed_config" repo_branch repo_url; then
-				return 1
+				return 2
 			fi
 			;;
 		*)
-			echo "[ERROR] 不支持的类型下载: ${type}" >&2
-			return 3
+			echo "[ERROR] 不支持的类型下载: $type" >&2
+			return 1
 	esac
 	
-	# 目标目录
-	if [[ "$repo_branch" =~ ^[0-9a-f]{7,40}$ ]]; then
-		local target_dir="${downloads_path}/${name}"
-	else
-		local target_dir="${downloads_path}/${name}-${repo_branch}"
+	# 定义新文件名
+	local new_filename="$name"
+	if [[ -z "$name" || ! "$repo_branch" =~ ^[0-9a-f]{7,40}$ ]]; then
+		if [[ "$repo_branch" == *"$name"* ]]; then
+			new_filename="$repo_branch"
+		else
+			new_filename="$name-$repo_branch"
+		fi
 	fi
 	
+	local target_dir="$downloads_path/$new_filename"
 	if [[ -d "$target_dir" ]]; then
-		echo "[WARNING] 克隆目录已存在:${target_dir}" >&2
+		echo "[WARNING] 克隆目录已存在:$target_dir" >&2
 		return 0
 	fi
 	
-	mkdir -p "$target_dir"
-	echo "[INFO] 正在克隆仓库: $repo_url" >&2
-	
 	local index max_retries=3
 	for index in $(seq 1 $max_retries); do
+		echo "[INFO] 正在克隆仓库: $repo_url" >&2
+		
 		# --depth 1 --branch "$repo_branch"
-		if git clone --no-checkout "$repo_url" "$target_dir" 2>/dev/null; then	
+		if git clone --no-checkout "$repo_url" "$target_dir" 2>/dev/null; then
 			break
 		elif [ $index -eq $max_retries ]; then
-			echo "[ERROR] 第${index}次克隆失败，放弃重试" >&2
-			return 4
+			echo "[ERROR] 第$index次克隆失败,放弃重试" >&2
+			return 3
 		else
-			echo "[WARNING] 第${index}次克隆失败，10秒后重试..." >&2
+			echo "[WARNING] 第$index次克隆失败,10秒后重试..." >&2
 			sleep 10
 		fi
 	done
@@ -664,24 +673,26 @@ clone_repo()
 	# 验证目录是否存在
 	if [[ ! -d "$target_dir" ]]; then
 		echo "[ERROR] 克隆获取目录失败,请检查!" >&2
-		return 5
+		return 1
 	else
 		if [[ "$repo_branch" != "master" ]]; then
-			cd "$target_dir"
-			echo "[INFO] 正在检出仓库版本：$repo_branch" >&2
-			
-			git checkout "$repo_branch" 2>/dev/null || {
-				echo "[ERROR] 版本检出失败:$repo_branch"
-				return 6
+			cd "$target_dir" && echo "[INFO] 正在检出仓库版本：$repo_branch" >&2
+
+			git checkout "$repo_branch" &>/dev/null || {
+				echo "[ERROR] 仓库版本检出失败:$repo_branch" >&2
+				return 4
 			}
+			
 		fi
 	fi
-	
+
+: <<'COMMENT_BLOCK'
 	local absolute_path
 	absolute_path=$(realpath "$target_dir")
+COMMENT_BLOCK
 	
 	# 设置输出变量
-	echo "${target_dir}"
+	echo "$target_dir"
 	return 0
 }
 
@@ -696,12 +707,12 @@ add_service_user()
 	local addgroup_cmd adduser_cmd
 	
 	if [ -f /etc/alpine-release ]; then
-        addgroup_cmd="addgroup -g $gid $group"
-        adduser_cmd="adduser -D -H -G $group -u $uid $user"
-    else
-        addgroup_cmd="groupadd --gid $gid $group"
-        adduser_cmd="useradd --create-home --shell /bin/bash --gid $group --uid $uid $user"
-    fi
+		addgroup_cmd="addgroup -g $gid $group"
+		adduser_cmd="adduser -D -H -G $group -u $uid $user"
+	else
+		addgroup_cmd="groupadd --gid $gid $group"
+		adduser_cmd="useradd --create-home --shell /bin/bash --gid $group --uid $uid $user"
+	fi
 	
 	# 创建组
 	if ! getent group $group >/dev/null; then
@@ -714,13 +725,13 @@ add_service_user()
 	fi
 	
 	# 创建用户
-	if ! id -u ${user} >/dev/null 2>&1; then
+	if ! id -u $user >/dev/null 2>&1; then
 		$adduser_cmd || {
-			echo "[ERROR] 无法创建用户${user}, 请检查!"
+			echo "[ERROR] 无法创建用户$user, 请检查!"
 			return 1
 		}
 		
-		echo "[DEBUG] 成功创建用户${user}"
+		echo "[DEBUG] 成功创建用户$user"
 	fi
 	
 	return 0
@@ -735,110 +746,319 @@ set_ssh_service()
 	local sshd_rsakey="$4"
 	
 	# 验证配置文件存在
-	if [ ! -f "${sshd_file}" ]; then
+	if [ ! -f "$sshd_file" ]; then
 		echo "[ERROR] SSH服务没有安装,请检查!"
 		return 1
 	fi
 	
 	# 备份配置
-	cp -f "${sshd_file}" "${sshd_file}.bak"
+	cp -f "$sshd_file" "$sshd_file.bak"
 	
 	# 设置ssh端口号
-	if [ -n "${sshd_port}" ]; then
-		ssh_port=$(grep -E '^(#?)Port [[:digit:]]*$' "${sshd_file}")
-		if [ -n "${ssh_port}" ]; then
-			sed -E -i "s/^(#?)Port [[:digit:]]*$/Port ${sshd_port}/" "${sshd_file}"
+	if [ -n "$sshd_port" ]; then
+		local ssh_port=$(grep -E '^(#?)Port [[:digit:]]*$' "$sshd_file")
+		if [ -n "$ssh_port" ]; then
+			sed -E -i "s/^(#?)Port [[:digit:]]*$/Port $sshd_port/" "$sshd_file"
 		else
-			echo -e "Port ${sshd_port}" >> "${sshd_file}"
+			echo -e "Port $sshd_port" >> "$sshd_file"
 		fi
 	else
-		sed -i -E '/^Port[[:space:]]+[0-9]+/s/^/#/' "${sshd_file}"
+		sed -i -E '/^Port[[:space:]]+[0-9]+/s/^/#/' "$sshd_file"
 	fi
 	
 	# 设置监听IP地址
-	if [ -n "${sshd_listen_address}" ]; then
+	if [ -n "$sshd_listen_address" ]; then
 		# grep -Po '^.*ListenAddress\s+([^\s]+)' "${sshd_file}" | grep -Po '([0-9]{1,3}\.){3}[0-9]{1,3}'
 		# grep -Eo '^.*ListenAddress[[:space:]]+([^[:space:]]+)' ${sshd_file} | grep -Eo '([0-9]{1,3}\.){3}[0-9]{1,3}'
-		ipv4_address=$(awk '/ListenAddress[[:space:]]+/ {print $2}' ${sshd_file} | grep -Eo '([0-9]{1,3}\.){3}[0-9]{1,3}')
-		if [ -n "${ipv4_address}" ]; then
-			sed -i -E 's/^(\s*)#?(ListenAddress)\s+([0-9]{1,3}\.){3}[0-9]{1,3}/\1\2 '"${sshd_listen_address}"'/' "${sshd_file}"
+		local ipv4_address=$(awk '/ListenAddress[[:space:]]+/ {print $2}' $sshd_file | grep -Eo '([0-9]{1,3}\.){3}[0-9]{1,3}')
+		if [ -n "$ipv4_address" ]; then
+			sed -i -E 's/^(\s*)#?(ListenAddress)\s+([0-9]{1,3}\.){3}[0-9]{1,3}/\1\2 '"$sshd_listen_address"'/' "$sshd_file"
 		else
-			echo "ListenAddress ${sshd_listen_address}" >> "${sshd_file}"
+			echo "ListenAddress $sshd_listen_address" >> "$sshd_file"
 		fi
 	else
-		sed -i -E '/^ListenAddress\s+[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/s/^/#/' "${sshd_file}"
+		sed -i -E '/^ListenAddress\s+[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/s/^/#/' "$sshd_file"
 	fi
 	
 	# 设置ssh密钥KEY
-	if [ ! -f "${sshd_rsakey}" ]; then
-		ssh-keygen -t rsa -N "" -f "${sshd_rsakey}"
+	if [ ! -f "$sshd_rsakey" ]; then
+		ssh-keygen -t rsa -N "" -f "$sshd_rsakey"
 	fi
 	
 	# 注释密钥ssh_host_ecdsa_key
-	if [ -z "`sed -n '/^#.*HostKey .*ecdsa_key/p' ${sshd_file}`" ]; then
-		sed -i '/^HostKey .*ecdsa_key$/s/^/#/' "${sshd_file}"
+	if [ -z "`sed -n '/^#.*HostKey .*ecdsa_key/p' $sshd_file`" ]; then
+		sed -i '/^HostKey .*ecdsa_key$/s/^/#/' "$sshd_file"
 	fi
 	
 	# 注释密钥ssh_host_ed25519_key
-	if [ -z "`sed -n '/^#.*HostKey .*ed25519_key/p' ${sshd_file}`" ]; then
-		sed -i '/^HostKey .*ed25519_key$/s/^/#/' "${sshd_file}"
+	if [ -z "`sed -n '/^#.*HostKey .*ed25519_key/p' $sshd_file`" ]; then
+		sed -i '/^HostKey .*ed25519_key$/s/^/#/' "$sshd_file"
 	fi
 	
 	# 设置PermitRootLogin管理员权限登录
-	if grep -q -E "^#?PermitRootLogin" "${sshd_file}"; then
-		sed -i -E 's/^(#?PermitRootLogin).*/PermitRootLogin yes/' "${sshd_file}"
+	if grep -q -E "^#?PermitRootLogin" "$sshd_file"; then
+		sed -i -E 's/^(#?PermitRootLogin).*/PermitRootLogin yes/' "$sshd_file"
 	else
-		echo "PermitRootLogin yes" >> "${sshd_file}"
+		echo "PermitRootLogin yes" >> "$sshd_file"
 	fi
 	
 	# 设置PasswordAuthentication密码身份验证
-	if grep -q -E "^#?PasswordAuthentication" "${sshd_file}"; then
-		sed -i -E 's/^(#?PasswordAuthentication).*/PasswordAuthentication yes/' "${sshd_file}"
+	if grep -q -E "^#?PasswordAuthentication" "$sshd_file"; then
+		sed -i -E 's/^(#?PasswordAuthentication).*/PasswordAuthentication yes/' "$sshd_file"
 	else
-		echo "PasswordAuthentication yes" >> "${sshd_file}"
+		echo "PasswordAuthentication yes" >> "$sshd_file"
 	fi
 	
 	# 设置SSHD进程pid文件路径
-	if [ -z "$(awk '/#PidFile /{getline a; print a}' "${sshd_file}" | sed -n '/^PidFile \/var\/run\/sshd.pid/p')" ]; then
-		sed -i '/^#PidFile / a\PidFile \/var\/run\/sshd.pid' "${sshd_file}"
+	if [ -z "$(awk '/#PidFile /{getline a; print a}' "$sshd_file" | sed -n '/^PidFile \/var\/run\/sshd.pid/p')" ]; then
+		sed -i '/^#PidFile / a\PidFile \/var\/run\/sshd.pid' "$sshd_file"
 	fi
 	
-	ssh_dir="/root/.ssh"
-	if [ ! -d "${ssh_dir}" ]; then
-		mkdir -p "${ssh_dir}"
+	local ssh_dir="/root/.ssh"
+	if [ ! -d "$ssh_dir" ]; then
+		mkdir -p "$ssh_dir"
 	fi
 	
-	chmod 700 "${ssh_dir}"
+	chmod 700 "$ssh_dir"
 	return 0
 }
 
 # 端口检测函数
 wait_for_ports()
 {
-	local ports=("$@")
-	local timeout=${PORT_CHECK_TIMEOUT:-60} #shift
+	local default_host="127.0.0.1"
+	local default_timeout="60"
+	local default_interval="0.5"
+	local default_max_interval="5"
 	
-	local interval=1 	# 检测间隔1秒
+	local host="$default_host"
+	local timeout="$default_timeout"
+	local interval="$default_interval"
+	local max_interval="$default_max_interval"
+	
+	# 判断参数数量
+	if [[ $# -eq 0 ]]; then
+		echo "[ERROR] 至少需要指定一个端口"
+		return 1
+	fi
+	
+	local options_list="" ports_list="" 
+	if [[ $# -eq 1 ]]; then
+		ports_list="$1"
+	else
+		options_list="$1"
+		shift 1
+		ports_list="$@"
+	fi
+	
+	if [[ -n "$options_list" && "$options_list" == *":"* ]]; then
+		IFS=":" read -r -a arg_parts <<< "$options_list"
+		local num_parts="${#arg_parts[@]}"
+		if [[ "$num_parts" -gt 4 ]]; then
+			echo "[ERROR] 选项参数的格式错误,请检查!"
+			return 1
+		fi
+		
+		local host="${arg_parts[0]:-$default_host}"
+		local timeout="${arg_parts[1]:-$default_timeout}"
+		local interval="${arg_parts[2]:-$default_interval}"
+		local max_interval="${arg_parts[3]:-$default_max_interval}"
+	fi
+	
+	# 提取参数
+	local ports=()
+	if [[ -z "$ports_list" ]]; then
+		echo "[ERROR] 端口列表不能为空,请检查!"
+		return 1
+	else
+		IFS=':,\ ' read -ra ports <<< "$ports_list"
+		if [[ ${#ports[@]} -eq 0 ]]; then
+			echo "[ERROR] 未检测到有效的端口,请检查!" >&2
+			return 1
+		fi
+	fi
+
 	local counter=0
 	local all_ready=false
-	
-	while ((counter < timeout)); do
+	local total_elapsed=0
+
+	while true; do
+		counter=$((counter + 1))
+
 		all_ready=true
+		local closed_ports=()	# 记录当前未就绪的端口
 		
-		# 检查所有端口
+		# 检查执行端口
 		for port in "${ports[@]}"; do
-			if ! nc -z 127.0.0.1 "$port" &> /dev/null; then 
+			if ! nc -z -w 1 "$host" "$port" &> /dev/null; then 
 				all_ready=false
+				closed_ports+=("$port")
 				break
 			fi
 		done
 		
-		${all_ready} && break
-		echo "尝试 $((counter + 1))/${timeout}: 端口未就绪，等待 ${interval} 秒..."
+		if $all_ready; then
+			printf "[SUCCESS] 所有端口在 %.1f 秒内就绪（尝试 %d 次）\n" "$total_elapsed" "$counter"
+			break
+		fi
 		
-		sleep ${interval}
-		((counter++))
+		# 超时判断
+		if (( $(echo "$total_elapsed >= $timeout" | bc -l) )); then
+			echo "[ERROR] 等待端口超过 ($timeout) 秒,未就绪端口: ${closed_ports[*]}" >&2
+			break
+		fi
+		
+		# 动态计算剩余时间和调整间隔
+		local remaining=$(echo "$timeout - $total_elapsed" | bc -l)
+		local next_interval=$(echo "if ($interval > $remaining) $remaining else $interval" | bc -l)
+		
+		next_interval=$(echo "if ($next_interval > $max_interval) $max_interval else $next_interval" | bc -l)
+		printf "等待中...[已等待 %.1f 秒, 剩余 %.1f 秒] 未就绪端口: %s，下次检测间隔 %.1f 秒\n" "$total_elapsed" "$remaining" "${closed_ports[*]}" "$next_interval"
+		
+		sleep $next_interval
+		total_elapsed=$(echo "$total_elapsed + $next_interval" | bc -l)
+		
+		# 指数退避调整间隔
+		interval=$(echo "$interval * 2" | bc -l)
 	done
 	
-	${all_ready} && return 0 || return 1
+	$all_ready && return 0 || return 1
+}
+
+# perl修改XML节点
+set_xml_perl()
+{
+	local file="$1" mode="$2" xpath="$3" new_xml="$4" position="$5"
+	
+	perl - "$file" "$mode" "$xpath" "$new_xml" "$position" <<'EOF_PERL'
+use strict;
+use warnings;
+use XML::LibXML;
+use XML::LibXML::PrettyPrint;
+
+# 转义 XPath 中的单引号
+sub escape_xpath_value {
+	my ($value) = @_;
+	$value =~ s/'/''/g;  	# 单引号转义为两个单引号
+	return $value;
+}
+
+my ($file, $mode, $xpath, $new_xml, $position) = @ARGV;
+
+# 解析 XML 并保留格式
+my $parser = XML::LibXML->new({
+	keep_blanks => 1,
+	expand_entities => 0,
+	load_ext_dtd => 0
+});
+
+my $doc = eval { $parser->parse_file($file) };	# die "XML 解析失败: $@" if $@;
+if ($@) {
+	warn "[ERROR] XML 解析失败: $@";
+	exit 1;
+}
+
+if ($mode eq 'update') {
+	my ($target) = $doc->findnodes($xpath);
+	if (!$target) {
+		warn "[WARNING] 目标节点未找到: $xpath";
+		exit 0;
+	}
+	
+	# 解析新属性的键值对
+	my %new_attrs = $new_xml =~ /(\w+)="([^"]*)"/g;
+	foreach my $attr (keys %new_attrs) {
+		$target->setAttribute($attr, $new_attrs{$attr});
+	}
+} else {
+	# 解析新节点
+	my $new_node;
+	eval {
+		$new_node = XML::LibXML->load_xml(string => $new_xml)->documentElement;
+	};
+	if ($@) {
+		warn "[ERROR] 新节点的 XML 语法错误: $@";
+		exit 1;
+	}
+	
+	# 构造检查 XPath
+	my $tag_name = $new_node->nodeName;
+	my %attrs = map { $_->name => $_->value } $new_node->attributes;
+	
+	my @conditions;
+	foreach my $attr (keys %attrs) {
+		my $escaped_value = escape_xpath_value($attrs{$attr});
+		push @conditions, sprintf("\@%s='%s'", $attr, $escaped_value);
+	}
+	
+	my $xpath_check = @conditions ? 
+		"//*[local-name()='$tag_name' and " . join(" and ", @conditions) . "]" :
+		"//*[local-name()='$tag_name']";
+		
+	# 检查节点是否已存在
+	my ($existing_node) = $doc->findnodes($xpath_check);
+	if ($existing_node) {
+		print "[INFO] 新增节点已存在: $new_xml\n";
+		exit 0;
+	}
+	
+	# 定位目标节点
+	my ($target) = $mode eq 'insert' 
+		? $doc->findnodes($xpath) 
+		: $doc->findnodes("${xpath}[not(ancestor::comment())]");
+	if (!$target) {
+		warn "[WARNING] 目标节点未找到: $xpath";
+		exit 0;
+	}
+	
+	# 操作节点
+	my $parent = $target->parentNode;
+	if ($mode eq 'insert') {
+		$position eq 'before' ? 
+			$parent->insertBefore($new_node, $target) :
+			$parent->insertAfter($new_node, $target);
+	} elsif ($mode eq 'replace') {
+		my $comment = $doc->createComment(" " . $target->toString . " ");
+		$parent->replaceChild($comment, $target);
+		$parent->insertAfter($new_node, $comment);
+	}
+}
+
+# 格式化 XML（添加缩进和换行）
+my $pp = XML::LibXML::PrettyPrint->new(indent_string => "  ");
+$pp->pretty_print($doc);
+
+# 写入文件
+$doc->toFile($file);
+exit 0;
+EOF_PERL
+}
+
+modify_xml_config() 
+{
+	local OPTIND file mode old_pattern new_config position
+	mode="replace"
+	position="before"
+	
+	# 参数解析
+	while getopts "f:m:o:n:c:p:d" opt; do
+		case "$opt" in
+			f) file="$OPTARG" ;;
+			m) mode="$OPTARG" ;;
+			o) old_pattern="$OPTARG" ;;
+			n) new_config="$OPTARG" ;;
+			p) position="$OPTARG" ;;
+			*) echo "Usage: ${FUNCNAME[0]} -f file [-m replace|insert] -o pattern -n new_config [-p before|after]"; return 1 ;;
+		esac
+	done
+	
+	[[ -z "$file" || ! -f "$file" ]] && { echo "[ERROR] 文件不存在: $file" >&2; return 1; }
+	[[ -z "$new_config" ]] && { echo "[ERROR] 输入新的配置！" >&2; return 1; }
+	
+	set_xml_perl "$file" "$mode" "$old_pattern" "$new_config" "$position" || {
+		echo "[ERROR] 操作XML文件失败: $file (错误码: $?)" >&2
+		return 1
+	}
+	
+	return 0
 }

@@ -10,9 +10,9 @@ readonly RUN_FIRST_LOCK="/var/run/first_run_flag.pid"
 
 # 定义系统配置数组
 declare -A system_config=(
-	["downloads_dir"]="${WORK_DIR}/downloads"		# 下载目录
-	["install_dir"]="${WORK_DIR}/install"			# 安装目录
-	["conf_dir"]="${WORK_DIR}/config"				# 预配置目录
+	["downloads_dir"]="$WORK_DIR/downloads"		# 下载目录
+	["install_dir"]="$WORK_DIR/install"			# 安装目录
+	["conf_dir"]="$WORK_DIR/config"				# 预配置目录
 	["config_dir"]="/config"						# 配置目录
 	["data_dir"]="/data"							# 数据目录
 )
@@ -40,12 +40,12 @@ init_modules()
 	fi
 	
 	# 初始服务环境
-	if ! init_service_env "${param}"; then
+	if ! init_service_env "$param"; then
 		return 1
 	fi
 	
 	# 初始freeswitch环境
-	if ! init_freeswitch_env "${param}"; then
+	if ! init_freeswitch_env "$param"; then
 		return 1
 	fi
 	
@@ -55,13 +55,13 @@ init_modules()
 # 运行模块
 run_modules()
 {
-	echo "run_modules"
+	run_freeswitch_service
 }
 
 # 关闭模块
 close_modules()
 {
-	echo "close_modules"
+	close_freeswitch_service
 }
 
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
