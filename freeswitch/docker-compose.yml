@@ -7,7 +7,7 @@ services:
     image: freeswitch-image
     environment:
       - TZ=${TZ}
-      - EXTERNAL_IP="192.168.2.21"
+      - EXTERNAL_IP=${EXTERNAL_ADDR}
     volumes:
       - ${CONFIG_PATH}:/config
       - ${DATA_PATH}:/data
@@ -24,7 +24,7 @@ services:
     restart: unless-stopped
     networks:
       macvlan_network:
-        ipv4_address: 192.168.2.21
+        ipv4_address: ${MACVLAN_ADDR}
     
 networks:
   macvlan_network:
