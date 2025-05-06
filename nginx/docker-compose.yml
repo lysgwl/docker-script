@@ -1,0 +1,26 @@
+
+name: nginx
+
+services:
+  nginx-server:
+    container_name: nginx
+    image: nginx-image
+    environment:
+      - TZ=${TZ}
+    volumes:
+      - ${NGINX_PATH}/config:/config
+      - ${NGINX_PATH}/data:/data
+    env_file:
+      - .env
+    ports:
+      - '8022:22'
+      - '8080:80'
+    hostname: nginx
+    restart: unless-stopped
+    networks:
+      macvlan_network:
+        ipv4_address: 192.168.2.20
+
+networks:
+  macvlan_network:
+    external: true
