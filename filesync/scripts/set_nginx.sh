@@ -341,6 +341,52 @@ check_nginx_conf()
 	return $status_code
 }
 
+# 修改nginx端口
+set_nginx_port()
+{
+	local target_file="$1"
+	
+	# 安全转义端口
+	local safe_port=$(sed 's/[\/&]/\\&/g' <<< "${nginx_config[port]}")
+	
+	# 执行替换
+	sed -i -E \
+		-e "/^[[:space:]]*listen[[:space:]]*/ { 
+			s/^([[:space:]]*listen[[:space:]]+)((([0-9]{1,3}\\.){3}[0-9]{1,3}:)?[0-9]+)?([^;]*)([;]?)/\1\4$safe_port\5;/ 
+			t 
+			s//\1$safe_port;/ 
+		}" "$target_file"
+	
+	if [ $? -eq 0 ]; then
+		echo "[INFO] ${nginx_config[name]}端口修改成功!"
+	else
+		echo "[ERROR] ${nginx_config[name]}端口修改失败!"
+	fi
+}
+
+# 处理 Nginx 配置文件的状态
+handle_nginx_config() 
+{
+	local target_file=$1
+	check_nginx_conf "$target_file"
+	
+	local ret=$?
+	echo "[WARNING] 检查配置文件$target_file状态:$ret"
+	
+	case "$ret" in
+		0|2)# 正常配置
+			set_nginx_port "$target_file"
+			return 0
+			;; 
+		1)	# 仅有http块
+			return 1 
+			;;	
+		*)	# 无效配置
+			return 2 
+			;;	
+	esac
+}
+
 # 设置nginx配置
 set_nginx_conf()
 {
@@ -348,68 +394,41 @@ set_nginx_conf()
 		return
 	fi
 	
-	# 修改端口
-	set_port() {
-		local target_file="$1"
+	# 设置预设nginx配置文件
+	if [[ -d "${system_config[conf_dir]}/${nginx_config[name]}" && \
+		-f "${system_config[conf_dir]}/${nginx_config[name]}/${nginx_config[name]}.conf" ]]; then
 		
-		# 安全转义端口
-		local safe_port=$(sed 's/[\/&]/\\&/g' <<< "${nginx_config[port]}")
-		
-		# 执行替换
-		sed -i -E \
-		-e "/^[[:space:]]*listen[[:space:]]*/ { 
-			s/^([[:space:]]*listen[[:space:]]+)((([0-9]{1,3}\\.){3}[0-9]{1,3}:)?[0-9]+)?([^;]*)([;]?)/\1\4$safe_port\5;/ 
-			t 
-			s//\1$safe_port;/ 
-		}" "$target_file"
-		
-		if [ $? -eq 0 ]; then
-			echo "[INFO] ${nginx_config[name]}端口修改成功!"
-		else
-			echo "[ERROR] ${nginx_config[name]}端口修改失败!"
+		# 备份原有的nginx配置文件
+		if [ -f "${nginx_config[conf_file]}" ]; then
+			mv -f "${nginx_config[conf_file]}" "${nginx_config[conf_file]}.bak"
 		fi
-	}
-	
-	check_process() {
-		local target_file=$1
-		[ ! -f "$target_file" ] && return 1
 		
-		check_nginx_conf "$target_file"
-		local ret=$?
+		# 创建配置文件的目标目录
+		mkdir -p "${nginx_config[conf_file]%/*}"
 		
-		echo "[WARNING] 检查配置文件$target_file状态:$ret"	
-		case "$ret" in
-			0|2)  set_port "$target_file"; return 0;; # 正常配置
-			1)  return 1 ;;	# 仅有http块
-			*)  return 2 ;;	# 无效配置
-		esac
-	}
+		# 拷贝预设的nginx配置文件
+		cp -rf "${system_config[conf_dir]}/${nginx_config[name]}/"* "${nginx_config[conf_file]%/*}"
+	fi
 	
-	# 检查处理文件
-	check_process "${nginx_config[conf_file]}" || \
-	check_process "${nginx_config[conf_file]%/*}/extra/www.conf"
+	echo "[INFO] ${nginx_config[name]}配置文件:${nginx_config[conf_file]}"
+	
+	# 检查处理配置文件
+	handle_nginx_config "${nginx_config[conf_file]}" || \
+	handle_nginx_config "${nginx_config[conf_file]%/*}/extra/www.conf"
 }
 
 # 设置nginx环境
 set_nginx_env()
 {
+	local arg=$1
 	echo "[INFO] 设置${nginx_config[name]}服务..."
 	
 	if [ "$arg" = "config" ]; then
-		if [[ -d "${system_config[conf_dir]}/${nginx_config[name]}" && \
-			  -f "${system_config[conf_dir]}/${nginx_config[name]}/${nginx_config[name]}.conf" ]]; then
-
-			[ -f "${nginx_config[conf_file]}" ] && mv -f "${nginx_config[conf_file]}" "${nginx_config[conf_file]}.bak"
-
-			mkdir -p "${nginx_config[conf_file]%/*}" && \
-			cp -rf "${system_config[conf_dir]}/${nginx_config[name]}/"* "${nginx_config[conf_file]%/*}"
-		fi
-		
-		mkdir -p "${nginx_config[sys_path]}/temp"
-		echo "[INFO] ${nginx_config[name]}配置文件:${nginx_config[conf_file]}"
-		
-		# 设置nginx配置
+		# 设置nginx配置文件
 		set_nginx_conf
+		
+		# 创建nginx临时目录
+		mkdir -p "${nginx_config[sys_path]}/temp"
 	fi
 
 	echo "[INFO] ${nginx_config[name]}设置完成!"
@@ -458,7 +477,7 @@ run_nginx_service()
 	echo "[INFO] 启动${nginx_config[name]}服务成功!"
 }
 
-# 停止snginx服务
+# 停止nginx服务
 close_nginx_service()
 {
 	echo "[INFO] 关闭${nginx_config[name]}服务..."

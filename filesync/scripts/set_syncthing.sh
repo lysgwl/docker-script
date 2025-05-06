@@ -361,7 +361,7 @@ run_syncthing_service()
 	
 	# 启动端口检测
 	if ! wait_for_ports "${syncthing_config[http_port]}" "${syncthing_config[trans_port]}"; then
-		echo "[ERROR] 端口未就绪，查看服务日志："
+		echo "[ERROR] ${syncthing_config[name]}端口未就绪，查看服务日志："
 		return 1
 	fi
 	
