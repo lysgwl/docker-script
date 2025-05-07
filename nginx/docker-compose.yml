@@ -13,13 +13,12 @@ services:
     env_file:
       - .env
     ports:
-      - '8080:80'
+      - '80:80'
     hostname: nginx
     restart: unless-stopped
     networks:
-      macvlan_network:
-        ipv4_address: 192.168.2.20
-
+      local_network: {}
+      
 networks:
-  macvlan_network:
+  local_network:
     external: true
