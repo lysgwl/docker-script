@@ -7,6 +7,8 @@ services:
     image: nginx-image
     environment:
       - TZ=${TZ}
+      - PUID=1001
+      - PGID=1001
     volumes:
       - ${NGINX_PATH}/config:/config
       - ${NGINX_PATH}/data:/data

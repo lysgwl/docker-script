@@ -22,6 +22,8 @@ declare -A system_config=(
 
 readonly -A system_config
 
+umask ${UMASK:-022}
+
 # 加载 feature 脚本
 source $WORK_DIR/scripts/feature.sh
 
@@ -34,13 +36,16 @@ source $WORK_DIR/scripts/set_nginx.sh
 # 初始化模块
 init_modules()
 {
-	local param=$1
-	echo "[INFO] 当前用户:$(id -un), UID:$(id -u)"
+	echo "[WARNING] init 当前用户:$(id -un), UID:$(id -u), UMASK:$(umask)"
 	
 	if [ "$(id -u)" -ne 0 ]; then
 		echo "[ERROR] 非root用户权限无法初始环境, 请检查!"
+		
 		return 1
 	fi
+	
+	local param=$1
+	[ "$param" = "run" ] && param="config"
 	
 	# 初始服务环境
 	if ! init_service_env "$param"; then
@@ -52,16 +57,17 @@ init_modules()
 		return 1
 	fi
 	
+	touch "${RUN_FIRST_LOCK}"
 	return 0
 }
 
 # 运行模块
 run_modules()
 {
-	echo "[INFO] 当前用户:$(id -un), UID:$(id -u)"
+	echo "[WARNING] running 当前用户:$(id -un), UID:$(id -u), UMASK:$(umask)"
 	
 	# 启动 nginx 服务
-	run_nginx_service
+	#run_nginx_service
 }
 
 # 关闭模块
@@ -72,40 +78,28 @@ close_modules()
 }
 
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
-	# 根据参数执行操作
-	case "$1" in
-		init)
-			# 初始化配置
-			if ! init_modules "init"; then
-				exit 1
-			fi
-			
-			# while true; do echo 'Running...'; sleep 60; done
-			;;
-		run)
-			# 捕获 SIGTERM 信号
-			trap close_modules SIGTERM
-			
-			# 运行阶段初始化
-			if [ ! -f "${RUN_FIRST_LOCK}" ]; then
-				if ! init_modules "config"; then
-					exit 1
-				fi
-	
-				touch "${RUN_FIRST_LOCK}"
-			fi
-			
-			# 以 APP_USER 用户权限执行 run_modules
-			su-exec ${user_config[user]}:${user_config[group]} bash -c "
-				source /app/scripts/entrypoint.sh
-				run_modules
-			" &
 
-			# 等待 run_modules 执行完成
-			wait $!
-			
-			# 保持容器运行
-			tail -f /dev/null
-			;;
-	esac
+	echo "===== 初始化阶段（$1）====="
+	if ! init_modules "$1"; then
+		exit 1
+	fi
+	
+	if [ "$1" = "run" ]; then
+		echo "===== 启动服务阶段 ====="
+		if [[ ! -f "${RUN_FIRST_LOCK}" ]]; then
+			echo "[WARNING] 未检测到运行标记，请检查!"
+			exit 1
+		fi
+		
+		# 执行模块
+		su-exec ${user_config[user]}:${user_config[group]} bash -c "
+			source /app/scripts/entrypoint.sh
+			run_modules
+		" &
+		
+		wait $!
+
+		# 保持容器运行
+		tail -f /dev/null
+	fi
 fi

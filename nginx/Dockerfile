@@ -36,20 +36,20 @@ LABEL author="wanglei<lysgwl@163.com>"
 LABEL description="Nginx For Debian"
 
 # 定义用户和组
-ARG APP_USER=nginx
-ARG APP_GROUP=nginx
-ARG APP_UID=1000
-ARG APP_GID=1000
+ARG PUID=1000
+ARG PGID=1000
+ARG USERNAME=nginx
+ARG GROUPNAME=nginx
 
 # 定义端口号
 ARG SSHD_PORT=22
 ARG HTTP_PORT=80
 
 # 导出用户和组
-ENV APP_USER=$APP_USER \
-	APP_GROUP=$APP_GROUP \
-	APP_UID=$APP_UID \
-	APP_GID=$APP_GID
+ENV PUID=$PUID \
+	PGID=$PGID \
+	USERNAME=$USERNAME \
+	GROUPNAME=$GROUPNAME
 
 # 导出端口号
 ENV SSHD_PORT=$SSHD_PORT \
@@ -61,15 +61,15 @@ RUN ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
 	echo 'Asia/Shanghai' > /etc/timezone
 
 # 创建用户和组
-RUN addgroup -g $APP_GID $APP_GROUP && \
-	adduser -D -H -G $APP_GROUP -u $APP_UID $APP_USER
+RUN addgroup -g $PGID $GROUPNAME && \
+	adduser -D -H -G $GROUPNAME -u $PUID $USERNAME
 
 # 设置镜像源 (mirrors.ustc.edu.cn mirrors.aliyun.com)
 RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositories
 
 # 安装核心依赖库
 RUN apk update && apk add --no-cache bash ca-certificates coreutils gawk openssl sqlite tzdata shadow su-exec
- 
+
 # 安装运维工具
 RUN apk add --no-cache bc curl git jq openssh openssh-server-pam rsync tar wget
 
@@ -87,10 +87,10 @@ COPY --from=builder /data /app/config/data
 COPY --from=builder /config /app/config/etc
 
 COPY etc/ /app/config
-COPY --chown=$APP_USER:$APP_GROUP scripts/ /app/scripts
+COPY --chown=$PUID:$PGID scripts/ /app/scripts
 
 # 创建目录并设置权限
-RUN chown -R $APP_USER:$APP_GROUP /app && \
+RUN chown -R $PUID:$PGID /app && \
 	chmod +x /app/scripts/*.sh
 
 # 暴露端口

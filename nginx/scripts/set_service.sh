@@ -5,10 +5,10 @@ readonly ROOT_PASSWORD="123456"
 
 # 定义用户配置数组
 declare -A user_config=(
-	["user"]="${APP_USER:-root}"
-	["group"]="${APP_GROUP:-root}"
-	["uid"]="${APP_UID:-0}"
-	["gid"]="${APP_GID:-0}"
+	["uid"]="${PUID:-0}"
+	["gid"]="${PGID:-0}"
+	["user"]="${USERNAME:-root}"
+	["group"]="${GROUPNAME:-root}"
 )
 
 # 定义SSHD配置数组
@@ -42,12 +42,6 @@ set_service_user()
 			"${system_config[config_dir]}" \
 			"${system_config[data_dir]}" \
 			"${system_config[usr_dir]}"
-
-	# 设置目录权限
-	echo "[DEBUG] 正在设置目录权限"
-	chmod -R 755 "${system_config[config_dir]}" \
-				 "${system_config[data_dir]}" \
-				 "${system_config[usr_dir]}"
 }
 
 # 设置服务
@@ -101,11 +95,8 @@ run_service()
 		echo "[INFO] 正在启动服务sshd..."
 		
 		mkdir -p /run/sshd 2>/dev/null
-		chmod 0755 /run/sshd 2>/dev/null
-		
 		touch "${sshd_config[logfile]}"
-		chmod 0600 "${sshd_config[logfile]}"
-		
+
 		#nohup /usr/sbin/sshd -D -e "$@" > /var/log/sshd.log 2>&1 &
 		/usr/sbin/sshd -e "$@" -E "${sshd_config[logfile]}"
 	fi

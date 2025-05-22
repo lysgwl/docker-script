@@ -450,8 +450,8 @@ set_nginx_user()
 	# 创建 nginx 临时目录
 	mkdir -p "${nginx_config[sys_path]}/temp"
 
+	# 设置 Nginx 工作目录权限
 	chown -R ${user_config[user]}:${user_config[group]} "${nginx_config[sys_path]}"
-	chmod 750 "${nginx_config[sys_path]}" 
 
 	echo "设置${nginx_config[name]}权限完成!"
 }
