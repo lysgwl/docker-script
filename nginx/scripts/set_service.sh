@@ -26,7 +26,7 @@ readonly -A sshd_config
 # 设置系统用户
 set_service_user()
 {
-	echo "[INFO] 设置系统用户..."
+	echo "[INFO] 设置系统用户"
 	
 	# 创建用户目录
 	echo "[DEBUG] 正在创建用户目录"
@@ -48,7 +48,7 @@ set_service_user()
 set_service_env()
 {
 	local arg=$1
-	echo "[INFO] 设置系统服务..."
+	echo "[INFO] 设置系统服务"
 	
 	# 设置系统用户
 	set_service_user
@@ -74,7 +74,7 @@ COMMENT_BLOCK
 init_service_env()
 {
 	local arg=$1
-	echo "【初始化系统服务】"
+	echo "[INFO] 初始化系统服务"
 	
 	# 设置服务
 	if ! set_service_env "$arg"; then
@@ -88,7 +88,7 @@ init_service_env()
 # 运行服务
 run_service()
 {
-	echo "【运行系统服务】"
+	echo "[INFO] 运行系统服务"
 	
 	# 启动 SSH 服务
 	if [ -x /usr/sbin/sshd ] && ! pgrep -x sshd > /dev/null; then
@@ -107,7 +107,7 @@ run_service()
 # 停止服务
 close_service()
 {
-	echo "【关闭系统服务】"
+	echo "[INFO] 关闭系统服务"
 	
 	if pgrep -x "sshd" > /dev/null; then
 		echo "[INFO] sshd服务即将关闭中..."

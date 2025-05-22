@@ -445,7 +445,7 @@ set_nginx_conf()
 # 设置 nginx 用户
 set_nginx_user()
 {
-	echo "设置${nginx_config[name]}用户权限..."
+	echo "[INFO] 设置${nginx_config[name]}用户权限"
 
 	# 创建 nginx 临时目录
 	mkdir -p "${nginx_config[sys_path]}/temp"
@@ -460,7 +460,7 @@ set_nginx_user()
 set_nginx_env()
 {
 	local arg=$1
-	echo "[INFO] 设置${nginx_config[name]}服务..."
+	echo "[INFO] 设置${nginx_config[name]}服务"
 
 	if [ "$arg" = "config" ]; then
 		# 设置 nginx 配置文件
@@ -480,7 +480,7 @@ set_nginx_env()
 init_nginx_env()
 {
 	local arg=$1
-	echo "[INFO] 初始化${nginx_config[name]}服务..."
+	echo "[INFO] 初始化${nginx_config[name]}服务"
 
 	# 安装 nginx 环境
 	if ! install_nginx_env "$arg"; then
@@ -499,7 +499,7 @@ init_nginx_env()
 # 运行 nginx 服务
 run_nginx_service()
 {
-	echo "[INFO] 运行${nginx_config[name]}服务..."
+	echo "[INFO] 运行${nginx_config[name]}服务"
 
 	if [ ! -e "${nginx_config[bin_file]}" ] || [ ! -e "${nginx_config[conf_file]}" ]; then
 		echo "[ERROR] ${nginx_config[name]}服务运行失败,请检查!"
@@ -539,7 +539,7 @@ run_nginx_service()
 # 停止 nginx 服务
 close_nginx_service()
 {
-	echo "[INFO] 关闭${nginx_config[name]}服务..."
+	echo "[INFO] 关闭${nginx_config[name]}服务"
 
 	if [ ! -x "${nginx_config[bin_file]}" ]; then
 		echo "[ERROR] ${nginx_config[name]}服务不存在,请检查!"
