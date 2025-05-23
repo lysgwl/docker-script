@@ -93,6 +93,7 @@ close_modules()
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
 
 	echo "===== 初始化阶段（$1）====="
+	
 	if ! init_modules "$1"; then
 		exit 1
 	fi
