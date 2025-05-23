@@ -40,7 +40,6 @@ init_modules()
 	
 	if [ "$(id -u)" -ne 0 ]; then
 		echo "[ERROR] 非root用户权限无法初始环境, 请检查!"
-		
 		return 1
 	fi
 	
@@ -67,7 +66,7 @@ run_modules()
 	echo "[WARNING] running 当前用户:$(id -un), UID:$(id -u), UMASK:$(umask)"
 	
 	# 启动 nginx 服务
-	#run_nginx_service
+	run_nginx_service
 }
 
 # 关闭模块
@@ -90,6 +89,9 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
 			echo "[WARNING] 未检测到运行标记，请检查!"
 			exit 1
 		fi
+		
+		# 捕获 SIGTERM 信号
+		trap close_modules SIGTERM
 		
 		# 执行模块
 		su-exec ${user_config[user]}:${user_config[group]} bash -c "
