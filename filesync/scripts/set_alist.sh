@@ -20,6 +20,7 @@ readonly -A alist_config
 download_alist()
 {
 	local downloads_dir=$1
+	echo "[INFO] 下载${alist_config[name]}安装包" >&2
 	
 	# 动态生成配置
 	local arch_map='{"x86_64":"amd64","aarch64":"arm64","armv7l":"armv7"}'
@@ -75,14 +76,18 @@ download_alist()
 install_alist_env()
 {
 	local arg=$1
-	echo "[INFO] 安装${alist_config[name]}服务环境..."
+	echo "[INFO] 安装${alist_config[name]}服务环境"
 	
 	local install_dir="${system_config[install_dir]}"
 	local downloads_dir="${system_config[downloads_dir]}"
 	
 	local name="${alist_config[name]}"
-	local output_dir="$downloads_dir/output"
 	local target_dir="$install_dir/$name"
+	
+	local output_dir="$downloads_dir/output"
+	if [ ! -d "$output_dir" ]; then
+		mkdir -p "$output_dir"
+	fi
 	
 	if [ "$arg" = "init" ]; then
 		if [ -z "$(find "$install_dir" -maxdepth 1 -type f -name "${name}*" -print -quit 2>/dev/null)" ]; then
@@ -136,14 +141,14 @@ install_alist_env()
 		fi
 	fi
 
-	echo "安装${alist_config[name]}完成!"
+	echo "[INFO] 安装${alist_config[name]}完成!"
 	return 0
 }
 
 # 设置alist配置
 set_alist_conf()
 {
-	echo "设置${alist_config[name]}配置文件..."
+	echo "[INFO] 设置${alist_config[name]}配置文件"
 	local jwt_secret=`openssl rand -base64 12`
 
 	local tmp_dir="${alist_config[data_path]}/temp"
@@ -287,13 +292,13 @@ set_alist_conf()
 EOF
 	fi
 	
-	echo "设置${alist_config[name]}配置完成!"
+	echo "[INFO] 设置${alist_config[name]}配置完成!"
 }
 
 # 设置alist用户
 set_alist_user()
 {
-	echo "设置${alist_config[name]}用户权限..."	
+	echo "[INFO] 设置${alist_config[name]}用户权限"
 	mkdir -p "${alist_config[pid_path]}"
 	
 	chown -R ${user_config[user]}:${user_config[group]} \
@@ -301,14 +306,8 @@ set_alist_user()
 		"${alist_config[etc_path]}" \
 		"${alist_config[data_path]}" \
 		"${alist_config[pid_path]}" 2>/dev/null || return 1
-		
-	chmod 750 \
-		"${alist_config[sys_path]}" \
-		"${alist_config[etc_path]}" \
-		"${alist_config[data_path]}" \
-		"${alist_config[pid_path]}" 2>/dev/null || return 1
 
-	echo "设置${alist_config[name]}权限完成!"
+	echo "[INFO] 设置${alist_config[name]}权限完成!"
 	return 0
 }
 
@@ -316,7 +315,7 @@ set_alist_user()
 set_alist_env()
 {
 	local arg=$1
-	echo "设置${alist_config[name]}服务配置..."
+	echo "[INFO] 设置${alist_config[name]}服务配置"
 	
 	if [ "$arg" = "config" ]; then
 		# 创建环境目录
@@ -342,7 +341,7 @@ set_alist_env()
 		su-exec ${user_config[user]} "${alist_config[bin_file]}" admin --data "${alist_config[etc_path]}" set "${alist_config[passwd]}"
 	fi
 
-	echo "设置${alist_config[name]}完成!"
+	echo "[INFO] 设置${alist_config[name]}完成!"
 	return 0
 }
 
@@ -350,7 +349,7 @@ set_alist_env()
 init_alist_env()
 {
 	local arg=$1
-	echo "【初始化${alist_config[name]}服务】"
+	echo "[INFO] 初始化${alist_config[name]}服务"
 	
 	# 安装alist环境
 	if ! install_alist_env "$arg"; then
@@ -369,7 +368,7 @@ init_alist_env()
 # 运行alist服务
 run_alist_service()
 {
-	echo "【运行${alist_config[name]}服务】"
+	echo "[INFO] 运行${alist_config[name]}服务"
 	
 	if [ ! -e "${alist_config[bin_file]}" ] && [ ! -e "${alist_config[etc_path]}" ]; then
 		echo "[ERROR] ${alist_config[name]}服务运行失败,请检查!"
@@ -419,7 +418,7 @@ run_alist_service()
 # 停止alist服务
 close_alist_service()
 {
-	echo "【关闭${alist_config[name]}服务】"
+	echo "[INFO] 关闭${alist_config[name]}服务"
 	
 	if [ ! -x "${alist_config[bin_file]}" ]; then
 		echo "[ERROR] ${alist_config[name]}服务不存在,请检查!"

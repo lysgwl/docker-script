@@ -6,6 +6,8 @@ services:
     container_name: filesync
     image: filesync-image
     environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
       - TZ=${TZ}
       - HTTP_PROXY=${PROXY_HOST}
       - HTTPS_PROXY=${PROXY_HOST}
@@ -13,9 +15,9 @@ services:
       - ${FILESYNC_PATH}/config:/config
       - ${FILESYNC_PATH}/data:/data
       - ${FILESYNC_PATH}/usr:/mnt/usr
-      - ${FILES_PATH}:/mnt/usr/files
-      - ${PROJECT_PATH}:/mnt/usr/project
-      - ${MEDIA_PATH}:/mnt/usr/media
+      - nas_files:/mnt/usr/files
+      - nas_media:/mnt/usr/media
+      - nas_project:/mnt/usr/project
     env_file:
       - .env
     ports:
@@ -59,4 +61,12 @@ services:
     
 networks:
   local_network:
+    external: true
+
+volumes:
+  nas_files:
+    external: true
+  nas_media:
+    external: true
+  nas_project:
     external: true

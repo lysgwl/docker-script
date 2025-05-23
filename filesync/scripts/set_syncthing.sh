@@ -21,7 +21,7 @@ readonly -A syncthing_config
 download_syncthing()
 {
 	local downloads_dir=$1
-	echo "[INFO] 下载${syncthing_config[name]}安装包..." >&2
+	echo "[INFO] 下载${syncthing_config[name]}安装包" >&2
 	
 	# 动态生成配置
 	local arch_map='{"x86_64":"amd64","aarch64":"arm64","armv7l":"arm"}'
@@ -71,15 +71,19 @@ download_syncthing()
 install_syncthing_env()
 {
 	local arg=$1
-	echo "[INFO] 安装${syncthing_config[name]}服务环境..."
+	echo "[INFO] 安装${syncthing_config[name]}服务环境"
 	
 	local install_dir="${system_config[install_dir]}"
 	local downloads_dir="${system_config[downloads_dir]}"
 	
 	local name="${syncthing_config[name]}"
-	local output_dir="${downloads_dir}/output"
 	local target_dir="${install_dir}/$name"
-		
+	
+	local output_dir="${downloads_dir}/output"
+	if [ ! -d "$output_dir" ]; then
+		mkdir -p "$output_dir"
+	fi
+
 	if [ "$arg" = "init" ]; then
 		if [ -z "$(find "$install_dir" -maxdepth 1 -type f -name "${name}*" -print -quit 2>/dev/null)" ]; then
 			local findpath latest_path download_file
@@ -139,7 +143,7 @@ install_syncthing_env()
 # 设置syncthing配置
 set_syncthing_conf()
 {
-	echo "[INFO] 设置${syncthing_config[name]}配置文件..."
+	echo "[INFO] 设置${syncthing_config[name]}配置文件"
 	
 	if [ ! -f "${syncthing_config[bin_file]}" ]; then
 		echo "[ERROR] ${syncthing_config[name]}可执行文件不存在,请检查!"
@@ -250,30 +254,24 @@ set_syncthing_conf()
 # 设置syncthing用户
 set_syncthing_user()
 {
-	echo "[INFO] 设置${syncthing_config[name]}用户权限..."
+	echo "[INFO] 设置${syncthing_config[name]}用户权限"
 	mkdir -p "${syncthing_config[pid_path]}"
 	
 	chown -R ${user_config[user]}:${user_config[group]} \
 		"${syncthing_config[sys_path]}" \
-        "${syncthing_config[etc_path]}" \
-        "${syncthing_config[data_path]}" \
-		"${syncthing_config[pid_path]}" 2>/dev/null || return 1
-		
-	chmod 750 \
-		"${syncthing_config[sys_path]}" \
-        "${syncthing_config[etc_path]}" \
-        "${syncthing_config[data_path]}" \
+		"${syncthing_config[etc_path]}" \
+		"${syncthing_config[data_path]}" \
 		"${syncthing_config[pid_path]}" 2>/dev/null || return 1
 
 	echo "[INFO] 设置${syncthing_config[name]}权限完成!"
-	return 0		
+	return 0
 }
 
 # 设置syncthing环境
 set_syncthing_env()
 {
 	local arg=$1
-	echo "[INFO] 设置${syncthing_config[name]}服务环境..."
+	echo "[INFO] 设置${syncthing_config[name]}服务环境"
 
 	if [ "$arg" = "config" ]; then
 		# 创建环境目录
@@ -298,7 +296,7 @@ set_syncthing_env()
 init_syncthing_env()
 {
 	local arg=$1
-	echo "【初始化${syncthing_config[name]}服务】"
+	echo "[INFO] 初始化${syncthing_config[name]}服务"
 	
 	# 安装syncthing环境
 	if ! install_syncthing_env "$arg"; then
@@ -317,7 +315,7 @@ init_syncthing_env()
 # 运行syncthing服务
 run_syncthing_service()
 {
-	echo "【运行${syncthing_config[name]}服务】"
+	echo "[INFO] 运行${syncthing_config[name]}服务"
 	
 	if [ ! -e "${syncthing_config[bin_file]}" ]; then
 		echo "[ERROR] ${syncthing_config[name]}服务运行失败,请检查!"
@@ -372,7 +370,7 @@ run_syncthing_service()
 # 停止syncthing服务
 close_syncthing_service()
 {
-	echo "【关闭${syncthing_config[name]}服务】"
+	echo "[INFO] 关闭${syncthing_config[name]}服务"
 	
 	if [ ! -x "${syncthing_config[bin_file]}" ]; then
 		echo "[ERROR] ${syncthing_config[name]}服务不存在,请检查!"

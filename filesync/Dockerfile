@@ -33,10 +33,10 @@ LABEL author="wanglei<lysgwl@163.com>"
 LABEL description="FileSync For Debian"
 
 # 定义用户和组
-ARG APP_USER=appuser
-ARG APP_GROUP=appgroup
-ARG APP_UID=1000
-ARG APP_GID=1000
+ARG PUID=1000
+ARG PGID=1000
+ARG USERNAME=filesync
+ARG GROUPNAME=filesync
 
 # 定义端口号
 ARG ALIST_HTTP_PORT=5244
@@ -45,10 +45,10 @@ ARG SYNCTHING_TRANS_PORT=22000
 ARG SYNCTHING_DISCOVERY_PORT=21027
 
 # 导出用户和组
-ENV APP_USER=$APP_USER \
-	APP_GROUP=$APP_GROUP \
-	APP_UID=$APP_UID \
-	APP_GID=$APP_GID
+ENV PUID=$PUID \
+	PGID=$PGID \
+	USERNAME=$USERNAME \
+	GROUPNAME=$GROUPNAME
 	
 # 导出端口号
 ENV ALIST_HTTP_PORT=$ALIST_HTTP_PORT \
@@ -62,8 +62,8 @@ RUN ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
 	echo 'Asia/Shanghai' > /etc/timezone
 	
 # 创建用户和组
-RUN addgroup -g $APP_GID $APP_GROUP && \
-	adduser -D -H -G $APP_GROUP -u $APP_UID $APP_USER	
+RUN addgroup -g $PGID $GROUPNAME && \
+	adduser -D -H -G $GROUPNAME -u $PUID $USERNAME
 
 # 设置镜像源 (mirrors.ustc.edu.cn mirrors.aliyun.com)
 RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositories
@@ -80,15 +80,15 @@ RUN rm -rf /var/cache/apk/*
 WORKDIR /app
 
 # 复制文件
-COPY --chown=$APP_USER:$APP_GROUP --from=builder /app/install /app/install
-COPY --chown=$APP_USER:$APP_GROUP scripts/ /app/scripts
-COPY --chown=$APP_USER:$APP_GROUP etc/ /app/config
+COPY --chown=$PUID:$PGID --from=builder /app/install /app/install
+COPY --chown=$PUID:$PGID scripts/ /app/scripts
+COPY --chown=$PUID:$PGID etc/ /app/config
 
 # 持久化目录
 VOLUME /config /data
 
 # 创建目录并设置权限
-RUN chown -R $APP_USER:$APP_GROUP /app && \
+RUN chown -R $PUID:$PGID /app && \
 	chmod +x /app/scripts/*.sh
 
 # 暴露端口

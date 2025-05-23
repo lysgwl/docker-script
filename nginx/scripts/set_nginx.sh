@@ -26,7 +26,7 @@ fetch_nginx_source()
 {
 	local downloads_dir=$1
 	echo "[INFO] 获取${nginx_config[name]}源码" >&2
-
+	
 	local output_dir="${downloads_dir}/output"
 	if [ ! -d "$output_dir" ]; then
 		mkdir -p "$output_dir"
@@ -220,7 +220,7 @@ setup_nginx_source()
 install_nginx_env()
 {
 	local arg=$1
-	echo "[INFO] 安装${nginx_config[name]}服务..."
+	echo "[INFO] 安装${nginx_config[name]}服务"
 
 	local install_dir="${system_config[install_dir]}"
 	local downloads_dir="${system_config[downloads_dir]}"
