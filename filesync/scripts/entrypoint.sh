@@ -64,7 +64,6 @@ init_modules()
 		return 1
 	fi
 	
-	touch "${RUN_FIRST_LOCK}"
 	return 0
 }
 
@@ -92,19 +91,19 @@ close_modules()
 
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
 
-	echo "===== 初始化阶段（$1）====="
-	
-	if ! init_modules "$1"; then
-		exit 1
-	fi
-	
-	if [ "$1" = "run" ]; then
-		echo "===== 启动服务阶段 ====="
-		if [[ ! -f "${RUN_FIRST_LOCK}" ]]; then
-			echo "[WARNING] 未检测到运行标记，请检查!"
+	if [[ ! -f "${RUN_FIRST_LOCK}" ]]; then
+		echo "===== 初始化阶段（$1）====="
+		
+		if ! init_modules "$1"; then
 			exit 1
 		fi
 		
+		touch "${RUN_FIRST_LOCK}"
+	fi	
+	
+	if [ "$1" = "run" ]; then
+		echo "===== 启动服务阶段 ====="
+
 		# 捕获 SIGTERM 信号
 		trap close_modules SIGTERM
 		

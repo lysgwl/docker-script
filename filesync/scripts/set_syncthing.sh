@@ -174,8 +174,8 @@ set_syncthing_conf()
 	# 修改 Syncthing 配置
 	if [ -f "${syncthing_config[conf_file]}" ]; then
 		# 停止正在运行的进程
-        pkill -f "${syncthing_config[bin_file]}"
-        sleep 2
+		pkill -f "${syncthing_config[bin_file]}"
+		sleep 2
 		
 		# GUI配置
 		xmlstarlet ed -L \
@@ -352,7 +352,7 @@ run_syncthing_service()
 	sleep 2
 	
 	# 验证 PID 有效性
-	if ! kill -0 "$syncthing_pid" >/dev/null; then
+	if [ -z "$syncthing_pid" ] || ! kill -0 "$syncthing_pid" >/dev/null 2>&1; then
 		echo "[ERROR] ${syncthing_config[name]}服务启动失败, 请检查!"
 		return 1
 	fi

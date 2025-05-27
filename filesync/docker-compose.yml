@@ -32,7 +32,7 @@ services:
     hostname: filesync
     networks:
       - local_network
-    restart: unless-stopped  
+    restart: unless-stopped
       
   duplicati-server:
     container_name: duplicati

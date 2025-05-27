@@ -400,16 +400,16 @@ run_alist_service()
 	sleep 2
 	
 	# 验证 PID 有效性
-	if ! kill -0 "$alist_pid" >/dev/null; then
-        echo "[ERROR] ${alist_config[name]}服务启动失败, 请检查!"
-        return 1
-    fi
+	if [ -z "$alist_pid" ] || ! kill -0 "$alist_pid" >/dev/null 2>&1; then
+		echo "[ERROR] ${alist_config[name]}服务启动失败, 请检查!"
+		return 1
+	fi
 	
 	# 启动端口检测
 	if ! wait_for_ports "${alist_config[port]}"; then
-        echo "[ERROR] ${alist_config[name]} 端口未就绪！"
-        return 1
-    fi
+		echo "[ERROR] ${alist_config[name]} 端口未就绪！"
+		return 1
+	fi
 
 	echo "$alist_pid" > "${alist_config[pid_file]}"
 	echo "[INFO] 启动${alist_config[name]}服务成功!"

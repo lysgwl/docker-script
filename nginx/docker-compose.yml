@@ -6,9 +6,9 @@ services:
     container_name: nginx
     image: nginx-image
     environment:
-      - TZ=${TZ}
       - PUID=${PUID}
       - PGID=${PGID}
+      - TZ=${TZ}
     volumes:
       - ${NGINX_PATH}/config:/config
       - ${NGINX_PATH}/data:/data
