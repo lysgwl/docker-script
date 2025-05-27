@@ -26,7 +26,7 @@ fetch_nginx_source()
 {
 	local downloads_dir=$1
 	echo "[INFO] 获取${nginx_config[name]}源码" >&2
-	
+
 	local output_dir="${downloads_dir}/output"
 	if [ ! -d "$output_dir" ]; then
 		mkdir -p "$output_dir"
@@ -523,9 +523,18 @@ run_nginx_service()
 
 	# 后台运行 nginx
 	nohup ${nginx_config[bin_file]} -c ${nginx_config[conf_file]} > /dev/null 2>&1 &
-
+	
 	# 等待 2 秒
 	sleep 2
+	
+	# 获取后台进程的 PID
+	local nginx_pid=$(cat "${nginx_config[pid_file]}" 2>/dev/null)
+	
+	# 验证 PID 有效性
+	if [ -z "$nginx_pid" ] || ! kill -0 "$nginx_pid" >/dev/null 2>&1; then
+		echo "[ERROR] ${nginx_config[name]}服务启动失败, 请检查!"
+		return 1
+	fi
 
 	# 启动端口检测
 	if ! wait_for_ports "${nginx_config[port]}"; then
