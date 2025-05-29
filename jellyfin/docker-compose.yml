@@ -17,8 +17,7 @@ services:
       - ${CONFIG_PATH}:/config
       - ${CACHE_PATH}:/cache
       - ${DATA_PATH}:/data
-      - ${MEDIA_PATH}:/media
-      #- media_share:/media
+      - nas_media:/media
     env_file:
       - .env
     ports:
@@ -34,4 +33,8 @@ services:
       
 networks:
   local_network:
+    external: true
+    
+volumes:
+  nas_media:
     external: true
