@@ -54,16 +54,16 @@ RUN cpanm --local-lib=/usr/local/perl XML::LibXML XML::LibXML::PrettyPrint && \
 FROM debian:bookworm
 
 # 定义用户和组
-ARG APP_USER=freeswitch
-ARG APP_GROUP=freeswitch
-ARG APP_UID=1000
-ARG APP_GID=1000
+ARG PUID=1000
+ARG PGID=1000
+ARG USERNAME=freeswitch
+ARG GROUPNAME=freeswitch
 
 # 导出用户和组
-ENV APP_USER=$APP_USER \
-	APP_GROUP=$APP_GROUP \
-	APP_UID=$APP_UID \
-	APP_GID=$APP_GID \
+ENV PUID=$PUID \
+	PGID=$PGID \
+	USERNAME=$USERNAME \
+	GROUPNAME=$GROUPNAME \
 	LANG=C.UTF-8 \
 	DEBIAN_FRONTEND=noninteractive
 	
@@ -72,8 +72,8 @@ RUN ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
 	echo 'Asia/Shanghai' > /etc/timezone
 
 # 创建用户和组
-RUN groupadd -g $APP_GID $APP_GROUP && \
-	useradd -m -s /bin/bash -g $APP_GROUP -u $APP_UID $APP_USER		
+RUN groupadd -g $PGID $GROUPNAME && \
+	useradd -m -s /bin/bash -g $GROUPNAME -u $PUID $USERNAME
 
 # 设置镜像源
 RUN sed -i 's@deb.debian.org@mirrors.ustc.edu.cn@g' /etc/apt/sources.list.d/debian.sources
@@ -106,10 +106,10 @@ VOLUME /config /data
 COPY --from=builder /usr/local /usr/local
 COPY --from=builder /data /app/config/data
 COPY --from=builder /config /app/config/etc
-COPY --chown=$APP_USER:$APP_GROUP scripts/ /app/scripts
+COPY --chown=$USERNAME:$GROUPNAME scripts/ /app/scripts
 
 # 设置权限
-RUN chown -R $APP_USER:$APP_GROUP /app && \
+RUN chown -R $USERNAME:$GROUPNAME /app && \
 	chmod +x /app/scripts/*.sh
 	
 # 设置perl环境变量	

@@ -8,6 +8,9 @@ declare -A freeswitch_config=(
 	["etc_path"]="${system_config[config_dir]}"
 	["data_path"]="${system_config[data_dir]}"
 	["bin_path"]="/usr/local/freeswitch/bin"
+	["lib_path"]="${system_config[data_dir]}/lib/freeswitch"
+	["log_path"]="${system_config[data_dir]}/log/freeswitch"
+	["run_path"]="${system_config[data_dir]}/run/freeswitch"
 	["external_ip"]="$(echo "${EXTERNAL_IP:-}" | tr -d '"')"
 )
 
@@ -346,7 +349,7 @@ setup_freeswitch_source()
 install_freeswitch_env()
 {
 	local arg=$1
-	echo "[INFO] 安装${freeswitch_config[name]}服务..."
+	echo "[INFO] 安装${freeswitch_config[name]}服务"
 	
 	local install_dir="${system_config[install_dir]}"
 	local downloads_dir="${system_config[downloads_dir]}"
@@ -381,7 +384,7 @@ install_freeswitch_env()
 # 设置配置文件变量
 set_freeswitch_vars()
 {
-	echo "设置配置文件变量"
+	echo "[INFO] 设置配置文件变量"
 	
 	local vars_conf="${freeswitch_config[etc_path]}/freeswitch/vars.xml"
 	if [ -f "$vars_conf" ]; then
@@ -419,13 +422,13 @@ set_freeswitch_vars()
 			-n 'value="'"${freeswitch_config[passwd]}"'"'	# "value=\"${freeswitch_config[passwd]}\""
 	fi
 	
-	echo "完成配置文件(vars.xml)设置"
+	echo "[INFO] 完成配置文件(vars.xml)设置"
 }
 
 # 设置freeswitch配置
 set_freeswitch_conf()
 {
-	echo "设置${freeswitch_config[name]}配置文件"
+	echo "[INFO] 设置${freeswitch_config[name]}配置文件"
 	
 	# freeswitch预设数据
 	local target_dir="${system_config[conf_dir]}/data"
@@ -456,25 +459,24 @@ set_freeswitch_conf()
 	# 设置配置文件变量
 	set_freeswitch_vars
 	
-	echo "设置${freeswitch_config[name]}配置完成!"
+	echo "[INFO] 设置${freeswitch_config[name]}配置完成!"
 }
 
 # 设置freeswitch用户
 set_freeswitch_user()
 {
-	echo "设置${freeswitch_config[name]}用户权限..."
+	echo "[INFO] 设置${freeswitch_config[name]}用户权限"
 
 	chown -R ${user_config[user]}:${user_config[group]} "${freeswitch_config[sys_path]}"
-	chmod 750 "${freeswitch_config[sys_path]}" 
-		
-	echo "设置${freeswitch_config[name]}权限完成!"
+	
+	echo "[INFO] 设置${freeswitch_config[name]}权限完成!"
 }
 
 # 设置freeswitch环境
 set_freeswitch_env()
 {
 	local arg=$1
-	echo "设置${freeswitch_config[name]}服务配置..."
+	echo "[INFO] 设置${freeswitch_config[name]}服务配置"
 	
 	if [ "$arg" = "config" ]; then	
 		# 设置freeswitch配置
@@ -484,7 +486,7 @@ set_freeswitch_env()
 		set_freeswitch_user
 	fi
 	
-	echo "设置${freeswitch_config[name]}完成!"
+	echo "[INFO]设置${freeswitch_config[name]}完成!"
 	return 0
 }
 
@@ -492,7 +494,7 @@ set_freeswitch_env()
 init_freeswitch_env()
 {
 	local arg=$1
-	echo "[INFO] 初始化${freeswitch_config[name]}服务..."
+	echo "[INFO] 初始化${freeswitch_config[name]}服务"
 	
 	# 编译freeswitch源码
 	if ! install_freeswitch_env "$arg"; then
@@ -511,7 +513,7 @@ init_freeswitch_env()
 # 运行freeswitch服务
 run_freeswitch_service()
 {
-	echo "[INFO] 运行${freeswitch_config[name]}服务..."
+	echo "[INFO] 运行${freeswitch_config[name]}服务"
 	
 	if [[ ! -e "${freeswitch_config[bin_path]}/freeswitch" || ! -e "${freeswitch_config[bin_path]}/fs_cli" ]]; then
 		echo "[ERROR] ${freeswitch_config[name]}服务运行失败,请检查!"
@@ -530,13 +532,22 @@ run_freeswitch_service()
 	# 等待 2 秒
 	sleep 2
 	
+	# 获取后台进程的 PID
+	local freeswitch_pid=$(cat "${freeswitch_config[run_path]}/${freeswitch_config[name]}.pid" 2>/dev/null)
+	
+	# 验证 PID 有效性
+	if [ -z "$freeswitch_pid" ] || ! kill -0 "$freeswitch_pid" >/dev/null 2>&1; then
+		echo "[ERROR] ${freeswitch_config[name]}服务启动失败, 请检查!"
+		return 1
+	fi
+	
 	echo "[INFO] 启动${freeswitch_config[name]}服务成功!"
 }
 
 # 停止freeswitch服务
 close_freeswitch_service()
 {
-	echo "[INFO] 关闭${freeswitch_config[name]}服务..."
+	echo "[INFO] 关闭${freeswitch_config[name]}服务"
 	
 	if [ ! -e "${freeswitch_config[bin_path]}/freeswitch" ]; then
 		echo "[ERROR] ${freeswitch_config[name]}服务不存在,请检查!"

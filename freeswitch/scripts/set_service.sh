@@ -5,10 +5,10 @@ readonly ROOT_PASSWORD="123456"
 
 # 定义用户配置数组
 declare -A user_config=(
-	["user"]="${APP_USER:-root}"
-	["group"]="${APP_GROUP:-root}"
-	["uid"]="${APP_UID:-0}"
-	["gid"]="${APP_GID:-0}"
+	["uid"]="${PUID:-0}"
+	["gid"]="${PGID:-0}"
+	["user"]="${USERNAME:-root}"
+	["group"]="${GROUPNAME:-root}"
 )
 
 # 定义SSHD配置数组
@@ -27,7 +27,7 @@ readonly -A sshd_config
 install_service_env()
 {
 	local arg=$1
-	echo "[INFO] 安装系统服务..."
+	echo "[INFO] 安装系统服务"
 	
 	if [ "$arg" = "init" ]; then
 		apt update
@@ -101,7 +101,7 @@ install_service_env()
 # 设置系统用户
 set_service_user()
 {
-	echo "[INFO] 设置系统用户..."
+	echo "[INFO] 设置系统用户"
 	
 	# 创建用户目录
 	#echo "[DEBUG] 正在创建用户目录"
@@ -116,17 +116,13 @@ set_service_user()
 	chown -R ${user_config[user]}:${user_config[group]} \
 			"${system_config[config_dir]}" \
 			"${system_config[data_dir]}"
-	
-	# 设置目录权限
-	#echo "[DEBUG] 正在设置目录权限"
-	chmod -R 755 "${system_config[config_dir]}" "${system_config[data_dir]}"
 }
 
 # 设置服务
 set_service_env()
 {
 	local arg=$1
-	echo "[INFO] 设置系统服务..."
+	echo "[INFO] 设置系统服务"
 	
 	# 设置系统用户
 	set_service_user
@@ -159,7 +155,7 @@ set_service_env()
 init_service_env()
 {
 	local arg=$1
-	echo "【初始化系统服务】"
+	echo "[INFO] 初始化系统服务"
 	
 	# 安装服务
 	if ! install_service_env "${arg}"; then
@@ -178,18 +174,15 @@ init_service_env()
 # 运行服务
 run_service()
 {
-	echo "【运行系统服务】"
+	echo "[INFO] 运行系统服务"
 	
 	# 启动 SSH 服务
 	if [ -x /usr/sbin/sshd ] && ! pgrep -x sshd >/dev/null 2>&1; then
 		echo "[INFO] 正在启动服务sshd..."
 		
 		mkdir -p /run/sshd 2>/dev/null
-		chmod 0755 /run/sshd 2>/dev/null
-		
 		touch "${sshd_config[logfile]}"
-		chmod 0600 "${sshd_config[logfile]}"
-		
+
 		# nohup /usr/sbin/sshd -D -e "$@" > /var/log/sshd.log 2>&1 &
 		/usr/sbin/sshd -e "$@" -E "${sshd_config[logfile]}"
 	fi
@@ -200,7 +193,7 @@ run_service()
 # 停止服务
 close_service()
 {
-	echo "【关闭系统服务】"
+	echo "[INFO] 关闭系统服务"
 	
 	if pgrep -x "sshd" > /dev/null; then
 		echo "[INFO] sshd服务即将关闭中..."
