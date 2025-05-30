@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# root用户密码
+# root 用户密码
 readonly ROOT_PASSWORD="123456"
 
 # 定义用户配置数组
@@ -11,7 +11,7 @@ declare -A user_config=(
 	["group"]="${GROUPNAME:-root}"
 )
 
-# 定义SSHD配置数组
+# 定义 SSHD 配置数组
 declare -A sshd_config=(
 	["port"]="${SSHD_PORT:-22}"
 	["listen"]="0.0.0.0"
@@ -40,8 +40,12 @@ set_service_user()
 	echo "[DEBUG] 正在设置目录拥有者(${user_config[user]}:${user_config[group]})"
 	chown -R ${user_config[user]}:${user_config[group]} \
 			"${system_config[config_dir]}" \
-			"${system_config[data_dir]}" \
+			"${system_config[data_dir]}"
+			
+	chown "${user_config[user]}:${user_config[group]}" \
 			"${system_config[usr_dir]}"
+			
+	echo "[INFO] 设置用户完成!"
 }
 
 # 设置服务
@@ -62,7 +66,7 @@ set_service_env()
 		fi
 COMMENT_BLOCK
 
-		# 设置root用户密码
+		# 设置 root 用户密码
 		echo "root:$ROOT_PASSWORD" | chpasswd
 	fi
 
@@ -71,7 +75,7 @@ COMMENT_BLOCK
 }
 
 # 初始化服务
-init_service_env()
+init_service()
 {
 	local arg=$1
 	echo "[INFO] 初始化系统服务"

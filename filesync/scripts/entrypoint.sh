@@ -24,17 +24,20 @@ readonly -A system_config
 
 umask ${UMASK:-022}
 
-# 加载feature脚本
+# 加载 feature 脚本
 source $WORK_DIR/scripts/feature.sh
 
 # 加载服务脚本
 source $WORK_DIR/scripts/set_service.sh
 
-# 加载alist脚本
+# 加载 alist 脚本
 source $WORK_DIR/scripts/set_alist.sh
 
-# 加载syncthing脚本
+# 加载 syncthing 脚本
 source $WORK_DIR/scripts/set_syncthing.sh
+
+# 加载 filebrowser 脚本
+source $WORK_DIR/scripts/set_filebrowser.sh
 
 # 初始化模块
 init_modules()
@@ -50,17 +53,22 @@ init_modules()
 	[ "$param" = "run" ] && param="config"
 	
 	# 初始服务环境
-	if ! init_service_env "$param"; then
+	if ! init_service "$param"; then
 		return 1
 	fi
 	
-	# 初始alist环境
-	if ! init_alist_env "$param"; then
+	# 初始 alist 环境
+	if ! init_alist_service "$param"; then
 		return 1
 	fi
 	
-	# 初始syncthing环境
-	if ! init_syncthing_env "$param"; then
+	# 初始 syncthing 环境
+	if ! init_syncthing_service "$param"; then
+		return 1
+	fi
+	
+	# 初始 filebrowser 环境
+	if ! init_filebrowser_service "$param"; then
 		return 1
 	fi
 	
@@ -72,21 +80,27 @@ run_modules()
 {
 	echo "[WARNING] running 当前用户:$(id -un), UID:$(id -u), UMASK:$(umask)"
 	
-	# alist服务
+	# 运行 alist 服务
 	run_alist_service
 
-	# syncthing服务
+	# 运行 syncthing 服务
 	run_syncthing_service
+	
+	# 运行 filebrowser 服务
+	run_filebrowser_service
 }
 
 # 关闭模块
 close_modules()
 {
-	# alist服务
+	# 关闭 alist 服务
 	close_alist_service
 	
-	# syncthing服务
+	# 关闭 syncthing 服务
 	close_syncthing_service
+	
+	# 关闭 filebrowser 服务
+	close_filebrowser_service
 }
 
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then

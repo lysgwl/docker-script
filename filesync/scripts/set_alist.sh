@@ -1,22 +1,23 @@
 #!/bin/bash
 
-# 定义alist配置数组
+# 定义 alist 配置数组
 declare -A alist_config=(
 	["name"]="alist"		# 服务名称
 	["passwd"]="123456"		# 缺省密码
-	["port"]="${ALIST_HTTP_PORT:-5244}"			# 端口号
+	["port"]="${ALIST_HTTP_PORT:-5244}"					# 端口号
 	["etc_path"]="${system_config[config_dir]}/alist"	# 配置目录
 	["data_path"]="${system_config[data_dir]}/alist"	# 数据目录
-	["sys_path"]="/usr/local/alist"				# 安装路径
-	["pid_path"]="/var/run/alist"				# 进程标识路径
-	["pid_file"]="/var/run/alist/alist.pid"		# 进程标识
-	["bin_file"]="/usr/local/alist/alist"		# 运行文件
-	["conf_file"]="${system_config[config_dir]}/alist/config.json"	# 配置文件
+	["sys_path"]="/usr/local/alist"						# 安装路径
+	["pid_path"]="/var/run/alist"						# 标识路径
+	["bin_file"]="/usr/local/alist/alist"				# 运行文件
+	["log_file"]="${system_config[data_dir]}/alist/alist.log"			# 日志文件
+	["db_file"]="${system_config[data_dir]}/alist/database.db"			# 数据库文件
+	["conf_file"]="${system_config[config_dir]}/alist/config.json"		# 配置文件
 )
 
 readonly -A alist_config
 
-# 下载alist安装包
+# 下载 alist 安装包
 download_alist()
 {
 	local downloads_dir=$1
@@ -40,7 +41,7 @@ download_alist()
 	local name_value="${alist_config[name]}"
 	name_value+="-musl"
 	
-	# 检测musl
+	# 检测 musl
 	if { ldd --version 2>&1 || true; } | grep -q "musl"; then
 		matcher_conditions+=("[[ \$name =~ musl ]]")
 	fi
@@ -72,7 +73,7 @@ download_alist()
 	return 0
 }
 
-# 安装alist环境
+# 安装 alist 环境
 install_alist_env()
 {
 	local arg=$1
@@ -82,62 +83,66 @@ install_alist_env()
 	local downloads_dir="${system_config[downloads_dir]}"
 	
 	local name="${alist_config[name]}"
-	local target_dir="$install_dir/$name"
-	
-	local output_dir="$downloads_dir/output"
-	if [ ! -d "$output_dir" ]; then
-		mkdir -p "$output_dir"
-	fi
-	
+	local target_path="$install_dir/$name"
+
 	if [ "$arg" = "init" ]; then
 		if [ -z "$(find "$install_dir" -maxdepth 1 -type f -name "${name}*" -print -quit 2>/dev/null)" ]; then
-			local findpath latest_path  download_file
-			if ! findpath=$(find_latest_archive "$downloads_dir" "${name}.*"); then
+			local output_dir="$downloads_dir/output"
+			if [ ! -d "$output_dir" ]; then
+				mkdir -p "$output_dir"
+			fi
+			
+			local findpath archive_path latest_path
+			if ! findpath=$(find_latest_archive "$downloads_dir" ".*${name}.*"); then
 				echo "[WARNING] 未匹配到$name软件包..." >&2
 				
+				# 下载文件并验证
+				local download_file
 				download_file=$(download_alist "$downloads_dir") && [ -n "$download_file" ] || {
 					echo "[ERROR] 下载$name软件包失败,请检查!"
 					return 2
 				}
 				
-				latest_path=$(extract_and_validate "$download_file" "$output_dir" "${name}.*") || return 3
+				archive_path=$(extract_and_validate "$download_file" "$output_dir" ".*${name}.*") || return 3
 			else
+				# 解析文件类型和路径
 				local archive_type=$(jq -r '.filetype' <<< "$findpath")
-				local archive_path=$(jq -r '.filepath' <<< "$findpath")
+				archive_path=$(jq -r '.filepath' <<< "$findpath")
 				
+				# 验证文件类型
 				if [[ -z "$archive_type" ]] || ! [[ "$archive_type" =~ ^(file|directory)$ ]]; then
 					return 1
 				fi
 				
 				if [ "$archive_type" = "file" ]; then
-					latest_path=$(extract_and_validate "$archive_path" "$output_dir" "${name}.*") || return 3
-				else
-					local filepath=$(find "$archive_path" -maxdepth 1 -mindepth 1 -type f -name "${name}*" -print -quit 2>/dev/null)
-					if [[ -z "$filepath" ]]; then
-						echo "[ERROR] $name可执行文件不存在,请检查!"
-						return 1
-					fi
-					
-					local archive_name=$(basename "$filepath")
-					if [ ! -d "$output_dir/$archive_name" ]; then
-						mkdir -p "$output_dir"
-						rsync -a --no-relative "$filepath" "$output_dir/"
-					fi
-					
-					latest_path="$output_dir/$archive_name"
+					archive_path=$(extract_and_validate "$archive_path" "$output_dir" ".*${name}.*") || return 3
+				fi
+			fi
+			
+			# 查找目标文件
+			if [[ -f "$archive_path" ]]; then
+				latest_path="$archive_path"
+			else
+				latest_path=$(find "$archive_path" -maxdepth 1 -mindepth 1 -type f -name "${name}*" -print -quit 2>/dev/null)
+				if [[ -z "$latest_path" ]] || [[ ! -f "$latest_path" ]]; then
+					echo "[ERROR] $name可执行文件不存在,请检查!"
+					return 1
 				fi
 			fi
 			
 			# 安装二进制文件
-			install_binary "$latest_path" "$target_dir" || return 4
+			install_binary "$latest_path" "$target_path" || return 4
 					
 			# 清理临时文件
-			rm -rf  "$latest_path" "$output_dir"
+			rm -rf "$output_dir"
 		fi
 	elif [ "$arg" = "config" ]; then
 		if [[ ! -d "${alist_config[sys_path]}" && ! -e "${alist_config[bin_file]}" ]]; then
 			# 安装二进制文件
-			install_binary "$target_dir" "${alist_config[bin_file]}" "/usr/local/bin/$name" || return 4
+			install_binary "$target_path" "${alist_config[bin_file]}" "/usr/local/bin/$name" || return 4
+			
+			# 清理临时文件
+			rm -rf "$target_path"
 		fi
 	fi
 
@@ -145,7 +150,7 @@ install_alist_env()
 	return 0
 }
 
-# 设置alist配置
+# 设置 alist 配置
 set_alist_conf()
 {
 	echo "[INFO] 设置${alist_config[name]}配置文件"
@@ -160,14 +165,6 @@ set_alist_conf()
 	if [ ! -d "$bleve_dir" ]; then
 		mkdir -p "$bleve_dir"
 	fi
-	
-	local log_dir="${alist_config[data_path]}/log"
-	if [ ! -d "$log_dir" ]; then
-		mkdir -p "$log_dir"
-	fi
-	
-	local db_file="${alist_config[data_path]}/data.db"
-	local log_file="$log_dir/log.log"
 	
 	# alist 默认配置
 	if [ ! -e "${alist_config[conf_file]}" ]; then
@@ -187,7 +184,7 @@ set_alist_conf()
     "user": "",
     "password": "",
     "name": "",
-    "db_file": "$db_file",
+    "db_file": "${alist_config[db_file]}",
     "table_prefix": "x_",
     "ssl_mode": "",
     "dsn": ""
@@ -212,7 +209,7 @@ set_alist_conf()
   "dist_dir": "",
   "log": {
     "enable": true,
-    "name": "$log_file",
+    "name": "${alist_config[log_file]}",
     "max_size": 50,
     "max_backups": 30,
     "max_age": 28,
@@ -295,12 +292,12 @@ EOF
 	echo "[INFO] 设置${alist_config[name]}配置完成!"
 }
 
-# 设置alist用户
+# 设置 alist 用户
 set_alist_user()
 {
 	echo "[INFO] 设置${alist_config[name]}用户权限"
 	mkdir -p "${alist_config[pid_path]}"
-	
+
 	chown -R ${user_config[user]}:${user_config[group]} \
 		"${alist_config[sys_path]}" \
 		"${alist_config[etc_path]}" \
@@ -311,7 +308,7 @@ set_alist_user()
 	return 0
 }
 
-# 设置alist环境
+# 设置 alist 环境
 set_alist_env()
 {
 	local arg=$1
@@ -321,10 +318,10 @@ set_alist_env()
 		# 创建环境目录
 		mkdir -p "${alist_config[etc_path]}" "${alist_config[data_path]}"
 		
-		# 设置alist配置
+		# 设置 alist 配置
 		set_alist_conf
 		
-		# 设置alist用户
+		# 设置 alist 用户
 		if ! set_alist_user; then
 			return 1
 		fi
@@ -334,10 +331,10 @@ set_alist_env()
 			return 1
 		fi
 		
-		# 查看alist管理员密码
+		# 查看 alist 管理员密码
 		su-exec ${user_config[user]} "${alist_config[bin_file]}" admin --data "${alist_config[etc_path]}"
 
-		# 设置alist缺省密码	
+		# 设置 alist 缺省密码	
 		su-exec ${user_config[user]} "${alist_config[bin_file]}" admin --data "${alist_config[etc_path]}" set "${alist_config[passwd]}"
 	fi
 
@@ -345,18 +342,18 @@ set_alist_env()
 	return 0
 }
 
-# 初始化alist环境
-init_alist_env()
+# 初始化 alist 环境
+init_alist_service()
 {
 	local arg=$1
 	echo "[INFO] 初始化${alist_config[name]}服务"
 	
-	# 安装alist环境
+	# 安装 alist 环境
 	if ! install_alist_env "$arg"; then
 		return 1
 	fi
 	
-	# 设置alist环境
+	# 设置 alist 环境
 	if ! set_alist_env "$arg"; then
 		return 1
 	fi
@@ -365,7 +362,7 @@ init_alist_env()
 	return 0
 }
 
-# 运行alist服务
+# 运行 alist 服务
 run_alist_service()
 {
 	echo "[INFO] 运行${alist_config[name]}服务"
@@ -375,14 +372,17 @@ run_alist_service()
 		return 1
 	fi
 	
+	# 标识文件
+	local pid_file="${alist_config[pid_path]}/${alist_config[name]}.pid"
+	
 	# 检查服务是否已运行
-	if [ -f "${alist_config[pid_file]}" ]; then
-		local pid=$(cat "${alist_config[pid_file]}")
+	if [ -f "$pid_file" ]; then
+		local pid=$(cat "$pid_file" 2>/dev/null)
 		if ! kill -0 "$pid" >/dev/null 2>&1; then
-			rm -f "${alist_config[pid_file]}"
+			rm -f "$pid_file"
 		else
 			if ! grep -qF "${alist_config[name]}" "/proc/$pid/cmdline" 2>/dev/null; then
-				rm -f "${alist_config[pid_file]}"
+				rm -f "$pid_file"
 			else
 				echo "[WARNING] ${alist_config[name]}服务已经在运行!(PID:$pid)"
 				return 0
@@ -390,7 +390,7 @@ run_alist_service()
 		fi
 	fi
 	
-	# 后台运行alist服务
+	# 后台运行 alist 服务
 	nohup "${alist_config[bin_file]}" server --data "${alist_config[etc_path]}" &> /dev/null &
 	
 	# 获取后台进程的 PID
@@ -411,11 +411,11 @@ run_alist_service()
 		return 1
 	fi
 
-	echo "$alist_pid" > "${alist_config[pid_file]}"
+	echo "$alist_pid" > "$pid_file"
 	echo "[INFO] 启动${alist_config[name]}服务成功!"
 }
 
-# 停止alist服务
+# 停止 alist 服务
 close_alist_service()
 {
 	echo "[INFO] 关闭${alist_config[name]}服务"
@@ -425,15 +425,18 @@ close_alist_service()
 		return
 	fi
 	
-	# 检查alist服务进程
-	if [ -e "${alist_config[pid_file]}" ]; then
-		# 关闭alist服务进程
-		for PID in $(cat "${alist_config[pid_file]}"); do
+	# 标识文件
+	local pid_file="${alist_config[pid_path]}/${alist_config[name]}.pid"
+	
+	# 检查 alist 服务进程
+	if [ -f "$pid_file" ]; then
+		# 关闭 alist 服务进程
+		for PID in $(cat "$pid_file" 2>/dev/null); do
 			echo "[INFO] ${alist_config[name]}服务进程:${PID}"
 			kill $PID
 		done
 		
-		rm -rf "${alist_config[pid_file]}"
+		rm -rf "$pid_file"
 	fi
 	
 	for PID in $(pidof ${alist_config[name]}); do

@@ -1,23 +1,23 @@
 #!/bin/bash
 
-# 定义syncthing配置数组
+# 定义 syncthing 配置数组
 declare -A syncthing_config=(
-	["name"]="syncthing"
-	["passwd"]="123456"
-	["http_port"]="${SYNCTHING_HTTP_PORT:-8384}"
-	["trans_port"]="${SYNCTHING_TRANS_PORT:-22000}"
-	["etc_path"]="${system_config[config_dir]}/syncthing"
-	["data_path"]="${system_config[data_dir]}/syncthing"
-	["sys_path"]="/usr/local/syncthing"
-	["pid_path"]="/var/run/syncthing"
-	["pid_file"]="/var/run/syncthing/syncthing.pid"
-	["bin_file"]="/usr/local/syncthing/syncthing"
-	["conf_file"]="{system_config[config_dir]}/syncthing/config.xml"
+	["name"]="syncthing"		# 服务名称
+	["passwd"]="123456"			# 缺省密码
+	["http_port"]="${SYNCTHING_HTTP_PORT:-8384}"			# WEB 端口号
+	["trans_port"]="${SYNCTHING_TRANS_PORT:-22000}"			# 传输端口号
+	["etc_path"]="${system_config[config_dir]}/syncthing"	# 配置目录
+	["data_path"]="${system_config[data_dir]}/syncthing"	# 数据目录
+	["sys_path"]="/usr/local/syncthing"						# 安装路径
+	["pid_path"]="/var/run/syncthing"						# 标识路径
+	["bin_file"]="/usr/local/syncthing/syncthing"			# 运行文件
+	["log_file"]="${system_config[data_dir]}/syncthing/syncthing.log"	# 日志文件
+	["conf_file"]="${system_config[config_dir]}/syncthing/config.xml"	# 配置文件
 )
 
 readonly -A syncthing_config
 
-# 下载syncthing安装包
+# 下载 syncthing 安装包
 download_syncthing()
 {
 	local downloads_dir=$1
@@ -67,7 +67,7 @@ download_syncthing()
 	return 0
 }
 
-# 安装syncthing环境
+# 安装 syncthing 环境
 install_syncthing_env()
 {
 	local arg=$1
@@ -77,62 +77,66 @@ install_syncthing_env()
 	local downloads_dir="${system_config[downloads_dir]}"
 	
 	local name="${syncthing_config[name]}"
-	local target_dir="${install_dir}/$name"
-	
-	local output_dir="${downloads_dir}/output"
-	if [ ! -d "$output_dir" ]; then
-		mkdir -p "$output_dir"
-	fi
+	local target_path="${install_dir}/$name"
 
 	if [ "$arg" = "init" ]; then
 		if [ -z "$(find "$install_dir" -maxdepth 1 -type f -name "${name}*" -print -quit 2>/dev/null)" ]; then
-			local findpath latest_path download_file
+			local output_dir="${downloads_dir}/output"
+			if [ ! -d "$output_dir" ]; then
+				mkdir -p "$output_dir"
+			fi
+			
+			local findpath archive_path latest_path 
 			if ! findpath=$(find_latest_archive "$downloads_dir" "$name.*"); then
 				echo "[WARNING] 未匹配到${name}软件包..." >&2
 				
+				# 下载文件并验证
+				local download_file
 				download_file=$(download_syncthing "$downloads_dir") || {
 					echo "[ERROR] 下载$name软件包失败,请检查!"
 					return 2
 				}
 				
-				latest_path=$(extract_and_validate "$download_file" "$output_dir" "$name-${system_config[type]}.*") || return 3
+				archive_path=$(extract_and_validate "$download_file" "$output_dir" ".*$name-${system_config[type]}.*") || return 3
 			else
+				# 解析文件类型和路径
 				local archive_type=$(jq -r '.filetype' <<< "$findpath")
-				local archive_path=$(jq -r '.filepath' <<< "$findpath")
+				archive_path=$(jq -r '.filepath' <<< "$findpath")
 				
+				# 验证文件类型
 				if [[ -z "$archive_type" ]] || ! [[ "$archive_type" =~ ^(file|directory)$ ]]; then
 					return 1
 				fi
 				
 				if [ "$archive_type" = "file" ]; then
-					latest_path=$(extract_and_validate "$archive_path" "$output_dir" "$name-${system_config[type]}.*") || return 3
-				else
-					local filepath=$(find "$archive_path" -maxdepth 1 -mindepth 1 -type f -name "${name}*" -print -quit 2>/dev/null)
-					if [[ -z "$filepath" ]]; then
-						echo "[ERROR] $name可执行文件不存在,请检查!"
-						return 1
-					fi
-					
-					local archive_name=$(basename "$archive_path")
-					if [ ! -d "$output_dir/$archive_name" ]; then
-						mkdir -p "$output_dir"
-						rsync -a --no-relative "$filepath" "$output_dir/"
-					fi
-					
-					latest_path="$output_dir/$archive_name"
-				fi
+					archive_path=$(extract_and_validate "$archive_path" "$output_dir" ".*$name-${system_config[type]}.*") || return 3
+				fi	
 			fi
 			
+			# 查找目标文件
+			if [[ -f "$archive_path" ]]; then
+				latest_path="$archive_path"
+			else
+				latest_path=$(find "$archive_path" -maxdepth 1 -mindepth 1 -type f -name "${name}*" -print -quit 2>/dev/null)
+				if [[ -z "$latest_path" ]] || [[ ! -f "$latest_path" ]]; then
+					echo "[ERROR] $name可执行文件不存在,请检查!"
+					return 1
+				fi
+			fi	
+			
 			# 安装二进制文件
-			install_binary "$latest_path/$name" "$target_dir" || return 4
+			install_binary "$latest_path" "$target_path" || return 4
 					
 			# 清理临时文件
-			rm -rf  "$latest_path" "$output_dir"
+			rm -rf "$output_dir"
 		fi
 	elif [ "$arg" = "config" ]; then
 		if [[ ! -d "${syncthing_config[sys_path]}" || ! -e "${syncthing_config[bin_file]}" ]]; then
 			# 安装二进制文件
-			install_binary "$target_dir" "${syncthing_config[bin_file]}" "/usr/local/bin/$name" || return 4
+			install_binary "$target_path" "${syncthing_config[bin_file]}" "/usr/local/bin/$name" || return 4
+			
+			# 清理临时文件
+			rm -rf "$target_path"
 		fi
 	fi
 
@@ -140,7 +144,7 @@ install_syncthing_env()
 	return 0
 }
 
-# 设置syncthing配置
+# 设置 syncthing 配置
 set_syncthing_conf()
 {
 	echo "[INFO] 设置${syncthing_config[name]}配置文件"
@@ -251,7 +255,7 @@ set_syncthing_conf()
 	return 0
 }
 
-# 设置syncthing用户
+# 设置 syncthing 用户
 set_syncthing_user()
 {
 	echo "[INFO] 设置${syncthing_config[name]}用户权限"
@@ -267,7 +271,7 @@ set_syncthing_user()
 	return 0
 }
 
-# 设置syncthing环境
+# 设置 syncthing 环境
 set_syncthing_env()
 {
 	local arg=$1
@@ -277,12 +281,12 @@ set_syncthing_env()
 		# 创建环境目录
 		mkdir -p "${syncthing_config[etc_path]}" "${syncthing_config[data_path]}"
 		
-		# 设置syncthing配置
+		# 设置 syncthing 配置
 		if ! set_syncthing_conf; then
 			return 1
 		fi
 		
-		# 设置syncthing用户
+		# 设置 syncthing 用户
 		if ! set_syncthing_user; then
 			return 1
 		fi
@@ -292,18 +296,18 @@ set_syncthing_env()
 	return 0
 }
 
-# 初始化syncthing环境
-init_syncthing_env()
+# 初始化 syncthing 环境
+init_syncthing_service()
 {
 	local arg=$1
 	echo "[INFO] 初始化${syncthing_config[name]}服务"
 	
-	# 安装syncthing环境
+	# 安装 syncthing 环境
 	if ! install_syncthing_env "$arg"; then
 		return 1
 	fi
 	
-	# 设置syncthing环境
+	# 设置 syncthing 环境
 	if ! set_syncthing_env "$arg"; then
 		return 1
 	fi
@@ -312,7 +316,7 @@ init_syncthing_env()
 	return 0
 }
 
-# 运行syncthing服务
+# 运行 syncthing 服务
 run_syncthing_service()
 {
 	echo "[INFO] 运行${syncthing_config[name]}服务"
@@ -322,14 +326,17 @@ run_syncthing_service()
 		return 1
 	fi
 	
+	# 标识文件
+	local pid_file="${syncthing_config[pid_path]}/${syncthing_config[name]}.pid"
+	
 	# 检查服务是否已运行
-	if [ -f "${syncthing_config[pid_file]}" ]; then
-		local pid=$(cat "${syncthing_config[pid_file]}")
+	if [ -f "$pid_file" ]; then
+		local pid=$(cat "$pid_file" 2>/dev/null)
 		if ! kill -0 "$pid" >/dev/null 2>&1; then
-			rm -f "${syncthing_config[pid_file]}"
+			rm -f "$pid_file"
 		else
 			if ! grep -qF "${syncthing_config[name]}" "/proc/$pid/cmdline" 2>/dev/null; then
-				rm -f "${syncthing_config[pid_file]}"
+				rm -f "$pid_file"
 			else
 				echo "[WARNING] ${syncthing_config[name]}服务已经在运行(PID:$pid), 请检查!"
 				return 0
@@ -337,13 +344,13 @@ run_syncthing_service()
 		fi
 	fi
 	
-	# 后台运行syncthing服务		# sudo -u ${SERVICE_APP_USER} --
+	# 后台运行 syncthing 服务		# sudo -u ${SERVICE_APP_USER} --
 	nohup "${syncthing_config[bin_file]}" \
 			--config "${syncthing_config[etc_path]}" \
 			--data "${syncthing_config[data_path]}" \
 			--no-browser \
 			--gui-address="0.0.0.0:${syncthing_config[http_port]}" \
-			> "${syncthing_config[data_path]}/${syncthing_config[name]}.log" 2>&1 &
+			> "${syncthing_config[log_file]}" 2>&1 &
 
 	# 获取后台进程的 PID
 	local syncthing_pid=$!
@@ -363,11 +370,11 @@ run_syncthing_service()
 		return 1
 	fi
 	
-	echo "$syncthing_pid" > "${syncthing_config[pid_file]}"
+	echo "$syncthing_pid" > "$pid_file"
 	echo "[INFO] 启动${syncthing_config[name]}服务成功!"
 }
 
-# 停止syncthing服务
+# 停止 syncthing 服务
 close_syncthing_service()
 {
 	echo "[INFO] 关闭${syncthing_config[name]}服务"
@@ -377,15 +384,18 @@ close_syncthing_service()
 		return
 	fi
 	
-	# 检查syncthing服务进程
-	if [ -e "${syncthing_config[pid_file]}" ]; then
-		# 关闭syncthingt服务进程
-		for PID in $(cat "${syncthing_config[pid_file]}"); do
+	# 标识文件
+	local pid_file="${syncthing_config[pid_path]}/${syncthing_config[name]}.pid"
+	
+	# 检查 syncthing 服务进程
+	if [ -f "$pid_file" ]; then
+		# 关闭 syncthing 服务进程
+		for PID in $(cat "$pid_file" 2>/dev/null); do
 			echo "[INFO] ${syncthing_config[name]}服务进程:$PID"
 			kill "$PID"
 		done
 		
-		rm -rf "${syncthing_config[pid_file]}"
+		rm -rf "$pid_file"
 	fi
 	
 	for PID in $(pidof ${syncthing_config[name]}); do
