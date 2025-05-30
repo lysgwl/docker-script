@@ -40,7 +40,9 @@ set_service_user()
 	echo "[DEBUG] 正在设置目录拥有者(${user_config[user]}:${user_config[group]})"
 	chown -R ${user_config[user]}:${user_config[group]} \
 			"${system_config[config_dir]}" \
-			"${system_config[data_dir]}" \
+			"${system_config[data_dir]}"
+			
+	chown "${user_config[user]}:${user_config[group]}" \
 			"${system_config[usr_dir]}"
 }
 
@@ -71,7 +73,7 @@ COMMENT_BLOCK
 }
 
 # 初始化服务
-init_service_env()
+init_service()
 {
 	local arg=$1
 	echo "[INFO] 初始化系统服务"

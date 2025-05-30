@@ -47,12 +47,12 @@ init_modules()
 	[ "$param" = "run" ] && param="config"
 	
 	# 初始服务环境
-	if ! init_service_env "$param"; then
+	if ! init_service "$param"; then
 		return 1
 	fi
 	
 	# nginx 服务
-	if ! init_nginx_env "$param"; then
+	if ! init_nginx_service "$param"; then
 		return 1
 	fi
 	

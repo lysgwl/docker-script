@@ -27,11 +27,6 @@ fetch_nginx_source()
 	local downloads_dir=$1
 	echo "[INFO] 获取${nginx_config[name]}源码" >&2
 
-	local output_dir="${downloads_dir}/output"
-	if [ ! -d "$output_dir" ]; then
-		mkdir -p "$output_dir"
-	fi
-
 	local ret=0
 	for key in "${!nginx_sources[@]}"; do
 		local name="$key"
@@ -43,21 +38,27 @@ fetch_nginx_source()
 
 		local url="https://github.com/$repo.git"
 		echo "[INFO] 正在获取$name源码..." >&2
+		
+		local output_dir="${downloads_dir}/output"
+		if [ ! -d "$output_dir" ]; then
+			mkdir -p "$output_dir"
+		fi
 
-		local findpath latest_path
+		local findpath latest_path archive_path archive_name
 		if ! findpath=$(find_latest_archive "$downloads_dir" "$name.*"); then
 			echo "[WARNING] 未匹配到$name软件包..." >&2
 
-			if [ -n "$url" ] || [ -n "$repo" ]; then
-				local jq_args=(
-					--arg type "$([ -n "$repo" ] && echo "github" || echo "static")"
-					--arg name "$name"
-					--arg repo "${repo:-}"
-					--arg version "${version}"
-					--arg url "${url:-}"
-				)
-
-				local json_config=$(jq -n "${jq_args[@]}" '{ type: $type, name: $name, repo: $repo, version: $version, url: $url }')
+			# 克隆仓库的配置
+			local jq_args=(
+				--arg type "$([ -n "$repo" ] && echo "github" || echo "static")"
+				--arg name "$name"
+				--arg repo "${repo:-}"
+				--arg version "${version}"
+				--arg url "${url:-}"
+			)
+			
+			# 克隆的 JSON 配置
+			local json_config=$(jq -n "${jq_args[@]}" '{ type: $type, name: $name, repo: $repo, version: $version, url: $url }')
 
 : <<'COMMENT_BLOCK'
 				local matcher_value=""
@@ -81,41 +82,43 @@ fetch_nginx_source()
 					end |
 					with_entries(select(.value != "")) ')
 COMMENT_BLOCK
-				local clone_path
-				if ! clone_path=$(clone_repo "$json_config" "$downloads_dir"); then
-					ret=2; break
-				fi
-
-				local clone_name="$(basename "$clone_path")"
-				if [ ! -d "$output_dir/$clone_name" ]; then
-					#cp -rf "$clone_path" "$output_dir"
-					rsync -a --exclude '.*' "$clone_path" "$output_dir"/
-				fi
-
-				latest_path="$output_dir/$clone_name"
+			# 克隆仓库
+			archive_path=$(clone_repo "$json_config" "$downloads_dir") || {
+				ret=2; break
+			}
+			
+			# 同步至输出目录
+			archive_name=$(basename "$archive_path")
+			if [ ! -e "$output_dir/$archive_name" ]; then
+				rsync -a --exclude '.*' "$archive_path/" "$output_dir/$archive_name/"
 			fi
+			
+			latest_path="$output_dir/$archive_name"
 		else
+			# 处理归档文件
 			local archive_type=$(jq -r '.filetype' <<< "$findpath")
-			local archive_path=$(jq -r '.filepath' <<< "$findpath")
+			archive_path=$(jq -r '.filepath' <<< "$findpath")
+			archive_name=$(jq -r '.name' <<< "$findpath")
 
+			# 验证归档类型
 			if [[ -z "$archive_type" ]] || ! [[ "$archive_type" =~ ^(file|directory)$ ]]; then
 				ret=1; break
 			fi
-
+			
+			# 文件处理
 			if [ "$archive_type" = "file" ]; then
-				if ! latest_path=$(extract_and_validate "$archive_path" "$output_dir" "$name.*"); then
-					ret=3; break 
-				fi
+				latest_path=$(extract_and_validate "$archive_path" "$output_dir" "$name.*") || {
+					ret=3; break
+				}
 			else
-				local archive_name=$(jq -r '.name' <<< "$findpath")
-				if [ ! -d "$output_dir/$archive_name" ]; then
-					# cp -rf "$archive_path" "$output_dir"
-					rsync -a --exclude '.*' "$archive_path" "$output_dir"/
+				if [ ! -e "$output_dir/$archive_name" ]; then
+					rsync -a --exclude '.*' "$archive_path/" "$output_dir/$archive_name/"
 				fi
+				
 				latest_path="$output_dir/$archive_name"
 			fi
 		fi
-
+		
 		nginx_sources[$name]=$(jq --arg path "$latest_path" '. + {path: $path}' <<< "$source_config")
 	done
 
@@ -212,7 +215,7 @@ setup_nginx_source()
 		return 4
 	}
 
-	rm -rf "$pcre_path" "nginx_path"
+	rm -rf "$pcre_path" "$nginx_path"
 	return 0
 }
 
@@ -225,9 +228,9 @@ install_nginx_env()
 	local install_dir="${system_config[install_dir]}"
 	local downloads_dir="${system_config[downloads_dir]}"
 
-	local target_dir="$install_dir/${nginx_config[name]}"
+	local target_path="$install_dir/${nginx_config[name]}"
 	if [ "$arg" = "init" ]; then
-		if [ ! -d "${target_dir}" ]; then
+		if [ ! -d "${target_path}" ]; then
 			# 获取 nginx 源码路径
 			if ! fetch_nginx_source "$downloads_dir"; then
 				echo "[ERROR] 获取${nginx_config[name]}失败,请检查!"
@@ -242,11 +245,14 @@ install_nginx_env()
 
 			# 安装二进制文件
 			install_binary "${nginx_config[sys_path]}" "$install_dir" || return 4
+			
+			# 清理临时文件
+			rm -rf "$downloads_dir/output"
 		fi
 	elif [ "$arg" = "config" ]; then
 		if [[ ! -d "${nginx_config[sys_path]}" || ! -e "${nginx_config[bin_file]}" ]]; then	
 			# 安装二进制文件
-			install_binary "$target_dir" "${nginx_config[sys_path]}" "/usr/local/bin/${nginx_config[name]}" || return 4
+			install_binary "$target_path" "${nginx_config[sys_path]}" "/usr/local/bin/${nginx_config[name]}" || return 4
 		fi
 	else
 		echo "[ERROR] 无效的未知参数:$arg"
@@ -451,7 +457,9 @@ set_nginx_user()
 	mkdir -p "${nginx_config[sys_path]}/temp"
 
 	# 设置 Nginx 工作目录权限
-	chown -R ${user_config[user]}:${user_config[group]} "${nginx_config[sys_path]}"
+	chown -R ${user_config[user]}:${user_config[group]} \
+			"${nginx_config[sys_path]}" \
+			"${system_config[config_dir]}"
 
 	echo "设置${nginx_config[name]}权限完成!"
 }
@@ -477,7 +485,7 @@ set_nginx_env()
 }
 
 # 初始化 nginx 环境
-init_nginx_env()
+init_nginx_service()
 {
 	local arg=$1
 	echo "[INFO] 初始化${nginx_config[name]}服务"
@@ -505,34 +513,36 @@ run_nginx_service()
 		echo "[ERROR] ${nginx_config[name]}服务运行失败,请检查!"
 		return 1
 	fi
+	
+	# 标识文件
+	local pid_file="${nginx_config[pid_file]}"
 
 	# 检查服务是否已运行
-	if [ -f "${nginx_config[pid_file]}" ]; then
-		local pid=$(cat "${nginx_config[pid_file]}")
+	if [ -f "$pid_file" ]; then
+		local pid=$(cat "$pid_file" 2>/dev/null)
 		if ! kill -0 "$pid" >/dev/null 2>&1; then
-			rm -f "${nginx_config[pid_file]}"
+			rm -f "$pid_file"
 		else
 			if ! grep -qF "${nginx_config[name]}" "/proc/$pid/cmdline" 2>/dev/null; then
-				rm -f "${nginx_config[pid_file]}"
+				rm -f "$pid_file"
 			else
 				echo "[WARNING] ${nginx_config[name]}服务已经在运行(PID:$pid), 请检查!"
 				return 0
 			fi
 		fi
 	fi
+	
+	# 测试配置文件
+	${nginx_config[bin_file]} -t -c ${nginx_config[conf_file]} > /dev/null 2>&1 || {
+		echo "[ERROR] ${nginx_config[name]} 配置测试失败, 请检查!";
+		return 1
+	}
 
 	# 后台运行 nginx
 	nohup ${nginx_config[bin_file]} -c ${nginx_config[conf_file]} > /dev/null 2>&1 &
-	
-	# 等待 2 秒
-	sleep 2
-	
-	# 获取后台进程的 PID
-	local nginx_pid=$(cat "${nginx_config[pid_file]}" 2>/dev/null)
-	
-	# 验证 PID 有效性
-	if [ -z "$nginx_pid" ] || ! kill -0 "$nginx_pid" >/dev/null 2>&1; then
-		echo "[ERROR] ${nginx_config[name]}服务启动失败, 请检查!"
+
+	# 等待 PID 生效
+	if ! wait_for_pid "$pid_file" 10; then
 		return 1
 	fi
 
@@ -543,6 +553,7 @@ run_nginx_service()
 	fi
 
 	echo "[INFO] 启动${nginx_config[name]}服务成功!"
+	return 0
 }
 
 # 停止 nginx 服务
@@ -554,15 +565,18 @@ close_nginx_service()
 		echo "[ERROR] ${nginx_config[name]}服务不存在,请检查!"
 		return
 	fi
+	
+	# 标识文件
+	local pid_file="${nginx_config[pid_file]}"
 
 	# 检查 nginx 服务进程
-	if [ -e "${nginx_config[pid_file]}" ]; then
-		for PID in $(cat "${nginx_config[pid_file]}"); do
+	if [ -e "$pid_file" ]; then
+		for PID in $(cat "$pid_file" 2>/dev/null); do
 			echo "[INFO] ${nginx_config[name]}服务进程:${PID}"
 			kill "$PID"
 		done
 
-		rm -rf "${nginx_config[pid_file]}"
+		rm -rf "$pid_file"
 	fi
 
 	for PID in $(pidof ${nginx_config[name]}); do

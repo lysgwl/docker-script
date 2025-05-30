@@ -925,6 +925,79 @@ wait_for_ports()
 	$all_ready && return 0 || return 1
 }
 
+# 等待进程 id
+wait_for_pid()
+{
+	local pid_file=$1
+	local timeout=${2:-10}
+	local process_name=${3:-}
+		
+	local max_attempts=$timeout
+	local process_pid=""
+	local last_status=""
+	local elapsed=0
+	local result=0
+	
+	echo "file:$pid_file"
+	
+	# 显示开始信息
+	echo -e "\033[34m⏳ 等待进程启动 | 超时: ${timeout}秒\033[0m"
+	
+	# 初始状态显示
+	echo -e "\033[33m🕒 已等待: 0秒 | 剩余: ${timeout}秒 | 状态: 启动中...\033[0m"
+	
+	while ((max_attempts > 0)); do
+		local remaining=$max_attempts
+		local status_msg=""
+		
+		# 检查 PID 文件是否存在
+		if [[ -f "$pid_file" ]]; then
+			# 读取 PID 文件内容
+			process_pid=$(cat "$pid_file" 2>/dev/null | tr -d '[:space:]')
+			
+			if [[ -z "$process_pid" ]]; then
+				result=2
+				status_msg="PID文件内容为空!"
+			elif ! [[ "$process_pid" =~ ^[0-9]+$ ]]; then
+				result=3
+				status_msg="PID无效:'$process_pid'"
+			elif ! kill -0 "$process_pid" >/dev/null 2>&1; then
+				result=4
+				status_msg="PID不存在: $process_pid"
+			elif [[ -n "$process_name" ]]; then
+				local actual_name=$(ps -p "$process_pid" -o comm= 2>/dev/null)
+				if [[ ! "$actual_name" =~ $process_name ]]; then
+					result=5
+					status_msg="进程不匹配: '$process_name'≠'$actual_name'"
+				else
+					result=0
+					break
+				fi
+			else
+				result=0
+				break
+			fi
+		else
+			result=1
+			status_msg="等待PID文件创建"
+		fi
+		
+		echo -e "\033[33m🕒 已等待: ${elapsed}秒 | 剩余: ${remaining}秒 | 状态: ${status_msg}\033[0m"
+		
+		sleep 1
+		((elapsed++))
+		((max_attempts--))
+	done
+	
+	if ((result == 0)); then
+		echo -e "\033[32m✅ 进程启动成功! PID: $process_pid | 耗时: ${elapsed}秒\033[0m"
+	else
+		echo -e "\033[31m❌ 进程启动失败! | 超时: ${timeout}秒 | 最后状态: ${last_status}\033[0m"
+	fi
+	
+	return $result
+}
+
 # perl修改XML节点
 set_xml_perl()
 {
