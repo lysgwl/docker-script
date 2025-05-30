@@ -542,7 +542,7 @@ run_nginx_service()
 	nohup ${nginx_config[bin_file]} -c ${nginx_config[conf_file]} > /dev/null 2>&1 &
 
 	# 等待 PID 生效
-	if ! wait_for_pid "$pid_file" 10; then
+	if ! wait_for_pid 10 "$pid_file"; then
 		return 1
 	fi
 

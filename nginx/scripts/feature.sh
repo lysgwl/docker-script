@@ -928,66 +928,71 @@ wait_for_ports()
 # 等待进程 id
 wait_for_pid()
 {
-	local pid_file=$1
-	local timeout=${2:-10}
+	local timeout=${1:-10}
+	local pid_source=${2:-}
 	local process_name=${3:-}
 		
 	local max_attempts=$timeout
 	local process_pid=""
-	local last_status=""
 	local elapsed=0
-	local result=0
 	
-	echo "file:$pid_file"
+	local result=0
+	local last_status="启动中..."
+	
+	if [[ -z "$pid_source" && -z "$process_name" ]]; then
+		echo -e "\033[31m❌ [ERROR] 未提供 PID 源或进程名\033[0m"
+		return 1
+	fi
 	
 	# 显示开始信息
 	echo -e "\033[34m⏳ 等待进程启动 | 超时: ${timeout}秒\033[0m"
 	
-	# 初始状态显示
-	echo -e "\033[33m🕒 已等待: 0秒 | 剩余: ${timeout}秒 | 状态: 启动中...\033[0m"
-	
-	while ((max_attempts > 0)); do
-		local remaining=$max_attempts
-		local status_msg=""
+	while ((elapsed <= max_attempts)); do
+		local remaining=$((max_attempts - elapsed))
+		echo -e "\033[33m🕒 已等待: ${elapsed}秒 | 剩余: ${remaining}秒 | 状态: ${last_status}\033[0m"
 		
-		# 检查 PID 文件是否存在
-		if [[ -f "$pid_file" ]]; then
-			# 读取 PID 文件内容
-			process_pid=$(cat "$pid_file" 2>/dev/null | tr -d '[:space:]')
-			
-			if [[ -z "$process_pid" ]]; then
-				result=2
-				status_msg="PID文件内容为空!"
-			elif ! [[ "$process_pid" =~ ^[0-9]+$ ]]; then
-				result=3
-				status_msg="PID无效:'$process_pid'"
-			elif ! kill -0 "$process_pid" >/dev/null 2>&1; then
-				result=4
-				status_msg="PID不存在: $process_pid"
-			elif [[ -n "$process_name" ]]; then
-				local actual_name=$(ps -p "$process_pid" -o comm= 2>/dev/null)
-				if [[ ! "$actual_name" =~ $process_name ]]; then
-					result=5
-					status_msg="进程不匹配: '$process_name'≠'$actual_name'"
-				else
-					result=0
-					break
-				fi
+		if [[ -n "$pid_source" ]]; then
+			if [[ -f "$pid_source" ]]; then
+				process_pid=$(tr -d '[:space:]' < "$pid_source" 2>/dev/null)
+			elif [[ "$pid_source" =~ ^[0-9]+$ ]]; then
+				process_pid="$pid_source"
+			fi
+		elif [[ -n "$process_name" ]]; then
+			process_pid=$(pgrep -f "$process_name" | head -n1)
+		fi
+		
+		# 验证 PID
+		if [[ -z "$process_pid" ]]; then
+			result=2
+			last_status="未获取到 PID"
+		elif ! [[ "$process_pid" =~ ^[0-9]+$ ]]; then
+			result=3
+			last_status="PID无效: $process_pid"
+		elif ! kill -0 "$process_pid" >/dev/null 2>&1; then
+			result=4
+			last_status="PID不存在: $process_pid"
+		elif [[ -n "$process_name" ]]; then
+			local actual_name=$(ps -p "$process_pid" -o comm= 2>/dev/null)
+			if [[ ! "$actual_name" =~ $process_name ]]; then
+				result=5
+				last_status="进程不匹配: '$process_name'≠'$actual_name'"
 			else
 				result=0
 				break
 			fi
 		else
-			result=1
-			status_msg="等待PID文件创建"
+			result=0
+			break
 		fi
-		
-		echo -e "\033[33m🕒 已等待: ${elapsed}秒 | 剩余: ${remaining}秒 | 状态: ${status_msg}\033[0m"
 		
 		sleep 1
 		((elapsed++))
-		((max_attempts--))
 	done
+	
+	if ((elapsed >= timeout)); then
+		result=6
+		last_status="运行超时"
+	fi
 	
 	if ((result == 0)); then
 		echo -e "\033[32m✅ 进程启动成功! PID: $process_pid | 耗时: ${elapsed}秒\033[0m"
