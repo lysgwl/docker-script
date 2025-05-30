@@ -92,7 +92,7 @@ install_alist_env()
 				mkdir -p "$output_dir"
 			fi
 			
-			local findpath archive_path latest_path
+			local findpath latest_path archive_path
 			if ! findpath=$(find_latest_archive "$downloads_dir" ".*${name}.*"); then
 				echo "[WARNING] 未匹配到$name软件包..." >&2
 				
