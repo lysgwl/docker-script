@@ -396,12 +396,8 @@ run_alist_service()
 	# 获取后台进程的 PID
 	local alist_pid=$!
 	
-	# 等待 2 秒
-	sleep 2
-	
-	# 验证 PID 有效性
-	if [ -z "$alist_pid" ] || ! kill -0 "$alist_pid" >/dev/null 2>&1; then
-		echo "[ERROR] ${alist_config[name]}服务启动失败, 请检查!"
+	# 等待 PID 生效
+	if ! wait_for_pid 10 "$alist_pid"; then
 		return 1
 	fi
 	

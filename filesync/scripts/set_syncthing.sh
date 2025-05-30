@@ -355,12 +355,8 @@ run_syncthing_service()
 	# 获取后台进程的 PID
 	local syncthing_pid=$!
 
-	# 等待 2 秒
-	sleep 2
-	
-	# 验证 PID 有效性
-	if [ -z "$syncthing_pid" ] || ! kill -0 "$syncthing_pid" >/dev/null 2>&1; then
-		echo "[ERROR] ${syncthing_config[name]}服务启动失败, 请检查!"
+	# 等待 PID 生效
+	if ! wait_for_pid 10 "$syncthing_pid"; then
 		return 1
 	fi
 	
