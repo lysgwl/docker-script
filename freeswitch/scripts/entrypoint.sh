@@ -27,7 +27,7 @@ source ${WORK_DIR}/scripts/feature.sh
 # 加载服务脚本
 source ${WORK_DIR}/scripts/set_service.sh
 
-# 加载freeswitch脚本
+# 加载 freeswitch 脚本
 source ${WORK_DIR}/scripts/set_freeswitch.sh
 
 # 初始化模块
@@ -44,12 +44,12 @@ init_modules()
 	[ "$param" = "run" ] && param="config"
 	
 	# 初始服务环境
-	if ! init_service_env "$param"; then
+	if ! init_service "$param"; then
 		return 1
 	fi
 	
-	# 初始freeswitch环境
-	if ! init_freeswitch_env "$param"; then
+	# 初始 freeswitch 环境
+	if ! init_freeswitch_service "$param"; then
 		return 1
 	fi
 	

@@ -118,7 +118,9 @@ extract_and_validate()
 	
 	local extracted_entry
 	if [[ ! "$archive_name" =~ \.(tar\.gz|tar)$ ]]; then
-		mv -f "$archive_file" "$extract_dir/"
+		if mv -f "$archive_file" "$extract_dir/"; then
+			extracted_entry="$extract_dir/$archive_name"
+		fi
 	else
 		if ! tar -zxvf "$archive_file" -C "$extract_dir" --no-same-owner >/dev/null 2>&1; then
 			echo "[ERROR] 解压失败: $archive_name" >&2
@@ -268,7 +270,7 @@ get_github_releases()
 	# 获取发布信息
 	local response
 	response=$(curl -fsSL -w "%{http_code}" "$release_url" 2>/dev/null) && [ -n "$response" ] || {
-		echo "[WARNING] Releases API请求失败:$release_url" >&2
+		echo "[WARNING] Releases API请求失败: $release_url" >&2
 		return 1
 	}
 	
@@ -302,7 +304,7 @@ get_github_tag()
 	# 获取tags数据
 	local response
 	response=$(curl -fsSL -w "%{http_code}" "$tags_url" 2>/dev/null) && [ -n "$response" ] || {
-		echo "[WARNING] Tags API请求失败:$tags_url" >&2
+		echo "[WARNING] Tags API请求失败: $tags_url" >&2
 		return 1
 	}
 	

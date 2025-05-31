@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# root用户密码
+# root 用户密码
 readonly ROOT_PASSWORD="123456"
 
 # 定义用户配置数组
@@ -11,7 +11,7 @@ declare -A user_config=(
 	["group"]="${GROUPNAME:-root}"
 )
 
-# 定义SSHD配置数组
+# 定义 SSHD 配置数组
 declare -A sshd_config=(
 	["port"]="${SSHD_PORT:-22}"
 	["listen"]="0.0.0.0"
@@ -152,7 +152,7 @@ set_service_env()
 }
 
 # 初始化服务
-init_service_env()
+init_service()
 {
 	local arg=$1
 	echo "[INFO] 初始化系统服务"
