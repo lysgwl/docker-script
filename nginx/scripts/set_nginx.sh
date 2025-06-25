@@ -316,7 +316,7 @@ handle_nginx_config()
 # 设置 nginx 配置
 set_nginx_conf()
 {
-	echo "设置${nginx_config[name]}配置文件"
+	echo "[INFO] 设置${nginx_config[name]}配置文件"
 
 	# nginx 预设数据
 	local target_dir="${system_config[conf_dir]}/data"
@@ -378,7 +378,7 @@ set_nginx_user()
 			"${nginx_config[sys_path]}" \
 			"${system_config[config_dir]}"
 
-	echo "设置${nginx_config[name]}权限完成!"
+	echo "[INFO] 设置${nginx_config[name]}权限完成!"
 }
 
 # 设置 nginx 环境
