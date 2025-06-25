@@ -29,6 +29,7 @@ RUN /app/scripts/entrypoint.sh init
 
 # CMD ["/bin/sh", "-c", "while true; do echo 'Running...'; sleep 60; done"]
 
+
 FROM alpine:latest
 
 LABEL version="1.0"

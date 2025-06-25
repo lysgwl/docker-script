@@ -6,11 +6,11 @@ declare -A nginx_config=(
 	["port"]="${HTTP_PORT:-80}"		# 端口号
 	["sys_path"]="/usr/local/nginx"	# 安装路径
 	["bin_file"]="/usr/local/nginx/sbin/nginx"							# 运行文件
-	["conf_file"]="${system_config[config_dir]}/nginx/nginx.conf"		# 配置文件
-	["pid_file"]="${system_config[data_dir]}/nginx/nginx.pid"			# 进程标识
-	["lock_file"]="${system_config[data_dir]}/nginx/nginx.lock"			# 锁文件
-	["error_file"]="${system_config[data_dir]}/nginx/logs/error.log"	# 错误日志
-	["access_file"]="${system_config[data_dir]}/nginx/logs/access.log"	# 运行日志
+	["conf_file"]="${system_config[config_dir]}/nginx.conf"				# 配置文件
+	["pid_file"]="${system_config[data_dir]}/nginx.pid"					# 进程标识
+	["lock_file"]="${system_config[data_dir]}/nginx.lock"				# 锁文件
+	["error_file"]="${system_config[data_dir]}/logs/error.log"			# 错误日志
+	["access_file"]="${system_config[data_dir]}/logs/access.log"		# 运行日志
 )
 
 # 定义 nginx 源码数组
@@ -252,7 +252,10 @@ install_nginx_env()
 	elif [ "$arg" = "config" ]; then
 		if [[ ! -d "${nginx_config[sys_path]}" || ! -e "${nginx_config[bin_file]}" ]]; then	
 			# 安装二进制文件
-			install_binary "$target_path" "${nginx_config[sys_path]}" "/usr/local/bin/${nginx_config[name]}" || return 4
+			install_binary "$target_path" "${nginx_config[sys_path]}" || return 4
+			
+			# 创建符号链接
+			install_binary "${nginx_config[bin_file]}" "" "/usr/local/bin/${nginx_config[name]}" || return 4
 		fi
 	else
 		echo "[ERROR] 无效的未知参数:$arg"
