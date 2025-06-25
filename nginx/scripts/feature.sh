@@ -1142,3 +1142,90 @@ modify_xml_config()
 	
 	return 0
 }
+
+# 检查 nginx 配置
+check_nginx_conf()
+{
+	local conf_file="$1"
+	local status_code=0
+
+	status_code=$(gawk '
+	BEGIN {
+		stack_idx = 0          # 括号堆栈索引
+		has_http = 0           # 存在未注释的http块
+		has_server = 0         # 存在未注释的server块
+		invalid_config = 0     # 配置是否无效
+		line_num = 0           # 当前行号
+		delete stack           # 初始化堆栈
+	}
+
+	{
+		line_num++
+		$0 = gensub(/#.*/, "", "g")  # 去除行内注释
+		$0 = gensub(/^[[:blank:]]+|[[:blank:]]+$/, "", "g")  # 清理首尾空格
+		if ($0 ~ /^[[:blank:]]*$/) next  # 跳过空行
+	}
+
+	# 检测块开始
+	#match($0, /^([a-zA-Z_][a-zA-Z0-9_-]*)[ \t]+(.*)[ \t]*\{/, arr) {
+	match($0, /^([a-zA-Z_][a-zA-Z0-9_-]*)[ \t]+([^{}]*)[ \t]*\{[ \t]*$/, arr) {
+		block_type = arr[1]
+		block_param = arr[2]
+
+		if (block_type == "location") {
+			sub(/^[[:space:]]*[=~*]+[[:space:]]*/, "", block_param)  # 移除前缀修饰符
+		}
+
+		block_value=block_param
+		if (block_value == "") {
+			block_value=block_type
+		}
+
+		stack[++stack_idx] = block_value			  # 推入堆栈
+		
+		if (block_type == "http" || block_type == "server") {
+			has_http += (block_type == "http")       # 标记存在http块
+			has_server += (block_type == "server")   # 标记存在server块
+		}
+		next
+	}
+
+	# 检测闭合符
+	/^[[:blank:]]*\}/ {
+		if (stack_idx == 0) {
+			invalid_config = 1
+			next
+		}
+
+		current_block = stack[stack_idx]
+		stack_idx--
+		next
+	}
+
+	END {
+		# 错误优先级：括号不匹配 > 块存在性
+		if (invalid_config || stack_idx != 0) {
+			if (stack_idx > 0) {
+				current_block = stack[stack_idx]
+				if (current_block == "http") {
+					print "[ERROR] http块未闭合" > "/dev/stderr"
+				} else if (current_block == "server") {
+					print "[ERROR] server块未闭合" > "/dev/stderr"
+				} else {
+					printf "[ERROR] %s块未闭合\n", current_block > "/dev/stderr"
+				}
+			}
+			print 3
+			exit
+		}
+
+		# 有效配置判断
+		if (has_http && has_server)	{ print 0 }		# 完整配置
+		else if (has_http)			{ print 1 }		# 仅有http块
+		else if (has_server)		{ print 2 }		# server块不在http内
+		else						{ print 3 }		# 无有效块
+	}
+	' "$conf_file")
+
+	return $status_code
+}

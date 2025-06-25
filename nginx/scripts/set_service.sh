@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# root用户密码
+# root 用户密码
 readonly ROOT_PASSWORD="123456"
 
 # 定义用户配置数组
@@ -11,7 +11,7 @@ declare -A user_config=(
 	["group"]="${GROUPNAME:-root}"
 )
 
-# 定义SSHD配置数组
+# 定义 SSHD 配置数组
 declare -A sshd_config=(
 	["port"]="${SSHD_PORT:-22}"
 	["listen"]="0.0.0.0"
@@ -35,7 +35,7 @@ set_service_user()
 			 "${system_config[config_dir]}" \
 			 "${system_config[data_dir]}" \
 			 "${system_config[usr_dir]}"
-	
+			 
 	# 设置目录拥有者
 	echo "[DEBUG] 正在设置目录拥有者(${user_config[user]}:${user_config[group]})"
 	chown -R ${user_config[user]}:${user_config[group]} \
