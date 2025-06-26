@@ -1148,8 +1148,19 @@ check_nginx_conf()
 {
 	local conf_file="$1"
 	local status_code=0
+	
+	# 判断awk命令是否存在
+	local awk_cmd
+	if command -v gawk &>/dev/null; then
+		awk_cmd="gawk"
+	elif command -v awk &>/dev/null; then
+		awk_cmd="awk"
+	else
+		echo "[ERROR] awk命令不存在，请检查系统环境！"
+		return 1
+	fi
 
-	status_code=$(gawk '
+	status_code=$($awk_cmd '
 	BEGIN {
 		stack_idx = 0          # 括号堆栈索引
 		has_http = 0           # 存在未注释的http块
@@ -1221,11 +1232,243 @@ check_nginx_conf()
 
 		# 有效配置判断
 		if (has_http && has_server)	{ print 0 }		# 完整配置
-		else if (has_http)			{ print 1 }		# 仅有http块
-		else if (has_server)		{ print 2 }		# server块不在http内
-		else						{ print 3 }		# 无有效块
+		else if (has_http)			{ print 2 }		# 仅有http块
+		else if (has_server)		{ print 3 }		# server块不在http内
+		else						{ print 4 }		# 无有效块
 	}
 	' "$conf_file")
+	
+	# 捕获awk错误状态
+	local awk_exit=$?
+	
+	# 错误处理
+	if [ $awk_exit -ne 0 ]; then
+		echo "[ERROR] awk处理配置文件失败(退出码: $awk_exit)"
+		return 1
+	fi
+	
+	case $status_code in
+		0)
+			echo "[INFO] 配置文件完整且有效"
+			;;
+		2)
+			echo "[WARNING] 配置文件中仅有http块，未包含server块"
+			;;
+		3)
+			echo "[WARNING] 配置文件中server块未包含在http块内"
+			;;
+		4)
+			echo "[ERROR] 配置文件无效，未包含有效的http或server块"
+			;;
+		*)
+			echo "[ERROR] 未知错误"
+			;;
+	esac
 
 	return $status_code
+}
+
+# 修改 nginx location块
+modify_nginx_location()
+{
+	local conf_file="$1"
+	local location_path="$2"
+	local reference_content="$3"
+	local new_content="$4"
+	local comment_reference="${5:-true}"
+	
+	# 验证参数
+	if [[ -z "$conf_file" || -z "$location_path" || -z "$reference_content" || -z "$new_content" ]]; then
+		echo "[ERROR] 必要参数不能为空,请检查!"
+		return 1
+	fi
+	
+	# 检查配置文件
+	if [[ ! -f "$conf_file" ]]; then
+		echo "[ERROR] 配置文件不存在,请检查!"
+		return 1
+	fi
+	
+	local awk_cmd
+	if command -v gawk &>/dev/null; then
+		awk_cmd="gawk"
+	elif command -v awk &>/dev/null; then
+		awk_cmd="awk"
+	else
+		echo "[ERROR] awk命令不存在，请检查系统环境！"
+		return 1
+	fi
+	
+	# 创建备份文件
+	local backup_file="${conf_file}.bak"
+	if ! cp "$conf_file" "$backup_file"; then
+		 echo "[ERROR] 创建备份文件失败: $backup_file"
+		 return 1
+	fi
+	
+	# 创建临时文件
+	local temp_file
+	temp_file=$(mktemp)
+	
+	# awk 处理配置文件
+	$awk_cmd -v loc_path="$location_path" \
+		-v ref_cont="$reference_content" \
+		-v new_cont="$new_content" \
+		-v comment_ref="$comment_reference" \
+	'
+	function trim_line(line) {
+		# 移除首尾空格
+		sub(/^[[:space:]]+/, "", line)
+		sub(/[[:space:]]+$/, "", line)
+		
+		# 移除行尾注释但保留分号
+		sub(/[[:space:]]*#.*$/, "", line)
+		sub(/;[[:space:]]*$/, ";", line)
+		return line
+	}
+	
+	# 获取行首缩进
+	function get_indent(line) {
+		match(line, /^[[:space:]]*/)
+		return substr(line, 1, RLENGTH)
+	}
+	
+	BEGIN {
+		in_server = 0				# 是否在 server 块中
+		in_target_location = 0		# 是否在目标 location 块中
+		server_brace_depth = 0		# server 块花括号深度
+		location_brace_depth = 0	# location 块花括号深度
+		
+		# 多行匹配状态
+		match_index = 1
+		
+		# 分割参考内容
+		ref_count = split(ref_cont, ref_lines, "\n")
+	}
+	
+	# 检测 server 块开始
+	/^[[:space:]]*server[[:space:]]*\{/ {
+		in_server = 1
+		server_brace_depth = 1
+	}
+	
+	# 在 server 块中
+	in_server && !in_target_location {
+		# 更新花括号深度
+		if (/{/) server_brace_depth++
+		if (/}/) server_brace_depth--
+		
+		# 检测 server 块结束
+		if (server_brace_depth == 0) {
+			in_server = 0
+			print
+			next
+		}
+		
+		# 检测目标 location 块
+		#if ($0 ~ "location[[:space:]]+" loc_path "[[:space:]]*\{") {
+		if ($0 ~ "location[[:space:]]+" loc_path "[[:space:]]*\\{") {
+			in_target_location = 1
+			location_brace_depth = 1
+		}
+	}
+	
+	# 在目标location块中
+	in_target_location {
+		# 更新 location 花括号深度
+		if (/{/) location_brace_depth++
+		if (/}/) location_brace_depth--
+		
+		# 检测location块结束
+		if (location_brace_depth == 0) {
+			in_target_location = 0
+			print
+			next
+		}
+		
+		# 尝试匹配参考内容
+		if (match_index <= ref_count) {
+			current_line=$0
+			current_trim=trim_line(current_line)
+			
+			if (current_trim == trim_line(ref_lines[match_index])) {
+				# 存储原始行
+				original_lines[match_index] = current_line
+				match_index++
+				
+				# 全部匹配成功
+				if (match_index > ref_count) {
+					# 注释原始内容
+					if (comment_ref == "true") {
+						for (i = 1; i <= ref_count; i++) {
+							line = original_lines[i]
+							indent = get_indent(line)
+							print indent "#" substr(line, length(indent) + 1)
+						}
+					}
+					
+					# 添加新内容
+					split(new_cont, new_lines, "\n")
+					for (i = 1; i <= length(new_lines); i++) {
+						print indent new_lines[i]
+					}
+					
+					# 重置状态
+					match_index = 1
+					next
+				} else {
+					next
+				}
+			} else {
+				# 匹配失败时恢复已匹配行
+				for (i = 1; i < match_index; i++) {
+					print original_lines[i]
+				}
+				match_index = 1
+			}
+		}
+		
+		print
+		next
+	}
+	
+	# 打印其他行
+	{ print }
+	' "$conf_file" > "$temp_file" 2>&1
+	
+	# 捕获awk错误状态
+	local awk_exit=$?
+	
+	# 错误处理
+	if [ $awk_exit -ne 0 ]; then
+		echo "[ERROR] awk处理配置文件失败(退出码: $awk_exit)"
+		
+		echo "=== awk错误输出 ==="
+		cat "$temp_file"
+		echo "=================="
+		
+		# 恢复备份
+		if cp "$backup_file" "$conf_file"; then
+			echo "[INFO] 备份恢复配置文件: $backup_file -> $conf_file"
+		else
+			echo "[WARNING] 恢复备份失败! 请手动恢复: $backup_file"
+		fi
+
+		rm "$temp_file"
+		return 1
+	fi
+	
+	if ! cp "$temp_file" "$conf_file"; then
+		echo "[ERROR] 配置文件替换失败，恢复备份!"
+		
+		cp "$backup_file" "$conf_file"
+		rm "$temp_file"
+		
+		return 1
+	fi
+
+	rm "$temp_file"
+	echo "[INFO] 配置文件修改成功! $conf_file"
+	
+	return 0
 }

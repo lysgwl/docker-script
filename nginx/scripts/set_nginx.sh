@@ -295,22 +295,23 @@ handle_nginx_config()
 	local target_file=$1
 	echo "[INFO] 检查 nginx 配置文件:$target_file"
 	
+	# 检查 nginx 配置
 	check_nginx_conf "$target_file"
-	local ret=$?
 	
+	local ret=$?
 	echo "[WARNING] 检查配置文件$target_file状态:$ret"
-	case "$ret" in
-		0|2)# 正常配置
-			set_nginx_port "$target_file"
-			return 0
-			;;
-		1)	# 仅有 http 块
-			return 1 
-			;;
-		*)	# 无效配置
-			return 2 
-			;;
-	esac
+	
+	if [ "$ret" -eq 0 ] || [ "$ret" -eq 3 ]; then
+		# 正常配置
+		set_nginx_port "$target_file"
+		return 0
+	elif [ "$ret" -eq 2 ]; then
+		# 仅有 http 块
+		return 1
+	else
+		# 无效配置
+		return 2
+	fi
 }
 
 # 设置 nginx 配置
