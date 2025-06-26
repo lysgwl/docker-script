@@ -23,3 +23,23 @@
 	
 6. MetaTube
 	URL：https://raw.githubusercontent.com/metatube-community/jellyfin-plugin-metatube/dist/manifest.json	
+	
+7. command
+	entrypoint: ["/bin/bash", "-c"]
+	command: >
+	  '
+		# 复制配置文件
+		if [ -f "/config/jellyfin.conf" ] && [ -d "/config/nginx/extra/proxy-config" ]; then
+			cp -v "/config/jellyfin.conf" "/config/nginx/extra/proxy-config/"
+		fi
+		
+		# 注册信号
+		trap "
+			[ -f \"/config/nginx/extra/proxy-config/jellyfin.conf\" ] && 
+			rm -v \"/config/nginx/extra/proxy-config/jellyfin.conf\";
+			exit 0
+		" SIGTERM   # SIGTERM - 15
+		
+		# 启动主进程
+		exec /jellyfin/jellyfin
+	  '
