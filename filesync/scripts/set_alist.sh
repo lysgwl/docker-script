@@ -202,7 +202,8 @@ set_alist_conf()
     "cert_file": "",
     "key_file": "",
     "unix_file": "",
-    "unix_file_perm": ""
+    "unix_file_perm": "",
+	"enable_h2c": false
   },
   "temp_dir": "$tmp_dir",
   "bleve_dir": "$bleve_dir",

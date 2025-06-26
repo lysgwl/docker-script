@@ -33,6 +33,9 @@ source $WORK_DIR/scripts/set_service.sh
 # 加载 alist 脚本
 source $WORK_DIR/scripts/set_alist.sh
 
+# 加载 openlist 脚本
+source $WORK_DIR/scripts/set_openlist.sh
+
 # 加载 syncthing 脚本
 source $WORK_DIR/scripts/set_syncthing.sh
 
@@ -58,7 +61,12 @@ init_modules()
 	fi
 	
 	# 初始 alist 环境
-	if ! init_alist_service "$param"; then
+	#if ! init_alist_service "$param"; then
+	#	return 1
+	#fi
+	
+	# 初始 openlist 环境
+	if ! init_openlist_service "$param"; then
 		return 1
 	fi
 	
@@ -81,7 +89,10 @@ run_modules()
 	echo "[WARNING] running 当前用户:$(id -un), UID:$(id -u), UMASK:$(umask)"
 	
 	# 运行 alist 服务
-	run_alist_service
+	#run_alist_service
+	
+	# 运行 openlist 服务
+	run_openlist_service
 
 	# 运行 syncthing 服务
 	run_syncthing_service
@@ -94,7 +105,10 @@ run_modules()
 close_modules()
 {
 	# 关闭 alist 服务
-	close_alist_service
+	#close_alist_service
+	
+	# 关闭 openlist 服务
+	close_openlist_service
 	
 	# 关闭 syncthing 服务
 	close_syncthing_service

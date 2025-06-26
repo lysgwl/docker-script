@@ -70,11 +70,11 @@ RUN addgroup -g $PGID $GROUPNAME && \
 # 设置镜像源 (mirrors.ustc.edu.cn mirrors.aliyun.com)
 RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositories
 
-# 安装核心依赖库 - gawk shadow
-RUN apk update && apk add --no-cache bash ca-certificates coreutils openssl sqlite tzdata su-exec
+# 安装核心依赖库 
+RUN apk update && apk add --no-cache bash ca-certificates coreutils gawk openssl sqlite tzdata shadow su-exec
  
 # 安装运维工具 - cifs-utils git netcat-openbsd openssh openssh-server-pam samba vsftpd
-RUN apk add --no-cache bc curl jq tar wget xmlstarlet
+RUN apk add --no-cache bc curl jq rsync tar wget xmlstarlet
 
 RUN rm -rf /var/cache/apk/*
 	

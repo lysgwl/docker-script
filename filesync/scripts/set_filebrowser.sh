@@ -153,53 +153,117 @@ set_filebrowser_conf()
 		return 1
 	fi
 	
+	echo "[INFO] 初始化${filebrowser_config[name]}配置文件:${filebrowser_config[conf_file]}"
+	
 	# filebrowser 默认配置
 	if [ ! -e "${filebrowser_config[conf_file]}" ]; then
-		echo "${filebrowser_config[name]}配置文件:${filebrowser_config[conf_file]}"
-		
 		cat > "${filebrowser_config[etc_path]}/config.json" <<EOF
 {
-  "port": ${filebrowser_config[port]},
-  "address": "0.0.0.0",
-  "locale": "zh-cn",
-  "log": "${filebrowser_config[log_file]}",
-  "database": "${filebrowser_config[db_file]}",
-  "root": "${system_config[usr_dir]}",
-  "auth": {
-    "method": "password",
-    "header": ""
-  },
-  "recaptcha": {
-    "key": "",
-    "secret": ""
-  },
-  "baseURL": "",
-  "allowCommands": true,
-  "allowEdit": true,
-  "allowNew": true,
-  "commands": [
-    "ls",
-    "df",
-    "git",
-    "unzip"
-  ],
-  "shell": [],
-  "rules": [],
-  "branding": {
-    "name": "文件管理器",
-	"files": "",
-    "disableExternal": false,
-	"loginDescription": "欢迎使用文件管理系统",
-	"theme": "dark",
-	"color": "#3f51b5"
-  },
-  "filesystem": {
-    "followSymlinks": true,
-    "hideDotfiles": true
-  }
+    "settings": {
+        "key": "",
+        "signup": false,
+        "createUserDir": false,
+        "userHomeBasePath": "/users",
+        "defaults": {
+            "scope": ".",
+            "locale": "zh-cn",
+            "viewMode": "mosaic",
+            "singleClick": false,
+            "sorting": {
+                "by": "",
+                "asc": false
+            },
+            "perm": {
+                "admin": false,
+                "execute": true,
+                "create": true,
+                "rename": true,
+                "modify": true,
+                "delete": true,
+                "share": true,
+                "download": true
+            },
+            "commands": [
+                "ls",
+                "df",
+                "git",
+                "unzip"
+            ],
+            "hideDotfiles": true,
+            "dateFormat": false
+        },
+        "authMethod": "json",
+        "branding": {
+            "name": "文件管理器",
+            "disableExternal": true,
+            "disableUsedPercentage": true,
+            "files": "",
+            "theme": "dark",
+            "color": "#3f51b5"
+        },
+        "tus": {
+            "chunkSize": 10485760,
+            "retryCount": 5
+        },
+        "commands": {
+            "after_copy": [],
+            "after_delete": [],
+            "after_rename": [],
+            "after_save": [],
+            "after_upload": [],
+            "before_copy": [],
+            "before_delete": [],
+            "before_rename": [],
+            "before_save": [],
+            "before_upload": []
+        },
+        "shell": [],
+        "rules": []
+    },
+    "server": {
+        "root": "${system_config[usr_dir]}",
+        "baseURL": "",
+        "socket": "",
+        "tlsKey": "",
+        "tlsCert": "",
+        "port": "${filebrowser_config[port]}",
+        "address": "0.0.0.0",
+        "log": "${filebrowser_config[log_file]}",
+        "enableThumbnails": false,
+        "resizePreview": false,
+        "enableExec": true,
+        "typeDetectionByHeader": false,
+        "authHook": "",
+        "tokenExpirationTime": ""
+    },
+    "auther": {
+        "recaptcha": {
+            "key": "",
+            "secret": "",
+            "host": ""
+        }
+    }
 }
 EOF
-	fi	
+	fi
+	
+	# 初始化数据库
+	echo "[INFO] 初始化${filebrowser_config[name]}数据库:${filebrowser_config[db_file]}"
+
+	if [ ! -f "${filebrowser_config[db_file]}" ]; then
+		if ! "${filebrowser_config[bin_file]}" -d "${filebrowser_config[db_file]}" config init >/dev/null 2>&1; then
+			echo "[ERROR] 数据库初始化失败!"
+			return 1
+		fi
+	fi
+	
+	# 导入 config.json 的配置
+	echo "[INFO] 导入${filebrowser_config[name]}数据配置..."
+	
+	if ! "${filebrowser_config[bin_file]}" -d "${filebrowser_config[db_file]}" config import "${filebrowser_config[conf_file]}"  >/dev/null 2>&1; then
+		echo "[ERROR] 导入数据配置失败!"
+		return 1
+	fi
 	
 	echo "[INFO] 设置${filebrowser_config[name]}配置完成!"
 	return 0
@@ -217,6 +281,42 @@ set_filebrowser_user()
 		"${filebrowser_config[data_path]}" \
 		"${filebrowser_config[pid_path]}" 2>/dev/null || return 1
 	
+	# 设置管理员密码
+	local admin_user="admin"
+	echo "[INFO] 设置${filebrowser_config[name]}管理员用户$admin_user密码"
+	
+	if ! "${filebrowser_config[bin_file]}" users ls -d "${filebrowser_config[db_file]}" | grep -qE "^[0-9]+[[:space:]]+${admin_user}[[:space:]]" >/dev/null 2>&1; then
+		if ! "${filebrowser_config[bin_file]}" users add "$admin_user" \
+			"${filebrowser_config[passwd]}" \
+			-d "${filebrowser_config[db_file]}" \
+			--perm.admin \
+			--perm.execute \
+			--perm.create \
+			--perm.rename \
+			--perm.modify \
+			--perm.delete \
+			--perm.share \
+			--perm.download >/dev/null 2>&1; then
+			echo "[ERROR] 创建管理员$admin_user密码识别,请检查!"
+			return 1
+		fi
+	else
+		if ! "${filebrowser_config[bin_file]}" users update "$admin_user" \
+			-d "${filebrowser_config[db_file]}" \
+			-p "${filebrowser_config[passwd]}" \
+			--perm.admin \
+			--perm.execute \
+			--perm.create \
+			--perm.rename \
+			--perm.modify \
+			--perm.delete \
+			--perm.share \
+			--perm.download >/dev/null 2>&1; then
+			echo "[ERROR] 更新管理员$admin_user密码识别,请检查!"
+			return 1
+		fi
+	fi
+	
 	echo "[INFO] 设置${filebrowser_config[name]}权限完成!"
 	return 0
 }
@@ -232,7 +332,9 @@ set_filebrowser_env()
 		mkdir -p "${filebrowser_config[etc_path]}" "${filebrowser_config[data_path]}"
 		
 		# 设置 filebrowser 配置
-		set_filebrowser_conf
+		if ! set_filebrowser_conf; then
+			return 1
+		fi
 		
 		# 设置 filebrowser 用户
 		if ! set_filebrowser_user; then

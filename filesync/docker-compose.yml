@@ -18,9 +18,10 @@ services:
       - ${FILESYNC_PATH}/config:/config
       - ${FILESYNC_PATH}/data:/data
       - ${FILESYNC_PATH}/usr:/mnt/usr
-      - nas_files:/mnt/usr/files
-      - nas_media:/mnt/usr/media
-      - nas_project:/mnt/usr/project
+      - ${NGINXCFG_PATH}:/config/nginx
+      - nas-files:/mnt/usr/files
+      - nas-media:/mnt/usr/media
+      - nas-project:/mnt/usr/project
     env_file:
       - .env
     ports:
@@ -50,7 +51,7 @@ services:
       - ${BACKUP_PATH}/backup:/backups
       - ${BACKUP_PATH}/source:/source
       - type: bind
-        source: ${FILES_PATH}
+        source: nas-files
         target: /source/usr
         read_only: true
     env_file:
@@ -61,16 +62,16 @@ services:
     hostname: duplicati
     networks:
       - local_network
-    restart: unless-stopped  
+    restart: unless-stopped
     
 networks:
   local_network:
     external: true
     
 volumes:
-  nas_files:
+  nas-files:
     external: true
-  nas_media:
+  nas-media:
     external: true
-  nas_project:
+  nas-project:
     external: true

@@ -173,7 +173,7 @@ set_syncthing_conf()
 	  sleep 5
 	done
 	
-	echo "[INFO] ${syncthing_config[name]}配置文件:${syncthing_config[conf_file]}"
+	echo "[INFO] 初始化${syncthing_config[name]}配置文件:${syncthing_config[conf_file]}"
 	
 	# 修改 Syncthing 配置
 	if [ -f "${syncthing_config[conf_file]}" ]; then
