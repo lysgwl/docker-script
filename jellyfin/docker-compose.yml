@@ -17,24 +17,36 @@ services:
       - ${CONFIG_PATH}:/config
       - ${CACHE_PATH}:/cache
       - ${DATA_PATH}:/data
-      - nas_media:/media
+      - ${NGINXCFG_PATH}:/config/nginx
+      - ${NGINXCFG_FILE}:/config/jellyfin.conf
+      - nas-media:/media
     env_file:
       - .env
     ports:
       - 8096:8096
     privileged: true
     hostname: jellyfin
-    restart: always
-    #extra_hosts:
-    #  - "api.themoviedb.org:31.13.85.34"
-    #  - "api.themoviedb.org:128.121.146.235"
     networks:
       - local_network
+    entrypoint: ["/bin/sh", "-c"]
+    command: >
+      '
+        # 复制配置文件
+        if [ -f "/config/jellyfin.conf" ] && [ -d "/config/nginx/extra/proxy-config" ]; then
+            if [ ! -f "/config/nginx/extra/proxy-config/jellyfin.conf" ]; then
+                cp -v "/config/jellyfin.conf" "/config/nginx/extra/proxy-config/"
+            fi
+        fi
+        
+        # 启动主进程
+        exec /jellyfin/jellyfin
+      '
+    restart: always
       
 networks:
   local_network:
     external: true
     
 volumes:
-  nas_media:
+  nas-media:
     external: true
