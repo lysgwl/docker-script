@@ -2,7 +2,7 @@
 
 1. TMDB 
 	URL: https://www.themoviedb.org/
-	API Key: 70b7c150e88ea8cddd19403f53fa8388
+	API: NzBiN2MxNTBlODhlYThjZGRkMTk0MDNmNTNmYTgzODg
 	
 2. Bangumi
 	URL: https://jellyfin-plugin-bangumi.pages.dev/repository.json
@@ -12,8 +12,6 @@
 	jellyfin-cli					# 进入 Jellyfin 控制台
 	jellyfin-cli metadata update	# 更新元数据
 	
-	bid=TWS6cCMpsVY; dbcl2="39923961:LA1G+yiQBKQ"; ck=RRdz; push_noty_num=0; push_doumail_num=0; frodotk_db="ecbfb47b1628e7c6c63f1d71427ab752"
-
 4. Jellyfin 刮削加速
 	wget http://file.867678.xyz/patch/jellyfin/normal/net5.0-Linux-Release/System.Net.Http.dll -O /usr/lib/jellyfin/bin/System.Net.Http.dll
 	systemctl restart jellyfin.service	
