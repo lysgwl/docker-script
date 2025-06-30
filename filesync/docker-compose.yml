@@ -50,7 +50,7 @@ services:
       - ${BACKUP_PATH}/config:/config
       - ${BACKUP_PATH}/backup:/backups
       - ${BACKUP_PATH}/source:/source
-      - type: bind
+      - type: volume
         source: nas-files
         target: /source/usr
         read_only: true
