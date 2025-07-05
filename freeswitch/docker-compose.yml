@@ -7,7 +7,7 @@ services:
     image: freeswitch-image
     environment:
       - TZ=${TZ}
-      - EXTERNAL_IP=${EXTERNAL_ADDR}
+      - EXTERNAL_IP=${MACVLAN_ADDR}
     volumes:
       - ${CONFIG_PATH}:/config
       - ${DATA_PATH}:/data

@@ -31,14 +31,14 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command: >
       '
-        # 复制配置文件
+        # ??????
         if [ -f "/config/jellyfin.conf" ] && [ -d "/config/nginx/extra/proxy-config" ]; then
             if [ ! -f "/config/nginx/extra/proxy-config/jellyfin.conf" ]; then
                 cp -v "/config/jellyfin.conf" "/config/nginx/extra/proxy-config/"
             fi
         fi
         
-        # 启动主进程
+        # ?????
         exec /jellyfin/jellyfin
       '
     restart: always

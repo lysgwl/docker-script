@@ -15,6 +15,12 @@ services:
       #- portainer_data:/data
     ports:
       - "9000:9000"
-    privileged: true	# 授予容器更高的权限  
+    privileged: true	# 授予容器更高的权限
+    hostname: portainer
     restart: always
-    network_mode: bridge
+    networks:
+      - local_network
+     
+networks:
+  local_network:
+    external: true

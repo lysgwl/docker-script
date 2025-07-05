@@ -318,6 +318,15 @@ build_freeswitch_source()
 		echo "[ERROR] freeswitch安装失败,请检查!"
 		return 4
 	}
+	
+	#make cd-sounds-install && \
+	make cd-moh-install && \
+	make uhd-sounds-install && \
+	make uhd-moh-install && \
+	make hd-sounds-install && \
+	make hd-moh-install && \
+	make sounds-install && \
+	make moh-install
 
 	# 清理源码
 	rm -rf "$path"
@@ -403,25 +412,26 @@ set_freeswitch_vars()
 	
 	local vars_conf="${freeswitch_config[etc_path]}/freeswitch/vars.xml"
 	if [ -f "$vars_conf" ]; then
-		modify_xml_config -f "$vars_conf" -m insert \
-			-o '//X-PRE-PROCESS[@data="domain=$${local_ip_v4}"]' \
-			-n '<X-PRE-PROCESS cmd="set" data="local_ip_v4=auto"/>' \
-			-p before
-			
 		modify_xml_config -f "$vars_conf" -m replace \
 			-o '//X-PRE-PROCESS[@data="default_password=1234"]' \
 			-n '<X-PRE-PROCESS cmd="set" data="default_password='"${freeswitch_config[passwd]}"'"/>' \
 			-p after
 			
 		if [ -n "${freeswitch_config[external_ip]}" ]; then
+			modify_xml_config -f "$vars_conf" -m insert \
+				-o '//X-PRE-PROCESS[@data="domain=$${local_ip_v4}"]' \
+				-n '<X-PRE-PROCESS cmd="set" data="local_ip_v4='"${freeswitch_config[external_ip]}"'"/>' \
+				-p before
+			
+			# '"${freeswitch_config[external_ip]}"'
 			modify_xml_config -f "$vars_conf" -m replace \
 				-o '//X-PRE-PROCESS[@data="external_rtp_ip=stun:stun.freeswitch.org"]' \
-				-n '<X-PRE-PROCESS cmd="set" data="external_rtp_ip='"${freeswitch_config[external_ip]}"'"/>' \
+				-n '<X-PRE-PROCESS cmd="set" data="external_rtp_ip=$${local_ip_v4}"/>' \
 				-p after
 				
 			modify_xml_config -f "$vars_conf" -m replace \
 				-o '//X-PRE-PROCESS[@data="external_sip_ip=stun:stun.freeswitch.org"]' \
-				-n '<X-PRE-PROCESS cmd="set" data="external_sip_ip='"${freeswitch_config[external_ip]}"'"/>' \
+				-n '<X-PRE-PROCESS cmd="set" data="external_sip_ip=$${local_ip_v4}"/>' \
 				-p after
 		fi	
 	fi
@@ -434,7 +444,7 @@ set_freeswitch_vars()
 		
 		modify_xml_config -f "$event_socket_conf" -m update \
 			-o '//param[@name="password"]' \
-			-n 'value="'"${freeswitch_config[passwd]}"'"'	# "value=\"${freeswitch_config[passwd]}\""
+			-n 'value="ClueCon"'
 	fi
 	
 	echo "[INFO] 完成配置文件(vars.xml)设置"
@@ -503,7 +513,7 @@ set_freeswitch_env()
 		set_freeswitch_user
 	fi
 	
-	echo "[INFO]设置${freeswitch_config[name]}完成!"
+	echo "[INFO] 设置${freeswitch_config[name]}完成!"
 	return 0
 }
 
