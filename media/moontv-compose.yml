@@ -1,0 +1,19 @@
+
+name: moontv
+
+services:
+  moontv-server:
+    container_name: moontv
+    image: ghcr.io/senshinya/moontv:latest
+    environment:
+      - PASSWORD=123456
+    ports:
+      - '3000:3000'
+    hostname: moontv
+    networks:
+      - local_network
+    restart: unless-stopped
+
+networks:
+  local_network:
+    external: true
