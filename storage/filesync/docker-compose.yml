@@ -11,17 +11,14 @@ services:
       - TZ=${TZ}
       - HTTP_PROXY=${PROXY_HOST}
       - HTTPS_PROXY=${PROXY_HOST}
-    #cap_add:
-    #  - SYS_ADMIN 
-    #  - DAC_READ_SEARCH
     volumes:
       - ${FILESYNC_PATH}/config:/config
       - ${FILESYNC_PATH}/data:/data
       - ${FILESYNC_PATH}/usr:/mnt/usr
       - ${NGINXCFG_PATH}:/config/nginx
-      - nas-files:/mnt/usr/files
-      - nas-media:/mnt/usr/media
-      - nas-project:/mnt/usr/project
+      #- nas-files:/mnt/usr/files
+      #- nas-media:/mnt/usr/media
+      #- nas-project:/mnt/usr/project
     env_file:
       - .env
     ports:
@@ -35,39 +32,11 @@ services:
     networks:
       - local_network
     restart: unless-stopped
-      
-  duplicati-server:
-    container_name: duplicati
-    image: lscr.io/linuxserver/duplicati:latest
-    environment:
-      - PUID=${PUID}
-      - PGID=${PGID}
-      - TZ=${TZ}
-      - CLI_ARGS= --log-level=verbose --webservice-log-level=verbose
-      - DUPLICATI__WEBSERVICE_PASSWORD=${WEB_PASSWD_KEY}
-      - SETTINGS_ENCRYPTION_KEY=${DB_PASSWD_KEY}
-    volumes:
-      - ${BACKUP_PATH}/config:/config
-      - ${BACKUP_PATH}/backup:/backups
-      - ${BACKUP_PATH}/source:/source
-      - type: volume
-        source: nas-files
-        target: /source/usr
-        read_only: true
-    env_file:
-      - .env
-    ports:
-      - 8200:8200
-    privileged: true
-    hostname: duplicati
-    networks:
-      - local_network
-    restart: unless-stopped
-    
+
 networks:
   local_network:
     external: true
-    
+
 volumes:
   nas-files:
     external: true

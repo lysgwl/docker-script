@@ -419,6 +419,13 @@ run_filebrowser_service()
 	echo "[INFO] 启动${filebrowser_config[name]}服务成功!"
 }
 
+# 更新 filebrowser 服务
+update_filebrowser_service()
+{
+	echo "[INFO] 更新${filebrowser_config[name]}服务"
+	echo "[INFO] 更新${filebrowser_config[name]}服务成功!"
+}
+
 # 停止 filebrowser 服务
 close_filebrowser_service()
 {

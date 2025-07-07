@@ -5,6 +5,9 @@ set -eo pipefail
 # 工作目录
 readonly WORK_DIR=$(pwd)
 
+# 定时计划
+readonly UPDATE_CHECK_SCHEDULE=""
+
 # 首次运行标识
 readonly RUN_FIRST_LOCK="/var/run/first_run_flag.pid"
 
@@ -101,6 +104,13 @@ run_modules()
 	run_filebrowser_service
 }
 
+# 更新模块
+update_modules()
+{
+	# 更新 filebrowser
+	update_filebrowser_service
+}
+
 # 关闭模块
 close_modules()
 {
@@ -117,6 +127,64 @@ close_modules()
 	close_filebrowser_service
 }
 
+# 设置定时更新任务
+schedule_updates()
+{
+	echo "[INFO] 设置定时更新检查任务..."
+	
+	# 默认配置
+	local DEFAULT_SCHEDULE="0 3 * * 0"
+	local SCHEDULE=${UPDATE_CHECK_SCHEDULE:-$DEFAULT_SCHEDULE}
+	
+	if [[ $(echo "$SCHEDULE" | wc -w) -ne 5 ]] || 
+		! [[ "$SCHEDULE" =\~ ^([0-9*/,-]+[[:space:]]+){4}[0-9*/,-]+$ ]]; then
+		echo "[WARNING] cron表达式字段不符合要求, 请检查!"
+		return
+	fi	
+	
+	# 脚本替换
+	local run_script="$0"
+	
+	if command -v cron &>/dev/null; then
+		local cron_file="/etc/cron.d/check_container_update"
+		
+		echo "TZ=Asia/Shanghai" > "$cron_file"
+		echo "$SCHEDULE root /usr/bin/flock -n /tmp/update.lock $run_script update" >> "$cron_file"
+		
+		chmod 0644 "$cron_file"
+		cron -f &
+	else
+		(
+			# 初始计算
+			local run_sec=$(get_next_cron_time $SCHEDULE)
+			
+			while true; do
+				# 计算当前时间
+				local now_sec=$(date +%s)
+				
+				# 计算需要等待的秒数
+				local wait_seconds=$((run_sec - now_sec))
+				
+				# 如果已经过了执行时间，立即执行
+				if [[ $wait_seconds -lt 0 ]]; then
+					wait_seconds=0
+				fi
+				
+				# 等待到目标时间
+				if [[ $wait_seconds -gt 0 ]]; then
+					sleep $wait_seconds
+				fi
+				
+				# 执行更新检查
+				$run_script update
+				
+				# 计算下一次执行时间
+				run_sec=$(get_next_cron_time $SCHEDULE)
+			done
+		) &
+	fi
+}
+
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
 
 	if [[ ! -f "${RUN_FIRST_LOCK}" ]]; then
@@ -125,6 +193,9 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
 		if ! init_modules "$1"; then
 			exit 1
 		fi
+		
+		# 设置定时更新任务
+		schedule_updates
 		
 		touch "${RUN_FIRST_LOCK}"
 	fi	
@@ -145,5 +216,11 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
 		
 		# 保持容器运行
 		tail -f /dev/null
+	fi
+	
+	if [ "$1" = "run" ]; then
+		echo "===== 更新服务阶段 ====="
+		
+		update_modules
 	fi
 fi
