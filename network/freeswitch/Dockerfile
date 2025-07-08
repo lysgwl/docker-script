@@ -1,4 +1,4 @@
-FROM debian:bookworm AS builder
+FROM debian:bookworm-slim AS builder
 
 LABEL stage=builder
 
@@ -8,10 +8,17 @@ LABEL stage=builder
 # 设置环境变量
 ENV LANG=C.UTF-8 \
 	LC_ALL=C.UTF-8 \
-	DEBIAN_FRONTEND=noninteractive
+	DEBIAN_FRONTEND=noninteractive \
+	PERL_MM_USE_DEFAULT=1
 
 # 设置镜像源
-RUN sed -i 's@deb.debian.org@mirrors.ustc.edu.cn@g' /etc/apt/sources.list.d/debian.sources	
+RUN sed -i 's@deb.debian.org@mirrors.ustc.edu.cn@g' /etc/apt/sources.list.d/debian.sources
+
+# 设置PERL源
+ARG CPAN_MIRROR="http://mirrors.ustc.edu.cn/CPAN/"
+RUN mkdir -p /usr/share/perl5/CPAN/Config/ && \
+	echo "mirror $CPAN_MIRROR" > /usr/share/perl5/CPAN/Config/Mirrors.pm && \
+	echo "urllist $CPAN_MIRROR" >> /usr/share/perl5/CPAN/Config/Mirrors.pm
 
 # 安装软件包
 RUN apt-get update && \
@@ -45,10 +52,14 @@ RUN chmod +x /app/scripts/*.sh
 # 执行初始化
 RUN /app/scripts/entrypoint.sh init
 
-# 安装perl模块
-RUN cpanm --local-lib=/usr/local/perl XML::LibXML XML::LibXML::PrettyPrint && \
-	rm -rf /root/.cpanm
-
+# 安装Perl模块
+RUN cpanm --local-lib=/usr/local/perl \
+		  --mirror $CPAN_MIRROR \
+		  --mirror-only \
+		  XML::LibXML \
+	      XML::LibXML::PrettyPrint && \
+	rm -rf /root/.cpanm /root/.cpan
+	
 # CMD ["/bin/sh", "-c", "while true; do echo 'Running...'; sleep 60; done"]
 
 FROM debian:bookworm
@@ -66,7 +77,7 @@ ENV PUID=$PUID \
 	GROUPNAME=$GROUPNAME \
 	LANG=C.UTF-8 \
 	DEBIAN_FRONTEND=noninteractive
-	
+
 # 配置时区
 RUN ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
 	echo 'Asia/Shanghai' > /etc/timezone
@@ -95,7 +106,7 @@ RUN apt-get install -y --no-install-recommends \
 		openssh-client \
 		openssh-server && \
 	apt-get clean && rm -rf /var/lib/apt/lists/*
-	
+
 # 工作目录
 WORKDIR /app
 
@@ -111,10 +122,10 @@ COPY --chown=$USERNAME:$GROUPNAME scripts/ /app/scripts
 # 设置权限
 RUN chown -R $USERNAME:$GROUPNAME /app && \
 	chmod +x /app/scripts/*.sh
-	
-# 设置perl环境变量	
-ENV PERL5LIB=/usr/local/perl/lib/perl5	
-	
+
+# 设置perl环境变量
+ENV PERL5LIB=/usr/local/perl/lib/perl5
+
 # 暴露端口
 EXPOSE 22
 EXPOSE 8021/tcp	

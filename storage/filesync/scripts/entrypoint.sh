@@ -137,7 +137,7 @@ schedule_updates()
 	local SCHEDULE=${UPDATE_CHECK_SCHEDULE:-$DEFAULT_SCHEDULE}
 	
 	if [[ $(echo "$SCHEDULE" | wc -w) -ne 5 ]] || 
-		! [[ "$SCHEDULE" =\~ ^([0-9*/,-]+[[:space:]]+){4}[0-9*/,-]+$ ]]; then
+	   ! [[ "$SCHEDULE" =\~ ^([0-9*/,-]+[[:space:]]+){4}[0-9*/,-]+$ ]]; then
 		echo "[WARNING] cron表达式字段不符合要求, 请检查!"
 		return
 	fi

@@ -293,7 +293,10 @@ build_freeswitch_source()
 	fi
 	
 	cd "$path"
+	
+	# mod_av mod_verto mod_xml_curl mod_python
 	sed -i 's|#formats/mod_shout|formats/mod_shout|' build/modules.conf.in
+	sed -i '/^applications\/mod_signalwire$/s/^/#/' build/modules.conf.in
 	
 	# --sysconfdir=/etc --localstatedir=/var -with-python --with-erlang
 	./bootstrap.sh -j
@@ -305,7 +308,8 @@ build_freeswitch_source()
 				--with-gnu-ld \
 				--with-openssl \
 				--enable-core-odbc-support \
-				--enable-zrtp
+				--enable-zrtp \
+				--disable-signalwire
 
 	# 编译 freeswitch
 	make -j$(nproc)|| {
@@ -318,6 +322,9 @@ build_freeswitch_source()
 		echo "[ERROR] freeswitch安装失败,请检查!"
 		return 4
 	}
+	
+	make sounds-install && \
+	make moh-install
 	
 	#make cd-sounds-install && \
 	make cd-moh-install && \

@@ -104,4 +104,8 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
 		# 保持容器运行
 		tail -f /dev/null
 	fi
+	
+	if [ "$1" = "test" ]; then
+		init_freeswitch_service "init"
+	fi
 fi
