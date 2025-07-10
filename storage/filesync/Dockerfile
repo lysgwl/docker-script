@@ -12,7 +12,8 @@ RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositorie
 RUN apk update && apk add --no-cache bash curl coreutils jq rsync
 
 # 工作目录
-WORKDIR /app
+ARG WORK_DIR=/app
+WORKDIR $WORK_DIR
 
 # 复制文件
 COPY scripts/ /app/scripts
@@ -31,6 +32,9 @@ FROM alpine:latest
 LABEL version="1.0"
 LABEL author="wanglei<lysgwl@163.com>"
 LABEL description="FileSync For Debian"
+
+# 定义工作目录
+ARG WORK_DIR=/app
 
 # 定义用户和组
 ARG PUID=1000
@@ -58,8 +62,11 @@ ENV FILEBROWSER_PORT=$FILEBROWSER_PORT \
 	SYNCTHING_TRANS_PORT=$SYNCTHING_TRANS_PORT \
 	SYNCTHING_DISCOVERY_PORT=$SYNCTHING_DISCOVERY_PORT
 	
+ENV LANG=C.UTF-8 \
+	WORK_DIR=$WORK_DIR
+	
 # 设置时区和语言
-ENV LANG=C.UTF-8
+
 RUN ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
 	echo 'Asia/Shanghai' > /etc/timezone
 	
@@ -71,7 +78,7 @@ RUN addgroup -g $PGID $GROUPNAME && \
 RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositories
 
 # 安装核心依赖库 
-RUN apk update && apk add --no-cache bash ca-certificates coreutils gawk openssl sqlite tzdata shadow su-exec
+RUN apk update && apk add --no-cache bash ca-certificates coreutils dcron gawk openssl sqlite tzdata shadow su-exec
  
 # 安装运维工具 - cifs-utils git netcat-openbsd openssh openssh-server-pam samba vsftpd
 RUN apk add --no-cache bc curl jq rsync tar wget xmlstarlet
@@ -79,7 +86,7 @@ RUN apk add --no-cache bc curl jq rsync tar wget xmlstarlet
 RUN rm -rf /var/cache/apk/*
 	
 # 工作目录
-WORKDIR /app
+WORKDIR $WORK_DIR
 
 # 复制文件
 COPY --chown=$PUID:$PGID --from=builder /app/install /app/install

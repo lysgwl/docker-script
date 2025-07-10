@@ -15,7 +15,7 @@ services:
       - ${FILESYNC_PATH}/config:/config
       - ${FILESYNC_PATH}/data:/data
       - ${FILESYNC_PATH}/usr:/mnt/usr
-      - ${NGINXCFG_PATH}:/config/nginx
+      - ${DOWNLOADS_PATH}:/mnt/usr/downloads
       #- nas-files:/mnt/usr/files
       #- nas-media:/mnt/usr/media
       #- nas-project:/mnt/usr/project
