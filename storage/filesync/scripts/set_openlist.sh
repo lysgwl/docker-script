@@ -70,7 +70,6 @@ download_openlist()
 	fi
 	
 	echo "$latest_file"
-	return 0
 }
 
 # 安装 openlist 环境
@@ -79,67 +78,38 @@ install_openlist_env()
 	local arg=$1
 	echo "[INFO] 安装${openlist_config[name]}服务环境"
 	
-	local install_dir="${system_config[install_dir]}"
 	local downloads_dir="${system_config[downloads_dir]}"
 	
-	local name="${openlist_config[name]}"
-	local target_path="$install_dir/$name"
+	local install_dir="${system_config[install_dir]}"
+	local target_path="$install_dir/${openlist_config[name]}"
 
 	if [ "$arg" = "init" ]; then
-		if [ -z "$(find "$install_dir" -maxdepth 1 -type f -name "${name}*" -print -quit 2>/dev/null)" ]; then
-			local output_dir="$downloads_dir/output"
-			if [ ! -d "$output_dir" ]; then
-				mkdir -p "$output_dir"
-			fi
+		if [ -z "$(find "$install_dir" -maxdepth 1 -type f -name "${openlist_config[name]}*" -print -quit 2>/dev/null)" ]; then
+		
+			# 获取安装包
+			local latest_path
+			latest_path=$(get_service_archive "${openlist_config[name]}" "$downloads_dir" download_openlist) || {
+				echo "[ERROR] 获取 ${openlist_config[name]} 安装包失败" >&2
+				return 1
+			}
 			
-			local findpath latest_path archive_path
-			if ! findpath=$(find_latest_archive "$downloads_dir" ".*${name}.*"); then
-				echo "[WARNING] 未匹配到$name软件包..." >&2
-				
-				# 下载文件并验证
-				local download_file
-				download_file=$(download_openlist "$downloads_dir") && [ -n "$download_file" ] || {
-					echo "[ERROR] 下载$name软件包失败,请检查!"
-					return 2
-				}
-				
-				archive_path=$(extract_and_validate "$download_file" "$output_dir" ".*${name}.*") || return 3
-			else
-				# 解析文件类型和路径
-				local archive_type=$(jq -r '.filetype' <<< "$findpath")
-				archive_path=$(jq -r '.filepath' <<< "$findpath")
-				
-				# 验证文件类型
-				if [[ -z "$archive_type" ]] || ! [[ "$archive_type" =~ ^(file|directory)$ ]]; then
-					return 1
-				fi
-				
-				if [ "$archive_type" = "file" ]; then
-					archive_path=$(extract_and_validate "$archive_path" "$output_dir" ".*${name}.*") || return 3
-				fi
-			fi
+			# 安装软件包
+			install_binary "$latest_path" "$target_path" || {
+				echo "[ERROR] 安装 ${openlist_config[name]} 失败" >&2
+				return 2
+			}
 			
-			# 查找目标文件
-			if [[ -f "$archive_path" ]]; then
-				latest_path="$archive_path"
-			else
-				latest_path=$(find "$archive_path" -maxdepth 1 -mindepth 1 -type f -name "${name}*" -print -quit 2>/dev/null)
-				if [[ -z "$latest_path" ]] || [[ ! -f "$latest_path" ]]; then
-					echo "[ERROR] $name可执行文件不存在,请检查!"
-					return 1
-				fi
-			fi
-			
-			# 安装二进制文件
-			install_binary "$latest_path" "$target_path" || return 4
-					
 			# 清理临时文件
-			rm -rf "$output_dir"
+			rrm -rf "$downloads_dir/output"
 		fi
 	elif [ "$arg" = "config" ]; then
+		# 安装软件包
 		if [[ ! -d "${openlist_config[sys_path]}" && ! -e "${openlist_config[bin_file]}" ]]; then
-			# 安装二进制文件
-			install_binary "$target_path" "${openlist_config[bin_file]}" "/usr/local/bin/$name" || return 4
+			
+			install_binary "$target_path" "${openlist_config[bin_file]}" "/usr/local/bin/${openlist_config[name]}" || {
+				echo "[ERROR] 安装 ${openlist_config[name]} 失败" >&2
+				return 2
+			}
 			
 			# 清理临时文件
 			rm -rf "$target_path"
@@ -410,6 +380,67 @@ run_openlist_service()
 
 	echo "$openlist_pid" > "$pid_file"
 	echo "[INFO] 启动${openlist_config[name]}服务成功!"
+}
+
+# 更新 openlist 服务
+update_openlist_service()
+{
+	echo "[INFO] 更新${openlist_config[name]}服务"
+	local downloads_dir="${system_config[usr_dir]}/downloads"
+	
+	# 获取安装包
+	local latest_path
+	latest_path=$(get_service_archive "${openlist_config[name]}" "$downloads_dir" download_openlist) || {
+		echo "[ERROR] 获取 ${openlist_config[name]} 安装包失败" >&2
+		return 1
+	}
+	
+	# 安装软件包
+	if [ ! -f "${openlist_config[bin_file]}" ]; then
+		install_binary "$latest_path" "${openlist_config[bin_file]}" "/usr/local/bin/${openlist_config[name]}" || {
+			echo "[ERROR] 安装 ${openlist_config[name]} 失败" >&2
+			return 2
+		}
+		return 0
+	fi
+	
+	local current_version=$(${openlist_config[bin_file]} version | awk '/^Version:/ {print $2}' | tr -d 'v')
+	local new_version=$($latest_path version | awk '/^Version:/ {print $2}' | tr -d 'v')
+	
+	# 版本比较
+	compare_versions "$new_version" "$current_version"
+	local result=$?
+
+	case $result in
+		0)
+			echo "[INFO] ${openlist_config[name]} 已是最新版本 (v$current_version)"
+			return 0 
+			;;
+		1)
+			# 停止 openlist 运行
+			close_openlist_service
+			
+			# 安装软件包
+			install_binary "$latest_path" "${openlist_config[bin_file]}" || {
+				echo "[ERROR] 更新 ${openlist_config[name]} 失败" >&2
+				return 3
+			}
+			
+			# 清理临时文件
+			rm -rf "$downloads_dir/output"
+			
+			echo "[INFO] ${openlist_config[name]} 已更新至 v$new_version"
+			return 0
+			;;
+		2)
+			echo "[INFO] 当前版本 (v$current_version) 比下载版本 (v$new_version) 更高"
+			return 0
+			;;
+		*)
+			echo "[ERROR] 版本比较异常 $current_version -> $new_version" >&2
+			return 2
+			;;
+	esac
 }
 
 # 停止 openlist 服务

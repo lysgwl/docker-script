@@ -1,55 +1,5 @@
 #!/bin/bash
 
-# root 用户密码
-readonly ROOT_PASSWORD="123456"
-
-# 定时计划
-readonly UPDATE_CHECK_SCHEDULE="*/1 * * * *"
-
-# 初始标识
-readonly RUN_FIRST_LOCK="/var/run/run_init_flag.pid"
-
-# 更新标识
-readonly RUN_UPDATE_LOCK="/var/run/run_update_flag.pid"
-
-# 定义用户配置数组
-declare -A user_config=(
-	["uid"]="${PUID:-0}"
-	["gid"]="${PGID:-0}"
-	["user"]="${USERNAME:-root}"
-	["group"]="${GROUPNAME:-root}"
-)
-
-# 定义 SSHD 配置数组
-declare -A sshd_config=(
-	["port"]="${SSHD_PORT:-22}"
-	["listen"]="0.0.0.0"
-	["confile"]="/etc/ssh/sshd_config"
-	["hostkey"]="/etc/ssh/ssh_host_rsa_key"
-	["logfile"]="/var/log/sshd.log"
-)
-
-# 定义系统配置数组
-declare -A system_config=(
-	["downloads_dir"]="${WORK_DIR}/downloads"		# 下载目录
-	["install_dir"]="${WORK_DIR}/install"			# 安装目录
-	["conf_dir"]="${WORK_DIR}/config"				# 预配置目录
-	["config_dir"]="/config"						# 配置目录
-	["data_dir"]="/data"							# 数据目录
-	["usr_dir"]="/mnt/usr"							# 用户目录
-	["arch"]="$(uname -m)"							# 系统架构
-	["type"]="$(uname | tr '[A-Z]' '[a-z]')"		# 系统类型
-)
-
-umask ${UMASK:-022}
-
-# 加载 feature 脚本
-source $WORK_DIR/scripts/feature.sh
-
-readonly -A user_config
-readonly -A sshd_config
-readonly -A system_config
-
 # 设置系统用户
 set_service_user()
 {

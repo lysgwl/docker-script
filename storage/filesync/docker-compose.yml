@@ -16,9 +16,9 @@ services:
       - ${FILESYNC_PATH}/data:/data
       - ${FILESYNC_PATH}/usr:/mnt/usr
       - ${DOWNLOADS_PATH}:/mnt/usr/downloads
-      #- nas-files:/mnt/usr/files
-      #- nas-media:/mnt/usr/media
-      #- nas-project:/mnt/usr/project
+      - nas-files:/mnt/usr/files
+      - nas-media:/mnt/usr/media
+      - nas-project:/mnt/usr/project
     env_file:
       - .env
     ports:

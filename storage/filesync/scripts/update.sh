@@ -4,31 +4,74 @@ set -eo pipefail
 # 获取工作目录
 WORK_DIR="${WORK_DIR:-/app}"
 
-# 加载服务脚本
-source $WORK_DIR/scripts/set_service.sh
+# 加载 common 脚本
+source $WORK_DIR/scripts/common.sh
 
-# 加载 openlist 脚本
-source $WORK_DIR/scripts/set_openlist.sh
-
-# 加载 syncthing 脚本
-source $WORK_DIR/scripts/set_syncthing.sh
-
-# 加载 filebrowser 脚本
-source $WORK_DIR/scripts/set_filebrowser.sh
+# 更新服务
+update_service()
+{
+	local service_name=$1
+	local update_func=$2
+	
+	service_status[$service_name]="进行中"
+	
+	if $update_func; then
+		service_status[$service_name]="✅ 成功"
+	else
+		service_status[$service_name]="❌ 失败"
+		overall_success=false
+	fi
+}
 
 # 更新模块
 update_modules()
 {
 	# echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] - $WORK_DIR" >> /var/log/test.log
 	
-	if [ ! -f "$RUN_UPDATE_LOCK" ]; then
-		touch "$RUN_UPDATE_LOCK"
-		
-		# 更新 filebrowser
-		if ! update_filebrowser_service; then
-			rm -rf "$RUN_UPDATE_LOCK"
-		fi
+	# 检查是否已有更新进行中
+	if [ -f "$RUN_UPDATE_LOCK" ]; then
+		echo "[WARNING] 更新已在进行中，跳过本次更新" >> "$RUN_UPDATE_LOG"
+		return 0
 	fi
+	
+	# 创建锁文件
+	touch "$RUN_UPDATE_LOCK" || {
+		echo "[ERROR] 无法创建锁文件: $RUN_UPDATE_LOCK" >> "$RUN_UPDATE_LOG"
+		return 1
+	}
+	
+	# 初始化状态
+	local overall_success=true
+	local -A service_status=(
+		["filebrowser"]="未执行"
+		["openlist"]="未执行"
+		["syncthing"]="未执行"
+	)
+	
+	# 更新开始
+	local start_time=$(date +%s)
+	echo "================= [$(date '+%Y-%m-%d %H:%M:%S')] 开始自动更新 =================" >> "$RUN_UPDATE_LOG"
+	
+	# 执行更新
+	update_service "filebrowser" update_filebrowser_service
+	update_service "openlist" update_openlist_service
+	update_service "syncthing" update_syncthing_service
+	
+	# 计算耗时
+	local end_time=$(date +%s)
+	local duration=$((end_time - start_time))
+	
+	# 更新状态
+	echo "" >> "$RUN_UPDATE_LOG"
+	for service in "${!service_status[@]}"; do
+		printf "%-15s: %s\n" "$service" "${service_status[$service]}" >> "$RUN_UPDATE_LOG"
+	done
+	
+	echo "" >> "$RUN_UPDATE_LOG"
+	echo "[耗时] ${duration} 秒" >> "$RUN_UPDATE_LOG"
+	
+	# 清理锁文件
+	trap 'rm -f "$RUN_UPDATE_LOCK"' EXIT
 }
 
 # 设置定时更新任务
@@ -70,7 +113,15 @@ schedule_updates()
 
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
 	if [ "$1" = "update" ]; then
-		echo "===== 更新服务阶段 ====="
+		echo "===== ${user_config[user]}:${user_config[group]} 更新服务阶段 =====" >> "$RUN_UPDATE_LOG"
 		update_modules
+		
+		# 执行模块
+		su-exec ${user_config[user]}:${user_config[group]} bash -c "
+			source \"$WORK_DIR/scripts/common.sh\"
+			run_modules
+		" &
+		
+		wait $!
 	fi
 fi
