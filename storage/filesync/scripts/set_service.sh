@@ -36,7 +36,7 @@ set_service_conf()
 	
 	if [[ -d "$target_dir" ]] && find "$target_dir" -mindepth 1 -maxdepth 1 -quit 2>/dev/null; then
 		if [[ ! -d "$dest_dir" ]] ||  ! rsync -av --remove-source-files --include='*.conf' --exclude='*' "$target_dir"/ "$dest_dir"/ >/dev/null; then
-			echo "[ERROR] nginx 配置文件设置失败, 请检查!"
+			echo "[ERROR] nginx 配置文件设置失败, 请检查!" >&2
 			return 1
 		fi
 	fi

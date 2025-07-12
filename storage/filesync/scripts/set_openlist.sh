@@ -89,25 +89,25 @@ install_openlist_env()
 			# 获取安装包
 			local latest_path
 			latest_path=$(get_service_archive "${openlist_config[name]}" "$downloads_dir" download_openlist) || {
-				echo "[ERROR] 获取 ${openlist_config[name]} 安装包失败" >&2
+				echo "[ERROR] 获取 ${openlist_config[name]} 安装包失败,请检查!" >&2
 				return 1
 			}
 			
 			# 安装软件包
 			install_binary "$latest_path" "$target_path" || {
-				echo "[ERROR] 安装 ${openlist_config[name]} 失败" >&2
+				echo "[ERROR] 安装 ${openlist_config[name]} 失败,请检查!" >&2
 				return 2
 			}
 			
 			# 清理临时文件
-			rrm -rf "$downloads_dir/output"
+			rm -rf "$downloads_dir/output"
 		fi
 	elif [ "$arg" = "config" ]; then
-		# 安装软件包
 		if [[ ! -d "${openlist_config[sys_path]}" && ! -e "${openlist_config[bin_file]}" ]]; then
 			
+			# 安装软件包
 			install_binary "$target_path" "${openlist_config[bin_file]}" "/usr/local/bin/${openlist_config[name]}" || {
-				echo "[ERROR] 安装 ${openlist_config[name]} 失败" >&2
+				echo "[ERROR] 安装 ${openlist_config[name]} 失败,请检查!" >&2
 				return 2
 			}
 			
@@ -298,7 +298,7 @@ set_openlist_env()
 		fi
 		
 		if [ ! -f "${openlist_config[bin_file]}" ]; then
-			echo "[ERROR] ${openlist_config[name]}可执行文件不存在,请检查!"
+			echo "[ERROR] ${openlist_config[name]}可执行文件不存在,请检查!" >&2
 			return 1
 		fi
 		
@@ -339,7 +339,7 @@ run_openlist_service()
 	echo "[INFO] 运行${openlist_config[name]}服务"
 	
 	if [ ! -e "${openlist_config[bin_file]}" ] && [ ! -e "${openlist_config[etc_path]}" ]; then
-		echo "[ERROR] ${openlist_config[name]}服务运行失败,请检查!"
+		echo "[ERROR] ${openlist_config[name]}服务运行失败,请检查!" >&2
 		return 1
 	fi
 	
@@ -355,7 +355,7 @@ run_openlist_service()
 			if ! grep -qF "${openlist_config[name]}" "/proc/$pid/cmdline" 2>/dev/null; then
 				rm -f "$pid_file"
 			else
-				echo "[WARNING] ${openlist_config[name]}服务已经在运行!(PID:$pid)"
+				echo "[WARNING] ${openlist_config[name]}服务已经在运行!(PID:$pid)" >&2
 				return 0
 			fi
 		fi
@@ -374,7 +374,7 @@ run_openlist_service()
 	
 	# 启动端口检测
 	if ! wait_for_ports "${openlist_config[port]}"; then
-		echo "[ERROR] ${openlist_config[name]} 端口未就绪！"
+		echo "[ERROR] ${openlist_config[name]} 端口未就绪!" >&2
 		return 1
 	fi
 
@@ -449,7 +449,7 @@ close_openlist_service()
 	echo "[INFO] 关闭${openlist_config[name]}服务"
 	
 	if [ ! -x "${openlist_config[bin_file]}" ]; then
-		echo "[ERROR] ${openlist_config[name]}服务不存在,请检查!"
+		echo "[ERROR] ${openlist_config[name]}服务不存在,请检查!" >&2
 		return
 	fi
 	

@@ -83,13 +83,13 @@ install_syncthing_env()
 			# 获取安装包
 			local latest_path
 			latest_path=$(get_service_archive "${syncthing_config[name]}" "$downloads_dir" download_syncthing) || {
-				echo "[ERROR] 获取 ${syncthing_config[name]} 安装包失败" >&2
+				echo "[ERROR] 获取 ${syncthing_config[name]} 安装包失败,请检查!" >&2
 				return 1
 			}
 			
 			# 安装软件包
 			install_binary "$latest_path" "$target_path" || {
-				echo "[ERROR] 安装 ${syncthing_config[name]} 失败" >&2
+				echo "[ERROR] 安装 ${syncthing_config[name]} 失败,请检查!" >&2
 				return 2
 			}
 					
@@ -101,7 +101,7 @@ install_syncthing_env()
 		
 			# 安装软件包
 			install_binary "$target_path" "${syncthing_config[bin_file]}" "/usr/local/bin/${syncthing_config[name]}" || {
-				echo "[ERROR] 安装 ${syncthing_config[name]} 失败" >&2
+				echo "[ERROR] 安装 ${syncthing_config[name]} 失败,请检查!" >&2
 				return 2
 			}
 			
@@ -120,7 +120,7 @@ set_syncthing_conf()
 	echo "[INFO] 设置${syncthing_config[name]}配置文件"
 	
 	if [ ! -f "${syncthing_config[bin_file]}" ]; then
-		echo "[ERROR] ${syncthing_config[name]}可执行文件不存在,请检查!"
+		echo "[ERROR] ${syncthing_config[name]}可执行文件不存在,请检查!" >&2
 		return 1
 	fi
 	
@@ -132,7 +132,7 @@ set_syncthing_conf()
 			--gui-user="admin" \
 			--gui-password="${syncthing_config[passwd]}"
 		if [ $? -ne 0 ]; then
-			echo "[ERROR] ${syncthing_config[name]}配置文件生成失败, 请检查!"
+			echo "[ERROR] ${syncthing_config[name]}配置文件生成失败, 请检查!" >&2
 			return 1
 		fi
 	fi
@@ -161,7 +161,7 @@ set_syncthing_conf()
 			-u '/configuration/gui/tls' -v "false" \
 			-u '/configuration/gui/urlbase' -v "/syncthing" \
 			"${syncthing_config[conf_file]}" || {
-			echo "[ERROR] ${syncthing_config[name]} GUI配置失败, 请检查!"
+			echo "[ERROR] ${syncthing_config[name]} GUI配置失败, 请检查!" >&2
 			return 1
 		}
 	
@@ -201,7 +201,7 @@ set_syncthing_conf()
 		xmlstarlet ed -L \
 			"${options_args[@]}" \
 			"${syncthing_config[conf_file]}" || {
-			echo "[ERROR] ${syncthing_config[name]}全局选项配置失败, 请检查!"
+			echo "[ERROR] ${syncthing_config[name]}全局选项配置失败, 请检查!" >&2
 			return 1
 		}
 			
@@ -216,7 +216,7 @@ set_syncthing_conf()
 			-s "/configuration/folder[@id='default'][not(copiers)]" -t elem -n "copiers" -v "4" \
 			-s "/configuration/folder[@id='default'][not(pullerMaxPendingKiB)]" -t elem -n "pullerMaxPendingKiB" -v "102400" \
 			"${syncthing_config[conf_file]}" || {
-			echo "[ERROR] ${syncthing_config[name]}文件夹配置失败, 请检查!"
+			echo "[ERROR] ${syncthing_config[name]}文件夹配置失败, 请检查!" >&2
 			return 1
 		}		
 	fi
@@ -292,7 +292,7 @@ run_syncthing_service()
 	echo "[INFO] 运行${syncthing_config[name]}服务"
 	
 	if [ ! -e "${syncthing_config[bin_file]}" ]; then
-		echo "[ERROR] ${syncthing_config[name]}服务运行失败,请检查!"
+		echo "[ERROR] ${syncthing_config[name]}服务运行失败,请检查!" >&2
 		return 1
 	fi
 	
@@ -308,7 +308,7 @@ run_syncthing_service()
 			if ! grep -qF "${syncthing_config[name]}" "/proc/$pid/cmdline" 2>/dev/null; then
 				rm -f "$pid_file"
 			else
-				echo "[WARNING] ${syncthing_config[name]}服务已经在运行(PID:$pid), 请检查!"
+				echo "[WARNING] ${syncthing_config[name]}服务已经在运行(PID:$pid), 请检查!" >&2
 				return 0
 			fi
 		fi
@@ -332,7 +332,7 @@ run_syncthing_service()
 	
 	# 启动端口检测
 	if ! wait_for_ports "${syncthing_config[http_port]}" "${syncthing_config[trans_port]}"; then
-		echo "[ERROR] ${syncthing_config[name]}端口未就绪，查看服务日志："
+		echo "[ERROR] ${syncthing_config[name]}端口未就绪,查看服务日志!" >&2
 		return 1
 	fi
 	
@@ -407,7 +407,7 @@ close_syncthing_service()
 	echo "[INFO] 关闭${syncthing_config[name]}服务"
 	
 	if [ ! -x "${syncthing_config[bin_file]}" ]; then
-		echo "[ERROR] ${syncthing_config[name]}服务不存在,请检查!"
+		echo "[ERROR] ${syncthing_config[name]}服务不存在,请检查!" >&2
 		return
 	fi
 	

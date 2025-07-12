@@ -82,13 +82,13 @@ install_filebrowser_env()
 			# 获取安装包
 			local latest_path
 			latest_path=$(get_service_archive "${filebrowser_config[name]}" "$downloads_dir" download_filebrowser) || {
-				echo "[ERROR] 获取 ${filebrowser_config[name]} 安装包失败" >&2
+				echo "[ERROR] 获取 ${filebrowser_config[name]} 安装包失败,请检查!" >&2
 				return 1
 			}
 			
 			# 安装软件包
 			install_binary "$latest_path" "$target_path" || {
-				echo "[ERROR] 安装 ${filebrowser_config[name]} 失败" >&2
+				echo "[ERROR] 安装 ${filebrowser_config[name]} 失败,请检查!" >&2
 				return 2
 			}
 			
@@ -100,7 +100,7 @@ install_filebrowser_env()
 			
 			# 安装软件包
 			install_binary "$target_path" "${filebrowser_config[bin_file]}" "/usr/local/bin/${filebrowser_config[name]}" || {
-				echo "[ERROR] 安装 ${filebrowser_config[name]} 失败" >&2
+				echo "[ERROR] 安装 ${filebrowser_config[name]} 失败,请检查!" >&2
 				return 2
 			}
 			
@@ -119,7 +119,7 @@ set_filebrowser_conf()
 	echo "[INFO] 设置${filebrowser_config[name]}配置文件"
 	
 	if [ ! -f "${filebrowser_config[bin_file]}" ]; then
-		echo "[ERROR] ${filebrowser_config[name]}可执行文件不存在,请检查!"
+		echo "[ERROR] ${filebrowser_config[name]}可执行文件不存在,请检查!" >&2
 		return 1
 	fi
 	
@@ -222,7 +222,7 @@ EOF
 
 	if [ ! -f "${filebrowser_config[db_file]}" ]; then
 		if ! "${filebrowser_config[bin_file]}" -d "${filebrowser_config[db_file]}" config init >/dev/null 2>&1; then
-			echo "[ERROR] 数据库初始化失败!"
+			echo "[ERROR] 数据库初始化失败!" >&2
 			return 1
 		fi
 	fi
@@ -231,7 +231,7 @@ EOF
 	echo "[INFO] 导入${filebrowser_config[name]}数据配置..."
 	
 	if ! "${filebrowser_config[bin_file]}" -d "${filebrowser_config[db_file]}" config import "${filebrowser_config[conf_file]}"  >/dev/null 2>&1; then
-		echo "[ERROR] 导入数据配置失败!"
+		echo "[ERROR] 导入数据配置失败!" >&2
 		return 1
 	fi
 	
@@ -267,7 +267,7 @@ set_filebrowser_user()
 			--perm.delete \
 			--perm.share \
 			--perm.download >/dev/null 2>&1; then
-			echo "[ERROR] 创建管理员$admin_user密码识别,请检查!"
+			echo "[ERROR] 创建管理员$admin_user密码识别,请检查!" >&2
 			return 1
 		fi
 	else
@@ -282,7 +282,7 @@ set_filebrowser_user()
 			--perm.delete \
 			--perm.share \
 			--perm.download >/dev/null 2>&1; then
-			echo "[ERROR] 更新管理员$admin_user密码识别,请检查!"
+			echo "[ERROR] 更新管理员$admin_user密码识别,请检查!" >&2
 			return 1
 		fi
 	fi
@@ -342,7 +342,7 @@ run_filebrowser_service()
 	echo "[INFO] 运行${filebrowser_config[name]}服务"
 	
 	if [ ! -e "${filebrowser_config[bin_file]}" ] && [ ! -e "${filebrowser_config[etc_path]}" ]; then
-		echo "[ERROR] ${filebrowser_config[name]}服务运行失败,请检查!"
+		echo "[ERROR] ${filebrowser_config[name]}服务运行失败,请检查!" >&2
 		return 1
 	fi
 	
@@ -358,7 +358,7 @@ run_filebrowser_service()
 			if ! grep -qF "${filebrowser_config[name]}" "/proc/$pid/cmdline" 2>/dev/null; then
 				rm -f "$pid_file"
 			else
-				echo "[WARNING] ${filebrowser_config[name]}服务已经在运行!(PID:$pid)"
+				echo "[WARNING] ${filebrowser_config[name]}服务已经在运行!(PID:$pid)" >&2
 				return 0
 			fi
 		fi
@@ -381,7 +381,7 @@ run_filebrowser_service()
 	
 	# 启动端口检测
 	if ! wait_for_ports "${filebrowser_config[port]}"; then
-		echo "[ERROR] ${filebrowser_config[name]} 端口未就绪！"
+		echo "[ERROR] ${filebrowser_config[name]} 端口未就绪,请检查!" >&2
 		return 1
 	fi
 
@@ -456,7 +456,7 @@ close_filebrowser_service()
 	echo "[INFO] 关闭${filebrowser_config[name]}服务"
 	
 	if [ ! -x "${filebrowser_config[bin_file]}" ]; then
-		echo "[ERROR] ${filebrowser_config[name]}服务不存在,请检查!"
+		echo "[ERROR] ${filebrowser_config[name]}服务不存在,请检查!" >&2
 		return
 	fi
 	

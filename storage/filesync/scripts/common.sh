@@ -76,7 +76,7 @@ init_modules()
 	echo "[WARNING] init 当前用户:$(id -un), UID:$(id -u), UMASK:$(umask)"
 	
 	if [ "$(id -u)" -ne 0 ]; then
-		echo "[ERROR] 非root用户权限无法初始环境, 请检查!"
+		echo "[ERROR] 非root用户权限无法初始环境, 请检查!" >&2
 		return 1
 	fi
 	
@@ -158,7 +158,10 @@ get_service_archive()
 		}
 		
 		# 提取并验证下载的文件
-		archive_path=$(extract_and_validate "$download_file" "$output_dir" ".*${name}.*") || return 3
+		archive_path=$(extract_and_validate "$download_file" "$output_dir" ".*${name}.*") || {
+			echo "[ERROR] 解压 $name 文件失败,请检查!" >&2
+			return 3
+		}
 	else
 		# 解析文件类型和路径
 		local archive_type=$(jq -r '.filetype' <<< "$findpath")
@@ -166,11 +169,15 @@ get_service_archive()
 		
 		# 验证文件类型
 		if [[ -z "$archive_type" ]] || ! [[ "$archive_type" =~ ^(file|directory)$ ]]; then
+			echo "[ERROR] 解析 $name 文件失败,请检查!" >&2
 			return 1
 		fi
 		
 		if [ "$archive_type" = "file" ]; then
-			archive_path=$(extract_and_validate "$archive_path" "$output_dir" ".*${name}.*") || return 3
+			archive_path=$(extract_and_validate "$archive_path" "$output_dir" ".*${name}.*") || {
+				echo "[ERROR] 解压 $name 文件失败,请检查!" >&2
+				return 3
+			}
 		fi
 	fi
 	
@@ -179,6 +186,7 @@ get_service_archive()
 		latest_path="$archive_path"
 	else
 		latest_path=$(find "$archive_path" -maxdepth 1 -mindepth 1 -type f -name "${name}*" -print -quit 2>/dev/null)
+		
 		if [[ -z "$latest_path" ]] || [[ ! -f "$latest_path" ]]; then
 			echo "[ERROR] $name可执行文件不存在,请检查!" >&2
 			return 1
