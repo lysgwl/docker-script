@@ -30,37 +30,40 @@ set_service_conf()
 {
 	echo "[INFO] 设置系统配置文件"
 	
-	# nginx 应用配置
 	local target_dir="${system_config[conf_dir]}"
-	local dest_dir="${system_config[config_dir]}/nginx/extra/proxy-config"
-	
 	if [[ -d "$target_dir" ]] && find "$target_dir" -mindepth 1 -maxdepth 1 -quit 2>/dev/null; then
-		if [[ ! -d "$dest_dir" ]] ||  ! rsync -av --remove-source-files --include='*.conf' --exclude='*' "$target_dir"/ "$dest_dir"/ >/dev/null; then
-			echo "[ERROR] nginx 配置文件设置失败, 请检查!" >&2
-			return 1
-		fi
-	fi
 	
-	# nginx server配置
-	local target_file="${system_config[config_dir]}/nginx/extra/www.conf"
-	if [[ -f "$target_file" ]]; then
-		local reference_content=$(cat <<'EOF'
+		# nginx 配置
+		local dest_dir="${system_config[config_dir]}/nginx/extra/proxy-config"
+		if [[ -d "$dest_dir" ]]; then
+			if ! rsync -av --remove-source-files --include='*.conf' --exclude='*' "$target_dir"/ "$dest_dir"/ >/dev/null; then
+				echo "[ERROR] nginx 配置文件设置失败, 请检查!" >&2
+				return 1
+			fi
+			
+			# nginx server配置
+			local target_file="${system_config[config_dir]}/nginx/extra/www.conf"
+			
+			if [[ -f "$target_file" ]]; then
+				local reference_content=$(cat <<'EOF'
 root   html;
 index  index.html index.htm player.html;
 EOF
-		)
+				)
 
-		local new_content=$(cat <<'EOF'
+				local new_content=$(cat <<'EOF'
 proxy_pass http://filesync:8080;
 proxy_set_header Host $host;
 proxy_set_header X-Real-IP $remote_addr;
 proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
 EOF
-		)
+				)
 
-		modify_nginx_location "$target_file" "/" "$reference_content" "$new_content" true
+				modify_nginx_location "$target_file" "/" "$reference_content" "$new_content" true
+			fi
+		fi
 	fi
-	
+
 	return 0
 }
 

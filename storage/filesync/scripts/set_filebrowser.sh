@@ -188,7 +188,8 @@ set_filebrowser_conf()
             "before_upload": []
         },
         "shell": [],
-        "rules": []
+        "rules": [],
+        "minimumPasswordLength": 6
     },
     "server": {
         "root": "${system_config[usr_dir]}",
@@ -208,9 +209,9 @@ set_filebrowser_conf()
     },
     "auther": {
         "recaptcha": {
+            "host": "",
             "key": "",
-            "secret": "",
-            "host": ""
+            "secret": ""
         }
     }
 }
@@ -250,7 +251,7 @@ set_filebrowser_user()
 		"${filebrowser_config[etc_path]}" \
 		"${filebrowser_config[data_path]}" \
 		"${filebrowser_config[pid_path]}" 2>/dev/null || return 1
-	
+
 	# 设置管理员密码
 	local admin_user="admin"
 	echo "[INFO] 设置${filebrowser_config[name]}管理员用户$admin_user密码"
@@ -267,7 +268,7 @@ set_filebrowser_user()
 			--perm.delete \
 			--perm.share \
 			--perm.download >/dev/null 2>&1; then
-			echo "[ERROR] 创建管理员$admin_user密码识别,请检查!" >&2
+			echo "[ERROR] 创建管理员$admin_user密码失败,请检查!" >&2
 			return 1
 		fi
 	else
@@ -282,11 +283,11 @@ set_filebrowser_user()
 			--perm.delete \
 			--perm.share \
 			--perm.download >/dev/null 2>&1; then
-			echo "[ERROR] 更新管理员$admin_user密码识别,请检查!" >&2
+			echo "[ERROR] 更新管理员$admin_user密码失败,请检查!" >&2
 			return 1
 		fi
 	fi
-	
+
 	echo "[INFO] 设置${filebrowser_config[name]}权限完成!"
 	return 0
 }
