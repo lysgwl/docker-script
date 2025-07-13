@@ -1,28 +1,5 @@
 #!/bin/bash
 
-# root 用户密码
-readonly ROOT_PASSWORD="123456"
-
-# 定义用户配置数组
-declare -A user_config=(
-	["uid"]="${PUID:-0}"
-	["gid"]="${PGID:-0}"
-	["user"]="${USERNAME:-root}"
-	["group"]="${GROUPNAME:-root}"
-)
-
-# 定义 SSHD 配置数组
-declare -A sshd_config=(
-	["port"]="${SSHD_PORT:-22}"
-	["listen"]="0.0.0.0"
-	["confile"]="/etc/ssh/sshd_config"
-	["hostkey"]="/etc/ssh/ssh_host_rsa_key"
-	["logfile"]="/var/log/sshd.log"
-)
-
-readonly -A user_config
-readonly -A sshd_config
-
 # 设置系统用户
 set_service_user()
 {

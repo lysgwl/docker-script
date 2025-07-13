@@ -15,7 +15,8 @@ RUN apk update && apk add --no-cache bash curl coreutils jq rsync
 RUN apk add --no-cache build-base linux-headers pcre-dev zlib-dev openssl-dev libaio-dev
 
 # 工作目录
-WORKDIR /app
+ARG WORK_DIR=/app
+WORKDIR $WORK_DIR
 
 # 复制文件
 COPY scripts/ /app/scripts
@@ -29,12 +30,14 @@ RUN /app/scripts/entrypoint.sh init
 
 # CMD ["/bin/sh", "-c", "while true; do echo 'Running...'; sleep 60; done"]
 
-
 FROM alpine:latest
 
 LABEL version="1.0"
 LABEL author="wanglei<lysgwl@163.com>"
 LABEL description="Nginx For Debian"
+
+# 定义工作目录
+ARG WORK_DIR=/app
 
 # 定义用户和组
 ARG PUID=1000
@@ -54,10 +57,12 @@ ENV PUID=$PUID \
 
 # 导出端口号
 ENV SSHD_PORT=$SSHD_PORT \
-	HTTP_PORT=$HTTP_PORT 
+	HTTP_PORT=$HTTP_PORT
+	
+ENV LANG=C.UTF-8 \
+	WORK_DIR=$WORK_DIR
 
 # 设置时区和语言
-ENV LANG=C.UTF-8
 RUN ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
 	echo 'Asia/Shanghai' > /etc/timezone
 
@@ -77,7 +82,7 @@ RUN apk add --no-cache bc curl git jq openssh openssh-server-pam rsync tar wget
 RUN rm -rf /var/cache/apk/*
 
 # 工作目录
-WORKDIR /app
+WORKDIR $WORK_DIR
 
 # 持久化目录
 VOLUME /config /data

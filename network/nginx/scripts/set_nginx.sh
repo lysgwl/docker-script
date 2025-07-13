@@ -26,6 +26,11 @@ fetch_nginx_source()
 {
 	local downloads_dir=$1
 	echo "[INFO] 获取${nginx_config[name]}源码" >&2
+	
+	local url="https://github.com/$repo.git"
+	
+	local output_dir="${downloads_dir}/output"
+	mkdir -p "$output_dir" || return 1
 
 	local ret=0
 	for key in "${!nginx_sources[@]}"; do
@@ -36,14 +41,8 @@ fetch_nginx_source()
 		local repo=$(jq -r '.repo // empty' <<< "$source_config")
 		local version=$(jq -r '.version // empty' <<< "$source_config")
 
-		local url="https://github.com/$repo.git"
 		echo "[INFO] 正在获取$name源码..." >&2
 		
-		local output_dir="${downloads_dir}/output"
-		if [ ! -d "$output_dir" ]; then
-			mkdir -p "$output_dir"
-		fi
-
 		local findpath latest_path archive_path archive_name
 		if ! findpath=$(find_latest_archive "$downloads_dir" "$name.*"); then
 			echo "[WARNING] 未匹配到$name软件包..." >&2
@@ -84,6 +83,7 @@ fetch_nginx_source()
 COMMENT_BLOCK
 			# 克隆仓库
 			archive_path=$(clone_repo "$json_config" "$downloads_dir") || {
+				echo "[ERROR] 克隆 $name 源代码失败,请检查!" >&2
 				ret=2; break
 			}
 			
@@ -102,12 +102,14 @@ COMMENT_BLOCK
 
 			# 验证归档类型
 			if [[ -z "$archive_type" ]] || ! [[ "$archive_type" =~ ^(file|directory)$ ]]; then
+				echo "[ERROR] 解析 $name 文件失败,请检查!" >&2
 				ret=1; break
 			fi
 			
 			# 文件处理
 			if [ "$archive_type" = "file" ]; then
 				latest_path=$(extract_and_validate "$archive_path" "$output_dir" "$name.*") || {
+					echo "[ERROR] 解压 $name 源码文件失败,请检查!" >&2
 					ret=3; break
 				}
 			else
@@ -144,12 +146,12 @@ setup_nginx_source()
 	fi
 
 	if [[ -z "$pcre_path" || -z "$nginx_path" ]]; then
-		echo "[ERROR] 获取${nginx_config[name]}源码路径为空,请检查!"
+		echo "[ERROR] 获取${nginx_config[name]}源码路径为空,请检查!" >&2
 		return 1
 	fi
 
 	# 进入 nginx 源码目录
-	cd "$nginx_path" || { echo "[ERROR] 无法进入${nginx_config[name]}源码目录: $nginx_path"; return 1; }
+	cd "$nginx_path" || { echo "[ERROR] 无法进入${nginx_config[name]}源码目录: $nginx_path" >&2; return 1; }
 
 	local configure_options=(
 		--prefix=${nginx_config[sys_path]}
@@ -198,20 +200,20 @@ setup_nginx_source()
 	# 执行配置命令
 	 echo "[INFO] 正在配置${nginx_config[name]}..."
 	./configure "${configure_options[@]}" || {
-		echo "[ERROR] ${nginx_config[name]}配置失败,请检查!"
+		echo "[ERROR] ${nginx_config[name]}配置失败,请检查!" >&2
 		return 2
 	}
 
 	# 编译并安装
 	echo "[INFO] 正在编译${nginx_config[name]}..."
 	make -j$(nproc) || {
-		echo "[ERROR] ${nginx_config[name]}编译失败,请检查!"
+		echo "[ERROR] ${nginx_config[name]}编译失败,请检查!" >&2
 		return 3
 	}
 
 	echo "[INFO] 正在安装${nginx_config[name]}..."
 	make install || {
-		echo "[ERROR] ${nginx_config[name]}安装失败,请检查！"
+		echo "[ERROR] ${nginx_config[name]}安装失败,请检查" >&2
 		return 4
 	}
 
@@ -225,44 +227,55 @@ install_nginx_env()
 	local arg=$1
 	echo "[INFO] 安装${nginx_config[name]}服务"
 
-	local install_dir="${system_config[install_dir]}"
 	local downloads_dir="${system_config[downloads_dir]}"
-
+	
+	local install_dir="${system_config[install_dir]}"
 	local target_path="$install_dir/${nginx_config[name]}"
+	
 	if [ "$arg" = "init" ]; then
 		if [ ! -d "${target_path}" ]; then
+		
 			# 获取 nginx 源码路径
 			if ! fetch_nginx_source "$downloads_dir"; then
-				echo "[ERROR] 获取${nginx_config[name]}失败,请检查!"
+				echo "[ERROR] 获取${nginx_config[name]}失败,请检查!" >&2
 				return 2
 			fi
 
 			# 编译 nginx 源码
 			if ! setup_nginx_source; then
-				echo "[ERROR] 编译${nginx_config[name]}源码失败,请检查!"
+				echo "[ERROR] 编译${nginx_config[name]}源码失败,请检查!" >&2
 				return 3
 			fi
 
-			# 安装二进制文件
-			install_binary "${nginx_config[sys_path]}" "$install_dir" || return 4
+			# 安装软件包
+			install_binary "${nginx_config[sys_path]}" "$install_dir" || {
+				echo "[ERROR] 安装 ${nginx_config[name]} 失败,请检查" >&2
+				return 4
+			}
 			
 			# 清理临时文件
 			rm -rf "$downloads_dir/output"
 		fi
 	elif [ "$arg" = "config" ]; then
-		if [[ ! -d "${nginx_config[sys_path]}" || ! -e "${nginx_config[bin_file]}" ]]; then	
-			# 安装二进制文件
-			install_binary "$target_path" "${nginx_config[sys_path]}" || return 4
-			
+		if [[ ! -d "${nginx_config[sys_path]}" || ! -e "${nginx_config[bin_file]}" ]]; then
+			# 安装软件包
+			install_binary "$target_path" "${nginx_config[sys_path]}" || {
+				echo "[ERROR] 安装 ${nginx_config[name]} 失败,请检查" >&2
+				return 4
+			}
+
 			# 创建符号链接
-			install_binary "${nginx_config[bin_file]}" "" "/usr/local/bin/${nginx_config[name]}" || return 4
+			install_binary "${nginx_config[bin_file]}" "" "/usr/local/bin/${nginx_config[name]}" || {
+				echo "[ERROR] 创建 ${nginx_config[name]} 符号链接失败,请检查" >&2
+				return 4
+			}
+			
+			# 清理临时文件
+			rm -rf "$target_path"
 		fi
-	else
-		echo "[ERROR] 无效的未知参数:$arg"
-		return 1
 	fi
 
-	echo "[INFO] 编译${nginx_config[name]}完成!"
+	echo "[INFO] 安装${nginx_config[name]}完成!"
 	return 0
 }
 
@@ -428,7 +441,7 @@ run_nginx_service()
 	echo "[INFO] 运行${nginx_config[name]}服务"
 
 	if [ ! -e "${nginx_config[bin_file]}" ] || [ ! -e "${nginx_config[conf_file]}" ]; then
-		echo "[ERROR] ${nginx_config[name]}服务运行失败,请检查!"
+		echo "[ERROR] ${nginx_config[name]}服务运行失败,请检查!" >&2
 		return 1
 	fi
 	
@@ -444,7 +457,7 @@ run_nginx_service()
 			if ! grep -qF "${nginx_config[name]}" "/proc/$pid/cmdline" 2>/dev/null; then
 				rm -f "$pid_file"
 			else
-				echo "[WARNING] ${nginx_config[name]}服务已经在运行(PID:$pid), 请检查!"
+				echo "[WARNING] ${nginx_config[name]}服务已经在运行(PID:$pid), 请检查!" >&2
 				return 0
 			fi
 		fi
@@ -452,7 +465,7 @@ run_nginx_service()
 	
 	# 测试配置文件
 	${nginx_config[bin_file]} -t -c ${nginx_config[conf_file]} > /dev/null 2>&1 || {
-		echo "[ERROR] ${nginx_config[name]} 配置测试失败, 请检查!";
+		echo "[ERROR] ${nginx_config[name]} 配置测试失败, 请检查!" >&2
 		return 1
 	}
 
@@ -466,7 +479,7 @@ run_nginx_service()
 
 	# 启动端口检测
 	if ! wait_for_ports "${nginx_config[port]}"; then
-		echo "[ERROR] ${nginx_config[name]}端口未就绪，查看服务日志："
+		echo "[ERROR] ${nginx_config[name]}端口未就绪，查看服务日志" >&2
 		return 1
 	fi
 
@@ -480,7 +493,7 @@ close_nginx_service()
 	echo "[INFO] 关闭${nginx_config[name]}服务"
 
 	if [ ! -x "${nginx_config[bin_file]}" ]; then
-		echo "[ERROR] ${nginx_config[name]}服务不存在,请检查!"
+		echo "[ERROR] ${nginx_config[name]}服务不存在,请检查!" >&2
 		return
 	fi
 	
