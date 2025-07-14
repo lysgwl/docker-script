@@ -258,14 +258,16 @@ install_nginx_env()
 		fi
 	elif [ "$arg" = "config" ]; then
 		if [[ ! -d "${nginx_config[sys_path]}" || ! -e "${nginx_config[bin_file]}" ]]; then
+			install_dir=$(dirname "${nginx_config[sys_path]}")
+			
 			# 安装软件包
-			install_binary "$target_path" "${nginx_config[sys_path]}" || {
+			install_binary "$target_path" "$install_dir" || {
 				echo "[ERROR] 安装 ${nginx_config[name]} 失败,请检查" >&2
 				return 4
 			}
 
 			# 创建符号链接
-			install_binary "${nginx_config[bin_file]}" "" "/usr/local/bin/${nginx_config[name]}" || {
+			install_binary "${nginx_config[bin_file]}" "" "$install_dir/bin/${nginx_config[name]}" || {
 				echo "[ERROR] 创建 ${nginx_config[name]} 符号链接失败,请检查" >&2
 				return 4
 			}

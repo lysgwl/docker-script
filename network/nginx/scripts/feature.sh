@@ -189,19 +189,10 @@ install_binary()
 
 	if [ -n "$dest_path" ]; then
 		local target_path
-		local dir_name=$(basename "$src_path")
+		local target_name=$(basename "$src_path")
 		
 		# 判断目标路径类型
-		if [ -d "$dest_path" ] || [[ "$dest_path" == */ ]]; then
-			# 确保目录存在
-			mkdir -p "$dest_path" || {
-				echo "[ERROR] 无法创建目录,请检查!" >&2
-				return 2
-			}
-			
-			target_path="$dest_path/$dir_name"
-		else
-			# ${dest_path%/*}
+		if [ -f "$dest_path" ]; then
 			local parent=$(dirname "$dest_path")
 			
 			mkdir -p "$parent" || {
@@ -210,6 +201,14 @@ install_binary()
 			}
 			
 			target_path="$dest_path"
+		else
+			# 确保目录存在
+			mkdir -p "$dest_path" || {
+				echo "[ERROR] 无法创建目录,请检查!" >&2
+				return 2
+			}
+			
+			target_path="$dest_path/$target_name"
 		fi
 		
 		# 删除已存在的目标
