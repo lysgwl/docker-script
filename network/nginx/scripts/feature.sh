@@ -182,53 +182,54 @@ install_binary()
 	local symlink_path=${3:-}
 	
 	# 校验源路径类型
-	[[ -f "$src_path" || -d "$src_path" ]] || {
-		echo "[ERROR] 源文件不存在,请检查!" >&2
+	if [[ ! -e "$src_path" ]]; then 
+		echo "[ERROR] 源文件$src_path不存在,请检查!" >&2
 		return 1
-	}
+	fi
 
-	if [ -n "$dest_path" ]; then
-		local target_path
+	# 处理目标路径
+	if [[ -n "$dest_path" ]]; then
 		local target_name=$(basename "$src_path")
+		local target_path
 		
-		# 判断目标路径类型
-		if [ -f "$dest_path" ]; then
+		# 如果目标路径是文件
+		if [[ -f "$dest_path" ]]; then
 			local parent=$(dirname "$dest_path")
-			
-			mkdir -p "$parent" || {
-				echo "[ERROR] 无法创建目录,请检查!" >&2
-				return 2
-			}
-			
-			target_path="$dest_path"
+			target_path="$parent"
 		else
-			# 确保目录存在
+			# 如果目标路径是目录，确保目录存在
 			mkdir -p "$dest_path" || {
 				echo "[ERROR] 无法创建目录,请检查!" >&2
 				return 2
 			}
 			
-			target_path="$dest_path/$target_name"
+			target_path="$dest_path"
 		fi
 		
-		# 删除已存在的目标
-		if [ -e "$target_path" ] || [ -L "$target_path" ]; then
-			rm -rf "$target_path"
-		fi
+		# 删除已存在的目标文件或符号链接
+		rm -rf "$target_path/$target_name"
 		
 		# 复制源到目标
-		cp -a "$src_path" "$target_path" || {
-			echo "[ERROR] 文件复制失败,请检查!" >&2
-			return 3
-		}
+		if [[ -d "$src_path" ]]; then
+			# 如果源是目录，则复制整个目录
+			cp -a "$src_path" "$target_path/" || {
+				echo "[ERROR] 文件复制失败,请检查!" >&2
+				return 3
+			}
+		else
+			cp -a "$src_path" "$target_path/$target_name" || {
+				echo "[ERROR] 文件复制失败, 请检查!" >&2
+				return 3
+			}
+		fi
 		
-		# 设置可执行权限
-		if [ -f "$target_path" ]; then
-			chmod +x "$target_path"
+		# 设置目标文件可执行权限
+		if [[ -f "$target_path/$target_name" ]]; then
+			chmod +x "$target_path/$target_name"
 		fi
 		
 		# 创建符号链接
-		[[ -n "$symlink_path" ]] && ln -sf "$target_path" "$symlink_path" 2>/dev/null || :
+		[[ -n "$symlink_path" ]] && ln -sf "$target_path/$target_name" "$symlink_path" 2>/dev/null || :
 	else
 		# 创建符号链接
 		[[ -n "$symlink_path" ]] && ln -sf "$src_path" "$symlink_path" 2>/dev/null || :
