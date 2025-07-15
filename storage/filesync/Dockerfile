@@ -16,14 +16,14 @@ ARG WORK_DIR=/app
 WORKDIR $WORK_DIR
 
 # 复制文件
-COPY scripts/ /app/scripts
-COPY usr/ /app/downloads
+COPY scripts/ $WORK_DIR/scripts
+COPY usr/ $WORK_DIR/downloads
 
 # 设置运行权限
-RUN chmod +x /app/scripts/*.sh
+RUN chmod +x $WORK_DIR/scripts/*.sh
 
 # 执行初始化
-RUN /app/scripts/entrypoint.sh init
+RUN $WORK_DIR/scripts/entrypoint.sh init
 
 # CMD ["/bin/sh", "-c", "while true; do echo 'Running...'; sleep 60; done"]
 
@@ -88,16 +88,16 @@ RUN rm -rf /var/cache/apk/*
 WORKDIR $WORK_DIR
 
 # 复制文件
-COPY --chown=$PUID:$PGID --from=builder /app/install /app/install
-COPY --chown=$PUID:$PGID scripts/ /app/scripts
-COPY --chown=$PUID:$PGID etc/ /app/config
+COPY --chown=$PUID:$PGID --from=builder $WORK_DIR/install $WORK_DIR/install
+COPY --chown=$PUID:$PGID scripts/ $WORK_DIR/scripts
+COPY --chown=$PUID:$PGID etc/ $WORK_DIR/config
 
 # 持久化目录
 VOLUME /config /data
 
 # 创建目录并设置权限
-RUN chown -R $PUID:$PGID /app && \
-	chmod +x /app/scripts/*.sh
+RUN chown -R $PUID:$PGID $WORK_DIR && \
+	chmod +x $WORK_DIR/scripts/*.sh
 
 # 暴露端口
 EXPOSE ${FILEBROWSER_PORT} \

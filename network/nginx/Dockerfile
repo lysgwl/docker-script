@@ -19,14 +19,14 @@ ARG WORK_DIR=/app
 WORKDIR $WORK_DIR
 
 # 复制文件
-COPY scripts/ /app/scripts
-COPY usr/ /app/downloads
+COPY scripts/ $WORK_DIR/scripts
+COPY usr/ $WORK_DIR/downloads
 
 # 设置运行权限
-RUN chmod +x /app/scripts/*.sh
+RUN chmod +x $WORK_DIR/scripts/*.sh
 
 # 执行初始化
-RUN /app/scripts/entrypoint.sh init
+RUN $WORK_DIR/scripts/entrypoint.sh init
 
 # CMD ["/bin/sh", "-c", "while true; do echo 'Running...'; sleep 60; done"]
 
@@ -88,16 +88,16 @@ WORKDIR $WORK_DIR
 VOLUME /config /data
 
 # 复制文件
-COPY --from=builder /app/install /app/install
-COPY --from=builder /data /app/config/data
-COPY --from=builder /config /app/config/etc
+COPY --from=builder $WORK_DIR/install $WORK_DIR/install
+COPY --from=builder /data $WORK_DIR/config/data
+COPY --from=builder /config $WORK_DIR/config/etc
 
-COPY etc/ /app/config
-COPY --chown=$PUID:$PGID scripts/ /app/scripts
+COPY etc/ $WORK_DIR/config
+COPY --chown=$PUID:$PGID scripts/ $WORK_DIR/scripts
 
 # 创建目录并设置权限
-RUN chown -R $PUID:$PGID /app && \
-	chmod +x /app/scripts/*.sh
+RUN chown -R $PUID:$PGID $WORK_DIR && \
+	chmod +x $WORK_DIR/scripts/*.sh
 
 # 暴露端口
 EXPOSE ${HTTP_PORT}
