@@ -2,8 +2,8 @@ FROM debian:bookworm-slim AS builder
 
 LABEL stage=builder
 
-#ENV HTTP_PROXY=http://192.168.2.11:10809
-#ENV HTTPS_PROXY=http://192.168.2.11:10809
+ENV HTTP_PROXY=http://192.168.2.11:10808
+ENV HTTPS_PROXY=http://192.168.2.11:10808
 
 # 设置环境变量
 ENV LANG=C.UTF-8 \
@@ -40,17 +40,18 @@ RUN ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
 	dpkg-reconfigure -f noninteractive tzdata
 	
 # 工作目录
-WORKDIR /app
+ARG WORK_DIR=/app
+WORKDIR $WORK_DIR
 
 # 复制文件
-COPY scripts/ /app/scripts
-COPY usr/ /app/downloads
+COPY scripts/ $WORK_DIR/scripts
+COPY usr/ $WORK_DIR/downloads
 
 # 设置运行权限
-RUN chmod +x /app/scripts/*.sh
+RUN chmod +x $WORK_DIR/scripts/*.sh
 
 # 执行初始化
-RUN /app/scripts/entrypoint.sh init
+RUN $WORK_DIR/scripts/entrypoint.sh init
 
 # 安装Perl模块
 RUN cpanm --local-lib=/usr/local/perl \
@@ -63,6 +64,13 @@ RUN cpanm --local-lib=/usr/local/perl \
 # CMD ["/bin/sh", "-c", "while true; do echo 'Running...'; sleep 60; done"]
 
 FROM debian:bookworm
+
+LABEL version="1.0"
+LABEL author="wanglei<lysgwl@163.com>"
+LABEL description="freeswitch"
+
+# 定义工作目录
+ARG WORK_DIR=/app
 
 # 定义用户和组
 ARG PUID=1000
@@ -77,6 +85,9 @@ ENV PUID=$PUID \
 	GROUPNAME=$GROUPNAME \
 	LANG=C.UTF-8 \
 	DEBIAN_FRONTEND=noninteractive
+	
+ENV LANG=C.UTF-8 \
+	WORK_DIR=$WORK_DIR
 
 # 配置时区
 RUN ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
@@ -108,20 +119,22 @@ RUN apt-get install -y --no-install-recommends \
 	apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # 工作目录
-WORKDIR /app
+WORKDIR $WORK_DIR
 
 # 持久化目录
 VOLUME /config /data
 
 # 复制文件
 COPY --from=builder /usr/local /usr/local
-COPY --from=builder /data /app/config/data
-COPY --from=builder /config /app/config/etc
-COPY --chown=$USERNAME:$GROUPNAME scripts/ /app/scripts
+COPY --from=builder /data $WORK_DIR/config/data
+COPY --from=builder /config $WORK_DIR/config/etc
+
+COPY --chown=$USERNAME:$GROUPNAME scripts/ $WORK_DIR/scripts
+COPY 1.sh $WORK_DIR/1.sh
 
 # 设置权限
-RUN chown -R $USERNAME:$GROUPNAME /app && \
-	chmod +x /app/scripts/*.sh
+RUN chown -R $USERNAME:$GROUPNAME $WORK_DIR && \
+	chmod +x $WORK_DIR/scripts/*.sh
 
 # 设置perl环境变量
 ENV PERL5LIB=/usr/local/perl/lib/perl5

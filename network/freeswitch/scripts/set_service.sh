@@ -1,28 +1,5 @@
 #!/bin/bash
 
-# root 用户密码
-readonly ROOT_PASSWORD="123456"
-
-# 定义用户配置数组
-declare -A user_config=(
-	["uid"]="${PUID:-0}"
-	["gid"]="${PGID:-0}"
-	["user"]="${USERNAME:-root}"
-	["group"]="${GROUPNAME:-root}"
-)
-
-# 定义 SSHD 配置数组
-declare -A sshd_config=(
-	["port"]="${SSHD_PORT:-22}"
-	["listen"]="0.0.0.0"
-	["confile"]="/etc/ssh/sshd_config"
-	["hostkey"]="/etc/ssh/ssh_host_rsa_key"
-	["logfile"]="/var/log/sshd.log"
-)
-
-readonly -A user_config
-readonly -A sshd_config
-
 # 安装服务
 install_service_env()
 {
@@ -104,18 +81,19 @@ set_service_user()
 	echo "[INFO] 设置系统用户"
 	
 	# 创建用户目录
-	#echo "[DEBUG] 正在创建用户目录"
+	echo "[DEBUG] 正在创建用户目录"
 	mkdir -p "${system_config[downloads_dir]}" \
 			 "${system_config[install_dir]}" \
 			 "${system_config[config_dir]}" \
 			 "${system_config[data_dir]}"
 	
-			 
 	# 设置目录拥有者
-	#echo "[DEBUG] 正在设置目录拥有者(${user_config[user]}:${user_config[group]})"
+	echo "[DEBUG] 正在设置目录拥有者(${user_config[user]}:${user_config[group]})"
 	chown -R ${user_config[user]}:${user_config[group]} \
 			"${system_config[config_dir]}" \
 			"${system_config[data_dir]}"
+			
+	echo "[INFO] 设置用户完成!"
 }
 
 # 设置服务

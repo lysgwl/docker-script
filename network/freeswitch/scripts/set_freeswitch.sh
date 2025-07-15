@@ -31,6 +31,11 @@ fetch_freeswitch_source()
 	local downloads_dir=$1
 	echo "[INFO] 获取${freeswitch_config[name]}源码" >&2
 	
+	local url="https://github.com/$repo.git"
+	
+	local output_dir="${downloads_dir}/output"
+	mkdir -p "$output_dir" || return 1
+	
 	local ret=0
 	for key in "${!freeswitch_sources[@]}"; do
 		local name="$key"
@@ -40,14 +45,8 @@ fetch_freeswitch_source()
 		local repo=$(jq -r '.repo' <<< "$source_config")
 		local version=$(jq -r '.version' <<< "$source_config")
 		
-		local url="https://github.com/$repo.git"
 		echo "[INFO] 正在获取$name源码..." >&2
-		
-		local output_dir="${downloads_dir}/output"
-		if [ ! -d "$output_dir" ]; then
-			mkdir -p "$output_dir"
-		fi
-		
+	
 		local findpath latest_path archive_path archive_name
 		if ! findpath=$(find_latest_archive "$downloads_dir" "$name.*"); then
 			echo "[WARNING] 未匹配到$name软件包..." >&2
@@ -69,6 +68,7 @@ fetch_freeswitch_source()
 			
 			# 克隆仓库
 			archive_path=$(clone_repo "$json_config" "$downloads_dir") || {
+				echo "[ERROR] 克隆 $name 源代码失败,请检查!" >&2
 				ret=2; break
 			}
 			
@@ -86,12 +86,14 @@ fetch_freeswitch_source()
 			archive_name=$(jq -r '.name' <<< "$findpath")
 			
 			if [[ -z "$archive_type" ]] || ! [[ "$archive_type" =~ ^(file|directory)$ ]]; then
+				echo "[ERROR] 解析 $name 文件失败,请检查!" >&2
 				ret=1; break
 			fi
 			
 			# 文件处理
 			if [ "$archive_type" = "file" ]; then
 				latest_path=$(extract_and_validate "$archive_path" "$output_dir" "$name.*") || {
+					echo "[ERROR] 解压 $name 源码文件失败,请检查!" >&2
 					ret=3; break
 				}
 			else
@@ -379,21 +381,23 @@ install_freeswitch_env()
 	local arg=$1
 	echo "[INFO] 安装${freeswitch_config[name]}服务"
 	
-	local install_dir="${system_config[install_dir]}"
 	local downloads_dir="${system_config[downloads_dir]}"
 	
+	local install_dir="${system_config[install_dir]}"
 	local target_dir="${freeswitch_config[sys_path]}"
+	
 	if [ "$arg" = "init" ]; then
 		if [ ! -d "${target_dir}" ]; then
+		
 			# 获取 freeswitch 源码
 			if ! fetch_freeswitch_source "${downloads_dir}"; then
-				echo "[ERROR] 获取${freeswitch_config[name]}失败,请检查!"
+				echo "[ERROR] 获取${freeswitch_config[name]}失败,请检查!" >&2
 				return 2
 			fi
 			
 			# 编译 freeswitch 源码
 			if ! setup_freeswitch_source; then
-				echo "[ERROR] 编译${freeswitch_config[name]}失败,请检查!"
+				echo "[ERROR] 编译${freeswitch_config[name]}失败,请检查!" >&2
 				return 3
 			fi
 			
@@ -401,9 +405,13 @@ install_freeswitch_env()
 			rm -rf "$downloads_dir/output"
 		fi
 	elif [ "$arg" = "config" ]; then
+		return 0
 		if [ -d "${target_dir}" ]; then
-			# 可执行文件
+		
+			# 创建freeswitch符号链接
 			install_binary "${freeswitch_config[bin_path]}/${freeswitch_config[name]}" "" "/usr/local/bin/${freeswitch_config[name]}"
+			
+			# 创建fs_cli符号链接
 			install_binary "${freeswitch_config[bin_path]}/fs_cli" "" "/usr/local/bin/fs_cli"
 		fi
 	fi
@@ -550,7 +558,7 @@ run_freeswitch_service()
 	echo "[INFO] 运行${freeswitch_config[name]}服务"
 	
 	if [[ ! -e "${freeswitch_config[bin_path]}/freeswitch" || ! -e "${freeswitch_config[bin_path]}/fs_cli" ]]; then
-		echo "[ERROR] ${freeswitch_config[name]}服务运行失败,请检查!"
+		echo "[ERROR] ${freeswitch_config[name]}服务运行失败,请检查!" >&2
 		return
 	fi
 	
@@ -566,7 +574,7 @@ run_freeswitch_service()
 			if ! grep -qF "${freeswitch_config[name]}" "/proc/$pid/cmdline" 2>/dev/null; then
 				rm -f "$pid_file"
 			else
-				echo "[WARNING] ${freeswitch_config[name]}服务已经在运行(PID:$pid), 请检查!"
+				echo "[WARNING] ${freeswitch_config[name]}服务已经在运行(PID:$pid), 请检查!" >&2
 				return 0
 			fi
 		fi
@@ -589,7 +597,7 @@ close_freeswitch_service()
 	echo "[INFO] 关闭${freeswitch_config[name]}服务"
 	
 	if [ ! -e "${freeswitch_config[bin_path]}/freeswitch" ]; then
-		echo "[ERROR] ${freeswitch_config[name]}服务不存在,请检查!"
+		echo "[ERROR] ${freeswitch_config[name]}服务不存在,请检查!" >&2
 		return
 	fi
 	
