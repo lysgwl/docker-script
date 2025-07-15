@@ -84,7 +84,7 @@ install_openlist_env()
 	local target_path="$install_dir/${openlist_config[name]}"
 
 	if [ "$arg" = "init" ]; then
-		if [ -z "$(find "$install_dir" -maxdepth 1 -type f -name "${openlist_config[name]}*" -print -quit 2>/dev/null)" ]; then
+		if [ ! -d "$target_path" ]; then
 		
 			# 获取安装包
 			local latest_path
@@ -104,11 +104,18 @@ install_openlist_env()
 		fi
 	elif [ "$arg" = "config" ]; then
 		if [[ ! -d "${openlist_config[sys_path]}" && ! -e "${openlist_config[bin_file]}" ]]; then
+			install_dir=$(dirname "${openlist_config[sys_path]}")
 			
 			# 安装软件包
-			install_binary "$target_path" "${openlist_config[bin_file]}" "/usr/local/bin/${openlist_config[name]}" || {
+			install_binary "$target_path" "$install_dir" || {
 				echo "[ERROR] 安装 ${openlist_config[name]} 失败,请检查!" >&2
 				return 2
+			}
+			
+			# 创建符号链接
+			install_binary "${openlist_config[bin_file]}" "" "$install_dir/bin/${openlist_config[name]}" || {
+				echo "[ERROR] 创建 ${openlist_config[name]} 符号链接失败,请检查" >&2
+				return 4
 			}
 			
 			# 清理临时文件

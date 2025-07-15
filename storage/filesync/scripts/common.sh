@@ -88,6 +88,11 @@ init_modules()
 		return 1
 	fi
 	
+	# 初始 filebrowser 环境
+	if ! init_filebrowser_service "$param"; then
+		return 1
+	fi
+	
 	# 初始 openlist 环境
 	if ! init_openlist_service "$param"; then
 		return 1
@@ -95,11 +100,6 @@ init_modules()
 	
 	# 初始 syncthing 环境
 	if ! init_syncthing_service "$param"; then
-		return 1
-	fi
-	
-	# 初始 filebrowser 环境
-	if ! init_filebrowser_service "$param"; then
 		return 1
 	fi
 	
@@ -111,27 +111,27 @@ run_modules()
 {
 	echo "[WARNING] running 当前用户:$(id -un), UID:$(id -u), UMASK:$(umask)"
 	
+	# 运行 filebrowser 服务
+	run_filebrowser_service
+	
 	# 运行 openlist 服务
 	run_openlist_service
 
 	# 运行 syncthing 服务
 	run_syncthing_service
-	
-	# 运行 filebrowser 服务
-	run_filebrowser_service
 }
 
 # 关闭模块
 close_modules()
 {
+	# 关闭 filebrowser 服务
+	close_filebrowser_service
+	
 	# 关闭 openlist 服务
 	close_openlist_service
 	
 	# 关闭 syncthing 服务
 	close_syncthing_service
-	
-	# 关闭 filebrowser 服务
-	close_filebrowser_service
 }
 
 # 获取安装包

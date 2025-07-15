@@ -1,3 +1,3 @@
 #!/bin/bash
 
-exec ./scripts/entrypoint.sh init
+exec ./scripts/entrypoint.sh test

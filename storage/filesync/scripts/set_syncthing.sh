@@ -78,7 +78,7 @@ install_syncthing_env()
 	local target_path="${install_dir}/${syncthing_config[name]}"
 
 	if [ "$arg" = "init" ]; then
-		if [ -z "$(find "$install_dir" -maxdepth 1 -type f -name "${syncthing_config[name]}*" -print -quit 2>/dev/null)" ]; then
+		if [ ! -d "$target_path" ]; then
 			
 			# 获取安装包
 			local latest_path
@@ -98,11 +98,18 @@ install_syncthing_env()
 		fi
 	elif [ "$arg" = "config" ]; then
 		if [[ ! -d "${syncthing_config[sys_path]}" || ! -e "${syncthing_config[bin_file]}" ]]; then
-		
+			install_dir=$(dirname "${syncthing_config[sys_path]}")
+			
 			# 安装软件包
-			install_binary "$target_path" "${syncthing_config[bin_file]}" "/usr/local/bin/${syncthing_config[name]}" || {
+			install_binary "$target_path" "$install_dir" || {
 				echo "[ERROR] 安装 ${syncthing_config[name]} 失败,请检查!" >&2
 				return 2
+			}
+			
+			# 创建符号链接
+			install_binary "${syncthing_config[bin_file]}" "" "$install_dir/bin/${syncthing_config[name]}" || {
+				echo "[ERROR] 创建 ${syncthing_config[name]} 符号链接失败,请检查" >&2
+				return 4
 			}
 			
 			# 清理临时文件
@@ -139,8 +146,8 @@ set_syncthing_conf()
 	
 	# 等待3次，每次5秒
 	for ((retry=3; retry>0; retry--)); do
-	  [ -f "${syncthing_config[conf_file]}" ] && break
-	  sleep 5
+		[ -f "${syncthing_config[conf_file]}" ] && break
+		sleep 5
 	done
 	
 	echo "[INFO] 初始化${syncthing_config[name]}配置文件:${syncthing_config[conf_file]}"
@@ -166,7 +173,7 @@ set_syncthing_conf()
 		}
 	
 		# 全局选项配置
-        local options_config=(
+		local options_config=(
 			# 格式："元素名:元素值"
 			"globalAnnounceEnabled:false"
 			"localAnnounceEnabled:true"

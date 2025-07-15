@@ -66,7 +66,6 @@ ENV LANG=C.UTF-8 \
 	WORK_DIR=$WORK_DIR
 	
 # 设置时区和语言
-
 RUN ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
 	echo 'Asia/Shanghai' > /etc/timezone
 	

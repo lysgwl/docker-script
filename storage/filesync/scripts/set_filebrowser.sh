@@ -77,7 +77,7 @@ install_filebrowser_env()
 	local target_path="$install_dir/${filebrowser_config[name]}"
 	
 	if [ "$arg" = "init" ]; then
-		if [ -z "$(find "$install_dir" -maxdepth 1 -type f -name "${filebrowser_config[name]}*" -print -quit 2>/dev/null)" ]; then
+		if [ ! -d "$target_path" ]; then
 		
 			# 获取安装包
 			local latest_path
@@ -97,11 +97,18 @@ install_filebrowser_env()
 		fi
 	elif [ "$arg" = "config" ]; then
 		if [[ ! -d "${filebrowser_config[sys_path]}" && ! -e "${filebrowser_config[bin_file]}" ]]; then
+			install_dir=$(dirname "${filebrowser_config[sys_path]}")
 			
 			# 安装软件包
-			install_binary "$target_path" "${filebrowser_config[bin_file]}" "/usr/local/bin/${filebrowser_config[name]}" || {
+			install_binary "$target_path" "$install_dir" || {
 				echo "[ERROR] 安装 ${filebrowser_config[name]} 失败,请检查!" >&2
 				return 2
+			}
+			
+			# 创建符号链接
+			install_binary "${filebrowser_config[bin_file]}" "" "$install_dir/bin/${filebrowser_config[name]}" || {
+				echo "[ERROR] 创建 ${filebrowser_config[name]} 符号链接失败,请检查" >&2
+				return 4
 			}
 			
 			# 清理临时文件
