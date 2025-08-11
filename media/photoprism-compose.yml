@@ -1,0 +1,61 @@
+
+name: PhotoPrism
+
+services:
+  photoprism-server:
+    container_name: photoprism
+    image: photoprism/photoprism:latest
+    devices:
+      - /dev/dri:/dev/dri
+    security_opt:
+      - seccomp:unconfined
+      - apparmor:unconfined
+    environment:
+      PHOTOPRISM_ADMIN_USER: "admin"            # 管理员用户名
+      PHOTOPRISM_ADMIN_PASSWORD: "123456"       # 管理员密码
+      PHOTOPRISM_AUTH_MODE: "password"          # 认证模式，使用密码登录
+      PHOTOPRISM_HTTP_PORT: 2342                # 容器内部PhotoPrism监听的HTTP端口
+      PHOTOPRISM_DISABLE_TLS: "true"            # 禁用TLS（https），仅使用HTTP
+      PHOTOPRISM_DEFAULT_TLS: "true"            # 是否自动生成自签名TLS证书
+      PHOTOPRISM_ORIGINALS_LIMIT: 5000          # 原始照片目录最大允许文件数限制
+      PHOTOPRISM_LOG_LEVEL: "info"              # 日志级别（debug, info, warn, error）
+      PHOTOPRISM_HTTP_COMPRESSION: "gzip"       # 启用HTTP响应gzip压缩
+      PHOTOPRISM_DEBUG: "false"                 # 是否开启调试模式，输出详细日志
+      PHOTOPRISM_PUBLIC: "false"                # 是否允许未登录用户访问相册（公开模式）
+      PHOTOPRISM_READONLY: "false"              # 是否启用只读模式，不允许修改原始照片文件
+      PHOTOPRISM_EXPERIMENTAL: "false"          # 是否启用实验性功能（不稳定的新功能）
+      PHOTOPRISM_DISABLE_WEBDAV: "false"        # 是否禁用WebDAV访问功能
+      PHOTOPRISM_DISABLE_SETTINGS: "false"      # 是否禁用Web界面的设置页面
+      PHOTOPRISM_DISABLE_TENSORFLOW: "false"    # 是否禁用TensorFlow AI功能
+      PHOTOPRISM_DARKTABLE_PRESETS: "false"     # 是否启用Darktable相机厂商默认RAW预设
+      PHOTOPRISM_DETECT_NSFW: "false"           # 是否启用NSFW内容检测和标签
+      PHOTOPRISM_UPLOAD_NSFW: "true"            # 是否允许上传检测为NSFW的图片
+      #PHOTOPRISM_DATABASE_DRIVER: "sqlite"
+      PHOTOPRISM_DATABASE_DRIVER: "mysql"       # 数据库驱动，使用MySQL/MariaDB
+      PHOTOPRISM_DATABASE_SERVER: "mariadb:3306"    # 数据库服务器地址和端口
+      PHOTOPRISM_DATABASE_NAME: "photoprism"        # 数据库名称
+      PHOTOPRISM_DATABASE_USER: "photoprism"        # 数据库用户名
+      PHOTOPRISM_DATABASE_PASSWORD: "insecure"      # 数据库密码
+      PHOTOPRISM_SITE_CAPTION: "我的相册系统"       # 网站标题
+      PHOTOPRISM_SITE_DESCRIPTION: ""
+      PHOTOPRISM_SITE_AUTHOR: ""
+    working_dir: "/photoprism"
+    volumes:
+      - /app/usr/photoprism/originals:/photoprism/originals     # 原始照片目录
+      - /app/usr/photoprism/import:/photoprism/import           # 待导入照片目录
+      - /app/usr/photoprism/storage:/photoprism/storage         # 
+      - nas-images:/photoprism/originals/images
+    ports:
+      - 2342:2342
+    hostname: photoprism
+    restart: unless-stopped
+    networks:
+      - local_network
+      
+networks:
+  local_network:
+    external: true
+    
+volumes:
+  nas-images:
+    external: true

@@ -3,7 +3,7 @@ name: jellyfin
 
 services:
   jellyfin-server:
-    container_name: jellyfin 
+    container_name: jellyfin
     image: nyanmisaka/jellyfin     # nyanmisaka/jellyfin | jellyfin/jellyfin | linuxserver/jellyfin
     devices:
       - /dev/dri:/dev/dri
@@ -17,9 +17,9 @@ services:
       - ${CONFIG_PATH}:/config
       - ${CACHE_PATH}:/cache
       - ${DATA_PATH}:/data
-      - ${NGINXCFG_PATH}:/config/nginx
-      - ${NGINXCFG_FILE}:/config/jellyfin.conf
-      - nas-media:/media
+      - ${NGINX_CONFIG_DIR}:/config/nginx
+      - ${NGINX_PROXY_CONF_FILE}:/config/jellyfin.conf
+      - nas-films:/media/films
     env_file:
       - .env
     ports:
@@ -32,9 +32,12 @@ services:
     command: >
       '
         # 复制配置文件
-        if [ -f "/config/jellyfin.conf" ] && [ -d "/config/nginx/extra/proxy-config" ]; then
-            if [ ! -f "/config/nginx/extra/proxy-config/jellyfin.conf" ]; then
-                cp -v "/config/jellyfin.conf" "/config/nginx/extra/proxy-config/"
+        if [ -d "/config/nginx/extra/proxy-config" ]; then
+            src="/config/jellyfin.conf"
+            dst="/config/nginx/extra/proxy-config/jellyfin.conf"
+            
+            if [ -f "$${src}" ] && [ ! -f "$${dst}" ]; then
+                cp -v "$${src}" "$${dst}"
             fi
         fi
         
@@ -48,5 +51,5 @@ networks:
     external: true
     
 volumes:
-  nas-media:
+  nas-films:
     external: true

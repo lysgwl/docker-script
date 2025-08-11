@@ -15,10 +15,14 @@ services:
       - ${FILESYNC_PATH}/config:/config
       - ${FILESYNC_PATH}/data:/data
       - ${FILESYNC_PATH}/usr:/mnt/usr
+      - ${NGINX_CONFIG_DIR}:/config/nginx
+      - ${NGINX_PROXY_CONF_PATH}:/config/proxy_conf
       - ${DOWNLOADS_PATH}:/mnt/usr/downloads
       - nas-files:/mnt/usr/files
-      - nas-media:/mnt/usr/media
       - nas-project:/mnt/usr/project
+      - nas-images:/mnt/usr/images
+      - nas-photos:/mnt/usr/photos
+      - nas-films:/mnt/usr/films
     env_file:
       - .env
     ports:
@@ -31,6 +35,24 @@ services:
     hostname: filesync
     networks:
       - local_network
+    entrypoint: ["/bin/sh", "-c"]
+    command: >
+      '
+        # 复制配置文件
+        if [ -d "/config/nginx/extra/proxy-config" ]; then
+            for conf in openlist.conf syncthing.conf; do
+                src="/config/proxy_conf/$${conf}"
+                dst="/config/nginx/extra/proxy-config/$${conf}"
+                
+                if [ -f "$${src}" ] && [ ! -f "$${dst}" ]; then
+                    cp -v "$${src}" "$${dst}"
+                fi
+            done
+        fi
+        
+        # 启动主进程
+        exec /app/scripts/entrypoint.sh run
+      '
     restart: unless-stopped
 
 networks:
@@ -40,7 +62,11 @@ networks:
 volumes:
   nas-files:
     external: true
-  nas-media:
-    external: true
   nas-project:
+    external: true
+  nas-images:
+    external: true
+  nas-photos:
+    external: true
+  nas-films:
     external: true
