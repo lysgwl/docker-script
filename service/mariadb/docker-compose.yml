@@ -1,0 +1,42 @@
+
+name: mariadb
+
+services:
+  mariadb-server:
+    container_name: mariadb
+    image: mariadb:10.5
+    security_opt:
+      - seccomp:unconfined
+      - apparmor:unconfined
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - MYSQL_ROOT_PASSWORD=${ROOT_PASSWD}
+    volumes:
+      - ${CONFIG_PATH}:/etc/mysql/conf.d
+      - ${DATA_PATH}:/var/lib/mysql
+      - ${LOG_PATH}:/logs
+      - ./etc:/docker-entrypoint-initdb.d:ro
+    env_file:
+      - .env
+    ports:
+      - '3306:3306'
+    networks:
+      - local_network
+    #command: ["bash", "/docker-entrypoint-initdb.d/init-script.sh"]
+    command: [
+      "--transaction-isolation=READ-COMMITTED",
+      "--character-set-server=utf8mb4",
+      "--collation-server=utf8mb4_unicode_ci",
+      "--max-connections=512",
+      "--innodb-rollback-on-timeout=OFF",
+      "--innodb-lock-wait-timeout=50",
+      "--innodb_buffer_pool_size=512M",
+      "--innodb_log_file_size=512M"
+      ]
+    restart: unless-stopped
+    
+networks:
+  local_network:
+    external: true
