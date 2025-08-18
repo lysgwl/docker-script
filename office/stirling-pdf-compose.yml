@@ -4,21 +4,33 @@ name: stirling-pdf
 services:
   stirling-pdf-server:
     container_name: stirling-pdf
-    image: frooodle/s-pdf
+    # stirlingtools/stirling-pdf
+    # frooodle/s-pdf
+    image: stirlingtools/stirling-pdf:latest-fat
     environment:
+      PUID: 1001
+      PGID: 1001
+      UMASK: "022"
+      TZ: Asia/Shanghai
+      SYSTEM_DEFAULTLOCALE: zh_CN       # 默认中文
+      UI_APPNAME: Stark-C PDF           # 导航页标题
+      UI_APPNAMENAVBAR: Stirling-PDF Latest-fat # # UI导航栏应用名称
       DOCKER_ENABLE_SECURITY: true      # 启用内部安全功能
       SECURITY_ENABLELOGIN: true        # 启用登录功能
-      SECURITY_INITIALLOGIN_USERNAME: admin # 登录账户
-      SECURITY_INITIALLOGIN_PASSWORD: admin # 登录密码
-      UI_APPNAME: Stark-C PDF           # 导航页标题
+      SECURITY_INITIALLOGIN_USERNAME: admin     # 登录账户
+      SECURITY_INITIALLOGIN_PASSWORD: 123456    # 登录密码
       INSTALL_BOOK_AND_ADVANCED_HTML_OPS: false
-      SYSTEM_DEFAULTLOCALE: zh_CN       # 默认中文
     volumes:
-      - /app/usr/stirling-pdf/trainingData:/usr/share/tessdata
       - /app/usr/stirling-pdf/config:/configs
-      - /app/usr/stirling-pdf/customFiles:/customFiles/
       - /app/usr/stirling-pdf/logs:/logs/
+      - /app/usr/stirling-pdf/customFiles:/customFiles/
+      - /app/usr/stirling-pdf/trainingData:/usr/share/tessdata
     ports:
       - '8026:8080'
-    restart: always  
-    network_mode: bridge  
+    networks:
+      - local_network
+    restart: always
+    
+networks:
+  local_network:
+    external: true
