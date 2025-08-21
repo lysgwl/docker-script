@@ -37,8 +37,8 @@ LABEL description="FileSync For Debian"
 ARG WORK_DIR=/app
 
 # 定义用户和组
-ARG PUID=1000
-ARG PGID=1000
+ARG PUID=1001
+ARG PGID=1001
 ARG USERNAME=filesync
 ARG GROUPNAME=filesync
 
@@ -76,11 +76,11 @@ RUN addgroup -g $PGID $GROUPNAME && \
 # 设置镜像源 (mirrors.ustc.edu.cn mirrors.aliyun.com)
 RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositories
 
-# 安装核心依赖库 
-RUN apk update && apk add --no-cache bash ca-certificates coreutils dcron gawk openssl sqlite tzdata shadow su-exec
+# 安装核心依赖库 (sqlite shadow)
+RUN apk update && apk add --no-cache bash ca-certificates coreutils dcron gawk openssl su-exec tzdata
  
-# 安装运维工具 - cifs-utils git netcat-openbsd openssh openssh-server-pam samba vsftpd
-RUN apk add --no-cache bc curl jq rsync tar wget xmlstarlet
+# 安装运维工具 (cifs-utils git netcat-openbsd openssh openssh-server-pam samba vsftpd) (tar wget)
+RUN apk add --no-cache bc curl jq rsync xmlstarlet
 
 RUN rm -rf /var/cache/apk/*
 	

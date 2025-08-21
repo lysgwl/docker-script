@@ -9,8 +9,8 @@ services:
       - PUID=${PUID}
       - PGID=${PGID}
       - TZ=${TZ}
-      - HTTP_PROXY=${PROXY_HOST}
-      - HTTPS_PROXY=${PROXY_HOST}
+      #- HTTP_PROXY=${PROXY_HOST}
+      #- HTTPS_PROXY=${PROXY_HOST}
     volumes:
       - ${FILESYNC_PATH}/config:/config
       - ${FILESYNC_PATH}/data:/data

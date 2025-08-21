@@ -131,7 +131,7 @@ install_openlist_env()
 set_openlist_conf()
 {
 	echo "[INFO] 设置${openlist_config[name]}配置文件"
-	local jwt_secret=`openssl rand -base64 12`
+	local jwt_secret=`openssl rand -base64 12 | tr -dc 'a-zA-Z'`
 
 	local tmp_dir="${openlist_config[data_path]}/temp"
 	if [ ! -d "$tmp_dir" ]; then
@@ -169,7 +169,7 @@ set_openlist_conf()
   "meilisearch": {
     "host": "http://localhost:7700",
     "api_key": "",
-    "index_prefix": ""
+    "index": "openlist"
   },
   "scheme": {
     "address": "0.0.0.0",
@@ -180,7 +180,7 @@ set_openlist_conf()
     "key_file": "",
     "unix_file": "",
     "unix_file_perm": "",
-	"enable_h2c": false
+    "enable_h2c": false
   },
   "temp_dir": "$tmp_dir",
   "bleve_dir": "$bleve_dir",
@@ -191,7 +191,27 @@ set_openlist_conf()
     "max_size": 50,
     "max_backups": 30,
     "max_age": 28,
-    "compress": false
+    "compress": false,
+    "filter": {
+      "enable": false,
+      "filters": [
+        {
+          "cidr": "",
+          "path": "/ping",
+          "method": ""
+        },
+        {
+          "cidr": "",
+          "path": "",
+          "method": "HEAD"
+        },
+        {
+          "cidr": "",
+          "path": "/dav/",
+          "method": "PROPFIND"
+        }
+      ]
+    }
   },
   "delayed_start": 0,
   "max_connections": 0,
