@@ -13,28 +13,39 @@ services:
       - PGID=${PGID}
       - TZ=${TZ}
       - MYSQL_ROOT_PASSWORD=${ROOT_PASSWD}
+      - MYSQL_INIT_DIR=/opt/scripts/monitor
+      - MYSQL_WATCH_DIR=/docker-entrypoint-initdb.d
+      - MYSQL_INIT_SCRIPT=/opt/scripts/monitor/init-script.sh
+      - MYSQL_EXECUTED_LOG=/opt/scripts/monitor/sql-executed_log.log
     volumes:
       - ${CONFIG_PATH}:/etc/mysql/conf.d
       - ${DATA_PATH}:/var/lib/mysql
       - ${LOG_PATH}:/logs
-      - ./etc:/docker-entrypoint-initdb.d:ro
+      - ./etc/sql-scripts:/docker-entrypoint-initdb.d:ro
+      - ./etc/init-scripts:/opt/scripts/monitor:rw
     env_file:
       - .env
     ports:
       - '3306:3306'
     networks:
       - local_network
-    #command: ["bash", "/docker-entrypoint-initdb.d/init-script.sh"]
-    command: [
-      "--transaction-isolation=READ-COMMITTED",
-      "--character-set-server=utf8mb4",
-      "--collation-server=utf8mb4_unicode_ci",
-      "--max-connections=512",
-      "--innodb-rollback-on-timeout=OFF",
-      "--innodb-lock-wait-timeout=50",
-      "--innodb_buffer_pool_size=512M",
-      "--innodb_log_file_size=512M"
-      ]
+    command: >
+      sh -c "
+      if test -f \"$$MYSQL_INIT_SCRIPT\"; then
+          chmod +x \"$$MYSQL_INIT_SCRIPT\"
+          \"$$MYSQL_INIT_SCRIPT\" &
+      fi
+      
+      exec /usr/local/bin/docker-entrypoint.sh mysqld \
+        --transaction-isolation=READ-COMMITTED \
+        --character-set-server=utf8mb4 \
+        --collation-server=utf8mb4_unicode_ci \
+        --max-connections=512 \
+        --innodb-rollback-on-timeout=OFF \
+        --innodb-lock-wait-timeout=50 \
+        --innodb_buffer_pool_size=512M \
+        --innodb_log_file_size=512M
+      "
     restart: unless-stopped
     
 networks:
