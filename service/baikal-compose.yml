@@ -1,0 +1,28 @@
+
+name: baikal
+
+services:
+  baikal-server:
+    container_name: baikal
+    image: ckulka/baikal:nginx
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Asia/Shanghai
+      - DB_HOST=mariadb
+      - DB_NAME=baikal
+      - DB_USER=baikal
+      - DB_PASSWORD=123456
+    volumes:
+      - /app/usr/baikal/config:/var/www/baikal/config
+      - /app/usr/baikal/data:/var/www/baikal/Specific
+    ports:
+      - "8021:80"
+    hostname: baikal
+    networks:
+      - local_network
+    restart: always
+    
+networks:
+  local_network:
+    external: true
