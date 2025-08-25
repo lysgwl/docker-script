@@ -1,0 +1,20 @@
+
+name: sun-panel
+
+services:
+  sun-panel-server:
+    container_name: sun-panel
+    image: hslr/sun-panel:latest
+    volumes:
+      - /app/usr/sun-panel/conf:/app/conf
+      - /var/run/docker.sock:/var/run/docker.sock
+    #ports:
+    #  - 8011:3002
+    hostname: sun-panel
+    networks:
+      - local_network
+    restart: always
+    
+networks:
+  local_network:
+    external: true

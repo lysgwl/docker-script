@@ -53,7 +53,7 @@ update_modules()
 	echo "================= [$(date '+%Y-%m-%d %H:%M:%S')] 开始自动更新 =================" >> "$RUN_UPDATE_LOG"
 	
 	# 执行更新
-	update_service "filebrowser" update_filebrowser_service
+	#update_service "filebrowser" update_filebrowser_service
 	update_service "openlist" update_openlist_service
 	update_service "syncthing" update_syncthing_service
 	
