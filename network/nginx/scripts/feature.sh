@@ -1182,7 +1182,7 @@ check_nginx_conf()
 	elif command -v awk &>/dev/null; then
 		awk_cmd="awk"
 	else
-		echo "[ERROR] awk命令不存在，请检查系统环境！"
+		echo "[ERROR] awk命令不存在，请检查系统环境！" >&2
 		return 1
 	fi
 
@@ -1269,22 +1269,22 @@ check_nginx_conf()
 	
 	# 错误处理
 	if [ $awk_exit -ne 0 ]; then
-		echo "[ERROR] awk处理配置文件失败(退出码: $awk_exit)"
+		echo "[ERROR] awk处理配置文件失败(退出码: $awk_exit)" >&2
 		return 1
 	fi
 	
 	case $status_code in
 		0)
-			echo "[INFO] 配置文件完整且有效"
+			echo "[INFO] 配置文件完整且有效" >&2
 			;;
 		2)
-			echo "[WARNING] 配置文件中仅有http块，未包含server块"
+			echo "[WARNING] 配置文件中仅有http块，未包含server块" >&2
 			;;
 		3)
-			echo "[WARNING] 配置文件中server块未包含在http块内"
+			echo "[WARNING] 配置文件中server块未包含在http块内"	>&2
 			;;
 		4)
-			echo "[ERROR] 配置文件无效，未包含有效的http或server块"
+			echo "[ERROR] 配置文件无效，未包含有效的http或server块" >&2
 			;;
 		*)
 			echo "[ERROR] 未知错误"
@@ -1305,13 +1305,13 @@ modify_nginx_location()
 	
 	# 验证参数
 	if [[ -z "$conf_file" || -z "$location_path" || -z "$reference_content" || -z "$new_content" ]]; then
-		echo "[ERROR] 必要参数不能为空,请检查!"
+		echo "[ERROR] 必要参数不能为空,请检查!" >&2
 		return 1
 	fi
 	
 	# 检查配置文件
 	if [[ ! -f "$conf_file" ]]; then
-		echo "[ERROR] 配置文件不存在,请检查!"
+		echo "[ERROR] 配置文件不存在,请检查!" >&2
 		return 1
 	fi
 	
@@ -1321,14 +1321,14 @@ modify_nginx_location()
 	elif command -v awk &>/dev/null; then
 		awk_cmd="awk"
 	else
-		echo "[ERROR] awk命令不存在，请检查系统环境！"
+		echo "[ERROR] awk命令不存在，请检查系统环境！" >&2
 		return 1
 	fi
 	
 	# 创建备份文件
 	local backup_file="${conf_file}.bak"
 	if ! cp "$conf_file" "$backup_file"; then
-		 echo "[ERROR] 创建备份文件失败: $backup_file"
+		 echo "[ERROR] 创建备份文件失败: $backup_file" >&2
 		 return 1
 	fi
 	
@@ -1467,17 +1467,17 @@ modify_nginx_location()
 	
 	# 错误处理
 	if [ $awk_exit -ne 0 ]; then
-		echo "[ERROR] awk处理配置文件失败(退出码: $awk_exit)"
+		echo "[ERROR] awk处理配置文件失败(退出码: $awk_exit)" >&2
 		
-		echo "=== awk错误输出 ==="
+		echo "=== awk错误输出 ===" >&2
 		cat "$temp_file"
-		echo "=================="
+		echo "==================" >&2
 		
 		# 恢复备份
 		if cp "$backup_file" "$conf_file"; then
-			echo "[INFO] 备份恢复配置文件: $backup_file -> $conf_file"
+			echo "[INFO] 备份恢复配置文件: $backup_file -> $conf_file" >&2
 		else
-			echo "[WARNING] 恢复备份失败! 请手动恢复: $backup_file"
+			echo "[WARNING] 恢复备份失败! 请手动恢复: $backup_file" >&2
 		fi
 
 		rm "$temp_file"
@@ -1485,7 +1485,7 @@ modify_nginx_location()
 	fi
 	
 	if ! cp "$temp_file" "$conf_file"; then
-		echo "[ERROR] 配置文件替换失败，恢复备份!"
+		echo "[ERROR] 配置文件替换失败，恢复备份!" >&2
 		
 		cp "$backup_file" "$conf_file"
 		rm "$temp_file"
@@ -1494,7 +1494,7 @@ modify_nginx_location()
 	fi
 
 	rm "$temp_file"
-	echo "[INFO] 配置文件修改成功! $conf_file"
+	echo "[INFO] 配置文件修改成功! $conf_file" >&2
 	
 	return 0
 }

@@ -17,6 +17,7 @@ declare -A nginx_config=(
 declare -A nginx_sources=(
 	["pcre"]='{"repo":"PCRE2Project/pcre2", "version":"latest"}'
 	["nginx"]='{"repo":"nginx/nginx", "version":"latest"}'
+	["upstream-check"]='{"repo":"", "version":""}'
 )
 
 readonly -A nginx_config
@@ -27,8 +28,6 @@ fetch_nginx_source()
 	local downloads_dir=$1
 	echo "[INFO] 获取${nginx_config[name]}源码" >&2
 	
-	local url="https://github.com/$repo.git"
-	
 	local output_dir="${downloads_dir}/output"
 	mkdir -p "$output_dir" || return 1
 
@@ -36,16 +35,25 @@ fetch_nginx_source()
 	for key in "${!nginx_sources[@]}"; do
 		local name="$key"
 		local source_config="${nginx_sources[$name]}"
-
-		# 解析 JSON 配置
-		local repo=$(jq -r '.repo // empty' <<< "$source_config")
-		local version=$(jq -r '.version // empty' <<< "$source_config")
+		
+		if [[ -z "$source_config" ]]; then
+			continue
+		fi
 
 		echo "[INFO] 正在获取$name源码..." >&2
 		
 		local findpath latest_path archive_path archive_name
 		if ! findpath=$(find_latest_archive "$downloads_dir" "$name.*"); then
+			# 解析 JSON 配置
+			local repo=$(jq -r '.repo // empty' <<< "$source_config")
+			local version=$(jq -r '.version // empty' <<< "$source_config")
+			
+			if [[ -z "$repo" ]]; then
+				continue
+			fi
+			
 			echo "[WARNING] 未匹配到$name软件包..." >&2
+			local url="https://github.com/$repo.git"
 
 			# 克隆仓库的配置
 			local jq_args=(
@@ -132,18 +140,9 @@ setup_nginx_source()
 {
 	echo "[INFO] 编译${nginx_config[name]}源码"
 
-	local pcre_path=""
-	local nginx_path=""
-
-	local pcre_json="${nginx_sources[pcre]}"
-	if [ -n "$pcre_json" ]; then
-		pcre_path=$(jq -r '.path // empty' <<< "$pcre_json")
-	fi
-
-	local nginx_json="${nginx_sources[nginx]}"
-	if [ -n "$nginx_json" ]; then
-		nginx_path=$(jq -r '.path // empty' <<< "$nginx_json")
-	fi
+	local pcre_path=$(jq -r '.path // empty' <<< "${nginx_sources[pcre]:-{}}")
+	local nginx_path=$(jq -r '.path // empty' <<< "${nginx_sources[nginx]:-{}}")
+	local upstream_check_path=$(jq -r '.path // empty' <<< "${nginx_sources[upstream-check]:-{}}")
 
 	if [[ -z "$pcre_path" || -z "$nginx_path" ]]; then
 		echo "[ERROR] 获取${nginx_config[name]}源码路径为空,请检查!" >&2
@@ -196,6 +195,12 @@ setup_nginx_source()
 		--with-stream_realip_module
 		--with-stream_ssl_preread_module
 	)
+	
+	if [[ -n "$upstream_check_path" && -d "$upstream_check_path" ]]; then
+		if patch -p1 < "$upstream_check_path/check_1.20.1+.patch"; then
+			configure_options+=(--add-module="$upstream_check_path")
+		fi
+	fi
 
 	# 执行配置命令
 	 echo "[INFO] 正在配置${nginx_config[name]}..."
@@ -304,29 +309,33 @@ set_nginx_port()
 	fi
 }
 
-# 检查 nginx 配置文件
+# 处理 nginx 配置文件
 handle_nginx_config() 
 {
 	local target_file=$1
 	echo "[INFO] 检查 nginx 配置文件:$target_file"
 	
 	# 检查 nginx 配置
-	check_nginx_conf "$target_file"
+	local status_code
+	check_nginx_conf "$target_file" && status_code=0 || status_code=$?
 	
-	local ret=$?
-	echo "[WARNING] 检查配置文件$target_file状态:$ret"
+	echo "[WARNING] 检查配置文件$target_file状态:$status_code"
 	
-	if [ "$ret" -eq 0 ] || [ "$ret" -eq 3 ]; then
-		# 正常配置
-		set_nginx_port "$target_file"
-		return 0
-	elif [ "$ret" -eq 2 ]; then
-		# 仅有 http 块
-		return 1
-	else
-		# 无效配置
-		return 2
-	fi
+	case $status_code in
+		0|3)
+			# 正常配置 (0:完整配置, 3:server块不在http内)
+			set_nginx_port "$target_file"
+			return 0
+			;;
+		2)
+			# 仅有 http 块
+			return 1
+			;;
+		*)
+			# 无效配置或其他错误
+			return 2
+			;;
+	esac
 }
 
 # 设置 nginx 配置
@@ -341,9 +350,11 @@ set_nginx_conf()
 	if [[ -d "$target_dir" ]] && find "$target_dir" -mindepth 1 -maxdepth 1 -quit 2>/dev/null; then
 		mkdir -p "$dest_dir"
 
-		if rsync -a --remove-source-files "$target_dir"/ "$dest_dir"/ >/dev/null; then
-			rm -rf "$target_dir"
+		if ! rsync -a --remove-source-files "$target_dir"/ "$dest_dir"/ >/dev/null; then
+			return 1
 		fi
+		
+		rm -rf "$target_dir"
 	fi
 
 	# nginx 预设配置
@@ -353,32 +364,50 @@ set_nginx_conf()
 	if [[ -d "$target_dir" ]] && find "$target_dir" -mindepth 1 -maxdepth 1 -quit 2>/dev/null; then
 		mkdir -p "$dest_dir"
 
-		if rsync -a --remove-source-files "$target_dir"/ "$dest_dir"/ >/dev/null; then
-			rm -rf "$target_dir"
+		if ! rsync -a --remove-source-files "$target_dir"/ "$dest_dir"/ >/dev/null; then
+			return 1
 		fi
+		
+		rm -rf "$target_dir"
 	fi
 
 	# nginx 配置文件
-	target_dir="${system_config[conf_dir]}/${nginx_config[name]}"
+	target_dir="${system_config[conf_dir]}/conf"
 	dest_dir="${nginx_config[conf_file]%/*}"
 
 	if [[ -d "$target_dir" ]] && find "$target_dir" -mindepth 1 -maxdepth 1 -quit 2>/dev/null; then
 		mkdir -p "$dest_dir"
 
 		# 备份 nginx 配置文件
-		if [ -f "${nginx_config[conf_file]}" ]; then
-			mv -f "${nginx_config[conf_file]}" "${nginx_config[conf_file]}.bak"
+		if [[ -f "${nginx_config[conf_file]}" ]]; then
+			rsync -a --remove-source-files "${nginx_config[conf_file]}" "${nginx_config[conf_file]}.bak" >/dev/null
 		fi
 
 		# 拷贝 nginx 配置文件
-		cp -rf "$target_dir/"* "$dest_dir"
+		if ! rsync -a --remove-source-files "$target_dir" "$dest_dir/" >/dev/null; then
+			return 1
+		fi
+		
+		# 创建配置文件软链接
+		if [[ -f "$dest_dir/conf/nginx.conf" ]]; then
+			ln -sf "$dest_dir/conf/nginx.conf" "$dest_dir/nginx.conf" || return 1
+		fi
+		
+		rm -rf "$target_dir"
 	fi
 
 	echo "[INFO] ${nginx_config[name]}配置文件:${nginx_config[conf_file]}"
 
-	# 检查处理配置文件
-	handle_nginx_config "${nginx_config[conf_file]}" || \
-	handle_nginx_config "${nginx_config[conf_file]%/*}/extra/www.conf"
+	# 处理配置文件
+	if ! handle_nginx_config "${nginx_config[conf_file]}"; then
+		for config_file in "${nginx_config[conf_file]%/*}/conf/sites"/*.conf; do
+			if ! handle_nginx_config "$config_file"; then
+				continue
+			fi
+		done
+	fi
+
+	return 0
 }
 
 # 设置 nginx 用户

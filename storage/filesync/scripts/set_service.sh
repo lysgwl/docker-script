@@ -85,9 +85,6 @@ set_service_env()
 		fi
 COMMENT_BLOCK
 
-		# 设置系统配置
-		set_service_conf
-		
 		# 设置 root 用户密码
 		echo "root:$ROOT_PASSWORD" | chpasswd
 	fi

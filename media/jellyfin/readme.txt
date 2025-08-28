@@ -8,7 +8,7 @@
 	URL: https://jellyfin-plugin-bangumi.pages.dev/repository.json
 	
 3. MetaShark 
-	URL：https://ghfast.top/https://github.com/cxfksword/jellyfin-plugin-metashark/releases/download/manifest/manifest_cn.json	
+	URL：https://ghfast.top/https://github.com/cxfksword/jellyfin-plugin-metashark/releases/download/manifest/manifest_cn.json
 	jellyfin-cli					# 进入 Jellyfin 控制台
 	jellyfin-cli metadata update	# 更新元数据
 	
@@ -41,3 +41,5 @@
 		# 启动主进程
 		exec /jellyfin/jellyfin
 	  '
+8. 跳过片头插件
+	URL：https://raw.githubusercontent.com/ConfusedPolarBear/intro-skipper/master/manifest.json
