@@ -1,0 +1,28 @@
+
+name: homepage
+
+services:
+  homepage-server:
+    container_name: homepage
+    image: ghcr.io/gethomepage/homepage:latest
+    environment:
+      - PUID=0
+      - PGID=0
+      - TZ=Asia/Shanghai
+      - HOMEPAGE_ALLOWED_HOSTS=*
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /app/usr/homepage/config:/app/config
+      - /app/usr/homepage/logs:/app/config/logs
+      - /app/usr/homepage/icons:/app/public/icons
+      - /app/usr/homepage/images:/app/public/images
+    ports:
+      - 8030:3000
+    hostname: homepage
+    networks:
+      - local_network
+    restart: unless-stopped
+    
+networks:
+  local_network:
+    external: true

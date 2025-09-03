@@ -1,0 +1,26 @@
+
+name: homarr
+
+services:
+  homarr-server:
+    container_name: homarr
+    image: ghcr.io/ajnart/homarr:latest
+    environment:
+      - PUID=0
+      - PGID=0
+      - TZ=Asia/Shanghai
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /app/usr/homarr/config:/app/data/configs
+      - /app/usr/homarr/icons:/app/public/icons
+      - /app/usr/homarr/data:/data
+    ports:
+      - 8013:7575
+    hostname: homarr
+    networks:
+      - local_network
+    restart: unless-stopped
+    
+networks:
+  local_network:
+    external: true

@@ -1,0 +1,26 @@
+
+name: code-server
+
+services:
+  code-server:
+    container_name: code-server
+    image: linuxserver/code-server:latest
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Asia/Shanghai
+      - PASSWORD=123456
+      - SUDO_PASSWORD=123456
+      - DEFAULT_WORKSPACE=/workspace
+    volumes:
+      - /app/usr/code-server/config:/config
+      - /app/usr/code-server/workspace:/workspace
+    ports:
+      - '8011:8443'
+    networks:
+      - local_network
+    restart: always
+    
+networks:
+  local_network:
+    external: true

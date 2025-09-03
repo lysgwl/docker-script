@@ -1,0 +1,38 @@
+---
+# For configuration options and examples, please see:
+# https://gethomepage.dev/configs/services/
+
+- 主机服务:
+    - ProxmoxVE:
+        href: http://192.168.2.12:8006
+        description: pve管理页面
+    - OpenWRT:
+        href: http://192.168.2.1
+        description: openwrt管理页面
+    - DXP4800:
+        href: http://192.168.2.15
+        description: 绿联4800管理页面
+- 文件管理:
+    - Openlist:
+        href: http://192.168.2.23/openlist
+        description: openlist管理页面
+    - Syncthing:
+        href: http://192.168.2.23/syncthing
+        description: syncthing管理页面
+- 媒体影视:
+    - Jellyfin:
+        href: http://192.168.2.23:8096
+        #description: Jellyfin 影视媒体
+        widget:
+          type: jellyfin
+          url: http://192.168.2.23:8096
+          key: 1cb02e0386d64481b784fff6671e4f07
+          enableBlocks: true
+          enableNowPlaying: true
+          enableUser: true
+          enableMediaControl: false
+          showEpisodeNumber: true
+          expandOneStreamToTwoRows: false
+    - Immich:
+        href: http://192.168.2.23:2283
+        description: Immich相册服务

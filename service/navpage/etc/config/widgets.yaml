@@ -1,0 +1,32 @@
+---
+# For configuration options and examples, please see:
+# https://gethomepage.dev/configs/info-widgets/
+
+- greeting:
+     text_size: xl
+     text: ヾ(◍°∇°◍)ﾉﾞ！
+
+#- resources:
+#    cpu: true
+#    memory: true
+#    disk: /
+
+- search:
+    provider: [baidu, google, bing]
+    focus: true
+    target: _blank
+
+#- openmeteo:
+#    label: 北京
+#    latitude: 40.6
+#    longitude: 116.31
+#    timezone: Asia/Shanghai
+#    units: metric
+#    cache: 5
+
+- datetime:
+    text_size: xl
+    format:
+      dateStyle: long
+      timeStyle: short
+      hour12: false

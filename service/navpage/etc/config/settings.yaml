@@ -1,0 +1,30 @@
+---
+# For configuration options and examples, please see:
+# https://gethomepage.dev/configs/settings/
+
+providers:
+  openweathermap: openweathermapapikey
+  weatherapi: weatherapiapikey
+  
+language: zh-CN
+logpath: /
+background:
+  # https://images.unsplash.com/photo-1502790671504-542ad42d5189?auto=format&fit=crop&w=2560&q=80
+  # https://www.bing.com/th?id=OHR.WatSriSawai_ZH-CN7688908090_1920x1080.jpg&rf=LaDigue_1920x1080.jpg&pid=hp 
+  image: https://images.unsplash.com/photo-1502790671504-542ad42d5189?auto=format&fit=crop&w=2560&q=80
+  #blur: sm          # 模糊程度，范围 sm, "", md, xl...
+  #saturate: 50      # 饱和度，范围 0, 50, 100...
+  #brightness: 50    # 亮度，范围 0, 50, 75...
+  opacity: 20       # 不透明度，范围 0-100
+theme: light
+color: blue
+hideVersion: true
+title: wl Homepage
+layout:
+    主机服务:
+      style: row
+      columns: 4
+    媒体影视:
+      style: col
+    文件管理:
+      style: col

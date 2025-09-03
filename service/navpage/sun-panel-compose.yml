@@ -1,0 +1,40 @@
+
+name: sun-panel
+
+services:
+  # 用户: admin@sun.cc
+  # 密码: 12345678
+  sun-panel-server:
+    container_name: sun-panel
+    image: hslr/sun-panel:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /app/usr/sun-panel/conf:/app/conf
+      - /app/usr/sun-panel/logs:/app/runtime
+      - /app/usr/sun-panel/uploads:/app/uploads
+    ports:
+      - 8013:3002
+    hostname: sun-panel
+    networks:
+      - local_network
+    restart: always
+    
+  # 用户: helper
+  # 密码: helper123
+  sun-panel-helper:
+    container_name: sun-panel-helper
+    image: madrays/sun-panel-helper:latest
+    environment:
+      - BACKEND_PORT=3001
+    volumes:
+      - /app/usr/sun-panel/conf/custom:/app/backend/custom
+    ports:
+      - 8014:80
+    hostname: sun-panel-helper
+    networks:
+      - local_network
+    restart: unless-stopped
+    
+networks:
+  local_network:
+    external: true
