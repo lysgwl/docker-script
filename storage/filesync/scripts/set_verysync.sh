@@ -39,6 +39,7 @@ download_verysync()
 	# 调用下载函数
 	local latest_file
 	if ! latest_file=$(download_package "$json_config" "$downloads_dir"); then
+		echo "[ERROR] 下载 $name 文件失败,请检查!" >&2
 		return 2
 	fi
 	
