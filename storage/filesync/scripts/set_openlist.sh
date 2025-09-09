@@ -23,6 +23,8 @@ download_openlist()
 	local downloads_dir=$1
 	echo "[INFO] 下载${openlist_config[name]}安装包" >&2
 	
+	local name="${openlist_config[name]}-musl"
+	
 	# 动态生成配置
 	local arch_map='{"x86_64":"amd64","aarch64":"arm64","armv7l":"armv7"}'
 	local mapped_arch=$(jq -r ".\"${system_config[arch]}\" // empty" <<< "$arch_map")
@@ -37,10 +39,7 @@ download_openlist()
 		"[[ \$name =~ ${system_config[type]} ]]"
 		"[[ \$name =~ $mapped_arch ]]"
 	)
-	
-	local name_value="${openlist_config[name]}"
-	name_value+="-musl"
-	
+
 	# 检测 musl
 	if { ldd --version 2>&1 || true; } | grep -q "musl"; then
 		matcher_conditions+=("[[ \$name =~ musl ]]")
@@ -52,7 +51,7 @@ download_openlist()
 	
 	local json_config=$(jq -n \
 		--arg type "github" \
-		--arg name "$name_value" \
+		--arg name "$name" \
 		--arg repo "OpenListTeam/OpenList" \
 		--argjson asset_matcher "$(printf '%s' "$asset_matcher" | jq -Rs .)" \
 		'{
@@ -78,14 +77,11 @@ install_openlist_env()
 	local arg=$1
 	echo "[INFO] 安装${openlist_config[name]}服务环境"
 	
-	local downloads_dir="${system_config[downloads_dir]}"
-	
-	local install_dir="${system_config[install_dir]}"
-	local target_path="$install_dir/${openlist_config[name]}"
-
+	local target_path="${system_config[install_dir]}/${openlist_config[name]}"
 	if [ "$arg" = "init" ]; then
 		if [ ! -d "$target_path" ]; then
-		
+			local downloads_dir="${system_config[downloads_dir]}"
+			
 			# 获取安装包
 			local latest_path
 			latest_path=$(get_service_archive "${openlist_config[name]}" "$downloads_dir" download_openlist) || {
@@ -104,7 +100,7 @@ install_openlist_env()
 		fi
 	elif [ "$arg" = "config" ]; then
 		if [[ ! -d "${openlist_config[sys_path]}" && ! -e "${openlist_config[bin_file]}" ]]; then
-			install_dir=$(dirname "${openlist_config[sys_path]}")
+			local install_dir=$(dirname "${openlist_config[sys_path]}")
 			
 			# 安装软件包
 			install_binary "$target_path" "$install_dir" || {

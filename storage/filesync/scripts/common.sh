@@ -67,6 +67,9 @@ source $WORK_DIR/scripts/set_openlist.sh
 # 加载 syncthing 脚本
 source $WORK_DIR/scripts/set_syncthing.sh
 
+# 加载 verysync 脚本
+source $WORK_DIR/scripts/set_verysync.sh
+
 # 加载 filebrowser 脚本
 source $WORK_DIR/scripts/set_filebrowser.sh
 
@@ -103,6 +106,11 @@ init_modules()
 		return 1
 	fi
 	
+	# 初始 verysync 环境
+	if ! init_verysync_service "$param"; then
+		return 1
+	fi
+	
 	return 0
 }
 
@@ -119,6 +127,9 @@ run_modules()
 
 	# 运行 syncthing 服务
 	run_syncthing_service
+	
+	# 运行 verysync 服务
+	run_verysync_service
 }
 
 # 关闭模块
@@ -132,6 +143,9 @@ close_modules()
 	
 	# 关闭 syncthing 服务
 	close_syncthing_service
+	
+	# 关闭 verysync 服务
+	close_verysync_service
 }
 
 # 获取安装包
@@ -152,7 +166,7 @@ get_service_archive()
 		
 		# 回调函数下载文件
 		local download_file
-		download_file=$(download_filebrowser "$downloads_dir") && [ -n "$download_file" ] || {
+		download_file=$($download_callback "$downloads_dir") && [ -n "$download_file" ] || {
 			echo "[ERROR] 下载$name软件包失败,请检查!" >&2
 			return 2
 		}
