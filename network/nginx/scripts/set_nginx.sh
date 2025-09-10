@@ -27,11 +27,7 @@ fetch_nginx_source()
 {
 	local downloads_dir=$1
 	echo "[INFO] 获取${nginx_config[name]}源码" >&2
-	
-	local output_dir="${downloads_dir}/output"
-	mkdir -p "$output_dir" || return 1
 
-	local ret=0
 	for key in "${!nginx_sources[@]}"; do
 		local name="$key"
 		local source_config="${nginx_sources[$name]}"
@@ -39,34 +35,28 @@ fetch_nginx_source()
 		if [[ -z "$source_config" ]]; then
 			continue
 		fi
-
+	
+		# 解析 JSON 配置
+		local repo=$(jq -r '.repo // empty' <<< "$source_config")
+		local version=$(jq -r '.version // empty' <<< "$source_config")
+		
+		# 如果repo为空，跳过该源码获取
+		if [[ -z "$repo" ]]; then
+			echo "[INFO] 跳过 $name 源码获取,未配置仓库" >&2
+			continue
+		fi
+		
+		local url="https://github.com/$repo.git"
 		echo "[INFO] 正在获取$name源码..." >&2
 		
-		local findpath latest_path archive_path archive_name
-		if ! findpath=$(find_latest_archive "$downloads_dir" "$name.*"); then
-			# 解析 JSON 配置
-			local repo=$(jq -r '.repo // empty' <<< "$source_config")
-			local version=$(jq -r '.version // empty' <<< "$source_config")
-			
-			if [[ -z "$repo" ]]; then
-				continue
-			fi
-			
-			echo "[WARNING] 未匹配到$name软件包..." >&2
-			local url="https://github.com/$repo.git"
-
-			# 克隆仓库的配置
-			local jq_args=(
-				--arg type "$([ -n "$repo" ] && echo "github" || echo "static")"
-				--arg name "$name"
-				--arg repo "${repo:-}"
-				--arg version "${version}"
-				--arg url "${url:-}"
-			)
-			
-			# 克隆的 JSON 配置
-			local json_config=$(jq -n "${jq_args[@]}" '{ type: $type, name: $name, repo: $repo, version: $version, url: $url }')
-
+		# 构建克隆仓库的配置
+		local jq_args=(
+			--arg type "$([ -n "$repo" ] && echo "github" || echo "static")"
+			--arg name "$name"
+			--arg repo "${repo:-}"
+			--arg version "${version}"
+			--arg url "${url:-}"
+		)
 : <<'COMMENT_BLOCK'
 				local matcher_value=""
 				if [ -n "$repo" ]; then
@@ -89,47 +79,21 @@ fetch_nginx_source()
 					end |
 					with_entries(select(.value != "")) ')
 COMMENT_BLOCK
-			# 克隆仓库
-			archive_path=$(clone_repo "$json_config" "$downloads_dir") || {
-				echo "[ERROR] 克隆 $name 源代码失败,请检查!" >&2
-				ret=2; break
-			}
-			
-			# 同步至输出目录
-			archive_name=$(basename "$archive_path")
-			if [ ! -e "$output_dir/$archive_name" ]; then
-				rsync -a --exclude '.*' "$archive_path/" "$output_dir/$archive_name/"
-			fi
-			
-			latest_path="$output_dir/$archive_name"
-		else
-			# 处理归档文件
-			local archive_type=$(jq -r '.filetype' <<< "$findpath")
-			archive_path=$(jq -r '.filepath' <<< "$findpath")
-			archive_name=$(jq -r '.name' <<< "$findpath")
-
-			# 验证归档类型
-			if [[ -z "$archive_type" ]] || ! [[ "$archive_type" =~ ^(file|directory)$ ]]; then
-				echo "[ERROR] 解析 $name 文件失败,请检查!" >&2
-				ret=1; break
-			fi
-			
-			# 文件处理
-			if [ "$archive_type" = "file" ]; then
-				latest_path=$(extract_and_validate "$archive_path" "$output_dir" "$name.*") || {
-					echo "[ERROR] 解压 $name 源码文件失败,请检查!" >&2
-					ret=3; break
-				}
-			else
-				if [ ! -e "$output_dir/$archive_name" ]; then
-					rsync -a --exclude '.*' "$archive_path/" "$output_dir/$archive_name/"
-				fi
-				
-				latest_path="$output_dir/$archive_name"
-			fi
+		
+		# 创建克隆的 JSON 配置
+		local json_config=$(jq -n "${jq_args[@]}" '{ type: $type, name: $name, repo: $repo, version: $version, url: $url }')
+		
+		# 获取源码路径
+		local source_path
+		source_path=$(get_service_sources "$name" "$downloads_dir" "$json_config")
+		
+		local ret=$?
+		if [ $ret -ne 0 ]; then
+			echo "[ERROR] 获取 $name 源码失败，错误码: $ret" >&2
+			break
 		fi
 		
-		nginx_sources[$name]=$(jq --arg path "$latest_path" '. + {path: $path}' <<< "$source_config")
+		nginx_sources[$name]=$(jq --arg path "$source_path" '. + {path: $path}' <<< "$source_config")
 	done
 
 	return $ret
@@ -140,10 +104,10 @@ setup_nginx_source()
 {
 	echo "[INFO] 编译${nginx_config[name]}源码"
 
-	local pcre_path=$(jq -r '.path // empty' <<< "${nginx_sources[pcre]:-{}}")
-	local nginx_path=$(jq -r '.path // empty' <<< "${nginx_sources[nginx]:-{}}")
-	local upstream_check_path=$(jq -r '.path // empty' <<< "${nginx_sources[upstream-check]:-{}}")
-
+	local pcre_path=$(jq -r '.path // empty' <<< "${nginx_sources[pcre]}" 2>/dev/null || echo '{}')
+	local nginx_path=$(jq -r '.path // empty' <<< "${nginx_sources[nginx]}" 2>/dev/null || echo '{}')
+	local upstream_check_path=$(jq -r '.path // empty' <<< "${nginx_sources[upstream-check]}" 2>/dev/null || echo '{}')
+	
 	if [[ -z "$pcre_path" || -z "$nginx_path" ]]; then
 		echo "[ERROR] 获取${nginx_config[name]}源码路径为空,请检查!" >&2
 		return 1
@@ -232,14 +196,11 @@ install_nginx_env()
 	local arg=$1
 	echo "[INFO] 安装${nginx_config[name]}服务"
 
-	local downloads_dir="${system_config[downloads_dir]}"
-	
-	local install_dir="${system_config[install_dir]}"
-	local target_path="$install_dir/${nginx_config[name]}"
-	
+	local target_path="${system_config[install_dir]}/${nginx_config[name]}"
 	if [ "$arg" = "init" ]; then
 		if [ ! -d "${target_path}" ]; then
-		
+			local downloads_dir="${system_config[downloads_dir]}"
+			
 			# 获取 nginx 源码路径
 			if ! fetch_nginx_source "$downloads_dir"; then
 				echo "[ERROR] 获取${nginx_config[name]}失败,请检查!" >&2
@@ -253,7 +214,7 @@ install_nginx_env()
 			fi
 
 			# 安装软件包
-			install_binary "${nginx_config[sys_path]}" "$install_dir" || {
+			install_binary "${nginx_config[sys_path]}/*" "$target_path" || {
 				echo "[ERROR] 安装 ${nginx_config[name]} 失败,请检查" >&2
 				return 4
 			}
@@ -263,7 +224,7 @@ install_nginx_env()
 		fi
 	elif [ "$arg" = "config" ]; then
 		if [[ ! -d "${nginx_config[sys_path]}" || ! -e "${nginx_config[bin_file]}" ]]; then
-			install_dir=$(dirname "${nginx_config[sys_path]}")
+			local install_dir=$(dirname "${nginx_config[sys_path]}")
 			
 			# 安装软件包
 			install_binary "$target_path" "$install_dir" || {
