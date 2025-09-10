@@ -13,19 +13,22 @@ find_latest_archive()
 	while IFS= read -r -d $'\0' filepath; do
 		local filetype="unknown"
 		local filename=$(basename "$filepath")
+		local name="$filename"
 		
 		[[ -f "$filepath" ]] && filetype="file"
 		[[ -d "$filepath" ]] && filetype="directory"
 		
-		local suffix="" name="$filename"
+		local suffix="" base_name=""
 		if [[ "$filename" =~ \.([[:alpha:]]{3,})\.([[:alpha:]]{2,3})$ ]]; then
 			# 匹配两段式后缀（如 .tar.gz）
 			suffix=".${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
 			base_name="${filename%$suffix}"
+			name="$base_name"
 		elif [[ "$filename" =~ \.([[:alpha:]]{2,})$ ]]; then
 			# 匹配单一段式后缀（如 .gz）
 			suffix=".${BASH_REMATCH[1]}"
 			base_name="${filename%$suffix}"
+			name="$base_name"
 		fi
 		
 		# 获取修改时间戳
@@ -181,58 +184,84 @@ install_binary()
 	local dest_path=$2
 	local symlink_path=${3:-}
 	
-	# 校验源路径类型
-	if [[ ! -e "$src_path" ]]; then 
-		echo "[ERROR] 源文件$src_path不存在,请检查!" >&2
-		return 1
-	fi
-
-	# 处理目标路径
-	if [[ -n "$dest_path" ]]; then
-		local target_name=$(basename "$src_path")
-		local target_path
+	# 处理通配符
+	local has_wildcard=0
+	[[ "$src_path" == *[\*\?\[]* ]] && has_wildcard=1
+	
+	local sources=()
+	if [[ $has_wildcard -eq 1 ]]; then
+		for file in $src_path; do
+			[[ -e "$file" ]] && sources+=("$file")
+		done
 		
-		# 如果目标路径是文件
-		if [[ -f "$dest_path" ]]; then
-			local parent=$(dirname "$dest_path")
-			target_path="$parent"
-		else
-			# 如果目标路径是目录，确保目录存在
-			mkdir -p "$dest_path" || {
-				echo "[ERROR] 无法创建目录,请检查!" >&2
-				return 2
-			}
-			
-			target_path="$dest_path"
+		# 检查是否匹配到任何文件
+		if [[ ${#sources[@]} -eq 0 ]]; then
+			echo "[ERROR] 通配符未匹配到任何文件: $src_path" >&2
+			return 1
 		fi
-		
-		# 删除已存在的目标文件或符号链接
-		rm -rf "$target_path/$target_name"
-		
-		# 复制源到目标
-		if [[ -d "$src_path" ]]; then
-			# 如果源是目录，则复制整个目录
-			cp -a "$src_path" "$target_path/" || {
-				echo "[ERROR] 文件复制失败,请检查!" >&2
-				return 3
-			}
-		else
-			cp -a "$src_path" "$target_path/$target_name" || {
-				echo "[ERROR] 文件复制失败, 请检查!" >&2
-				return 3
-			}
-		fi
-		
-		# 设置目标文件可执行权限
-		if [[ -f "$target_path/$target_name" ]]; then
-			chmod +x "$target_path/$target_name"
-		fi
-		
-		# 创建符号链接
-		[[ -n "$symlink_path" ]] && ln -sf "$target_path/$target_name" "$symlink_path" 2>/dev/null || :
 	else
+		# 校验源路径类型
+		if [[ ! -e "$src_path" ]]; then
+			echo "[ERROR] 源文件$src_path不存在,请检查!" >&2
+			return 1
+		fi
+		
+		sources=("$src_path")
+	fi
+	
+	if [[ -z "$dest_path" ]]; then
 		# 创建符号链接
-		[[ -n "$symlink_path" ]] && ln -sf "$src_path" "$symlink_path" 2>/dev/null || :
+		if [[ -n "$symlink_path" ]]; then
+			ln -sfn "${sources[0]}" "$symlink_path" 2>/dev/null || {
+				echo "[ERROR] 创建符号链接失败: $symlink_path" >&2
+				return 4
+			}
+		fi
+	else
+		mkdir -p "$dest_path" || {
+			echo "[ERROR] 无法创建目录 $dest_path !" >&2
+			return 2
+		}
+		
+		# 复制文件/目录
+		for source in "${sources[@]}"; do
+			local target_name=$(basename "$source")
+			local target_path="$dest_path/$target_name"
+			
+			# 删除已存在的目标
+			rm -rf "$target_path"
+			
+			# 复制源到目标
+			if [[ -d "$source" ]]; then
+				# 复制整个目录
+				cp -a "$source" "$dest_path/" || {
+					echo "[ERROR] 目录复制失败: $source" >&2
+					return 3
+				}
+			else
+				# 复制单个文件
+				cp -a "$source" "$target_path" || {
+					 echo "[ERROR] 文件复制失败: $source" >&2
+					 return 3
+				}
+				
+				# 设置可执行权限
+				chmod +x "$target_path"
+			fi
+		done
+		
+		# 创建符号链接
+		if [[ -n "$symlink_path" ]]; then
+			local symlink_target="$dest_path"
+			if [[ ${#sources[@]} -eq 1 && ! -d "${sources[0]}" ]]; then
+				symlink_target="$dest_path/$(basename "${sources[0]}")"
+			fi
+			
+			ln -sfn "$symlink_target" "$symlink_path" 2>/dev/null || {
+				echo "[ERROR] 创建符号链接失败: $symlink_path" >&2
+				return 4
+			}
+		fi
 	fi
 	
 	return 0
