@@ -158,7 +158,7 @@ get_service_archive()
 	local output_dir="$downloads_dir/output"
 	mkdir -p "$output_dir" || return 1
 	
-	local findpath latest_path archive_path
+	local findpath latest_path archive_path archive_type
 	
 	# 尝试查找现有归档文件
 	if ! findpath=$(find_latest_archive "$downloads_dir" ".*${name}.*"); then
@@ -176,9 +176,12 @@ get_service_archive()
 			echo "[ERROR] 解压 $name 文件失败,请检查!" >&2
 			return 3
 		}
+		
+		# 获取归档名称和类型
+		archive_type="file"
 	else
 		# 解析文件类型和路径
-		local archive_type=$(jq -r '.filetype' <<< "$findpath")
+		archive_type=$(jq -r '.filetype' <<< "$findpath")
 		archive_path=$(jq -r '.filepath' <<< "$findpath")
 		
 		# 验证文件类型

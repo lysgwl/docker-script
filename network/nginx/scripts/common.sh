@@ -108,7 +108,7 @@ get_service_sources()
 	mkdir -p "$output_dir" || return 1
 	
 	# 声明局部变量
-	local findpath latest_path archive_path archive_name
+	local findpath latest_path archive_path archive_name archive_type
 	
 	# 在下载目录, 查找现有归档文件
 	if ! findpath=$(find_latest_archive "$downloads_dir" ".*${name}.*"); then
@@ -120,12 +120,14 @@ get_service_sources()
 			return 2
 		}
 		
-		# 获取归档名称
+		# 获取归档名称和类型
+		archive_type="directory"
 		archive_name=$(basename "$archive_path")
 	else
 		# 解析文件类型和路径
-		local archive_type=$(jq -r '.filetype' <<< "$findpath")
+		archive_type=$(jq -r '.filetype' <<< "$findpath")
 		archive_path=$(jq -r '.filepath' <<< "$findpath")
+		archive_name=$(jq -r '.name' <<< "$findpath")
 		
 		# 验证文件类型
 		if [[ -z "$archive_type" ]] || ! [[ "$archive_type" =~ ^(file|directory)$ ]]; then
@@ -139,10 +141,9 @@ get_service_sources()
 				echo "[ERROR] 解压 $name 源码文件失败,请检查!" >&2
 				return 3
 			}
+			
+			archive_name=$(basename "$archive_path")
 		fi
-		
-		# 获取归档名称
-		archive_name=$(jq -r '.name' <<< "$findpath")
 	fi
 	
 	# 确定源代码路径
@@ -150,15 +151,17 @@ get_service_sources()
 		latest_path="$archive_path"
 	else
 		# 如果是目录类型, 同步到输出目录
+		local target_dir="$output_dir/$archive_name"
+		
 		if [ "$archive_type" = "directory" ]; then
 			# 同步内容至输出目录
-			if [ ! -e "$output_dir/$archive_name" ]; then
-				rsync -a --exclude '.*' "$archive_path/" "$output_dir/$archive_name/"
+			if [ ! -e "$target_dir" ]; then
+				rsync -a --exclude '.*' "$archive_path/" "$target_dir/"
 			fi
 		fi
 		
 		# 输出目录中的路径
-		latest_path="$output_dir/$archive_name"
+		latest_path="$target_dir"
 	fi
 	
 	# 返回源代码路径

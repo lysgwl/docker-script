@@ -105,12 +105,20 @@ setup_nginx_source()
 	echo "[INFO] 编译${nginx_config[name]}源码"
 
 	local pcre_path=$(jq -r '.path // empty' <<< "${nginx_sources[pcre]}" 2>/dev/null || echo '{}')
-	local nginx_path=$(jq -r '.path // empty' <<< "${nginx_sources[nginx]}" 2>/dev/null || echo '{}')
-	local upstream_check_path=$(jq -r '.path // empty' <<< "${nginx_sources[upstream-check]}" 2>/dev/null || echo '{}')
-	
-	if [[ -z "$pcre_path" || -z "$nginx_path" ]]; then
-		echo "[ERROR] 获取${nginx_config[name]}源码路径为空,请检查!" >&2
+	if [ ! -d "$pcre_path" ]; then
+		echo "[ERROR] 获取 pcre 源码路径失败! ($pcre_path)"
 		return 1
+	fi
+	
+	local nginx_path=$(jq -r '.path // empty' <<< "${nginx_sources[nginx]}" 2>/dev/null || echo '{}')
+	if [ ! -d "$nginx_path" ]; then
+		echo "[ERROR] 获取 nginx 源码路径失败! ($nginx_path)"
+		return 1
+	fi
+	
+	local upstream_check_path=$(jq -r '.path // empty' <<< "${nginx_sources[upstream-check]}" 2>/dev/null || echo '{}')
+	if [ ! -d "$upstream_check_path" ]; then
+		echo "[WARNING] 没有检测到 upstream_check 源码路径失败! ($upstream_check_path)"
 	fi
 
 	# 进入 nginx 源码目录
