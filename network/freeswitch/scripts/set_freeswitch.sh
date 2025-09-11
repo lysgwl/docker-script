@@ -30,82 +30,54 @@ fetch_freeswitch_source()
 {
 	local downloads_dir=$1
 	echo "[INFO] 获取${freeswitch_config[name]}源码" >&2
-	
-	local url="https://github.com/$repo.git"
-	
-	local output_dir="${downloads_dir}/output"
-	mkdir -p "$output_dir" || return 1
-	
-	local ret=0
+
 	for key in "${!freeswitch_sources[@]}"; do
 		local name="$key"
 		local source_config="${freeswitch_sources[$name]}"
+		
+		if [[ -z "$source_config" ]]; then
+			continue
+		fi
 		
 		# 解析 JSON 配置
 		local repo=$(jq -r '.repo' <<< "$source_config")
 		local version=$(jq -r '.version' <<< "$source_config")
 		
-		echo "[INFO] 正在获取$name源码..." >&2
-	
-		local findpath latest_path archive_path archive_name
-		if ! findpath=$(find_latest_archive "$downloads_dir" "$name.*"); then
-			echo "[WARNING] 未匹配到$name软件包..." >&2
-			
-			# 克隆仓库的配置
-			local json_config=$(jq -n \
-					--arg type "github" \
-					--arg name "$name" \
-					--arg repo "$repo" \
-					--arg version "$version" \
-					--arg url "${url}" \
-					'{
-						type: $type,
-						name: $name,
-						repo: $repo,
-						version:$version,
-						url: $url
-					}')
-			
-			# 克隆仓库
-			archive_path=$(clone_repo "$json_config" "$downloads_dir") || {
-				echo "[ERROR] 克隆 $name 源代码失败,请检查!" >&2
-				ret=2; break
-			}
-			
-			# 同步至输出目录
-			archive_name=$(basename "$archive_path")
-			if [ ! -e "$output_dir/$archive_name" ]; then
-				rsync -a "$archive_path/" "$output_dir/$archive_name/"
-			fi
-			
-			latest_path="$output_dir/$archive_name"
-		else
-			# 处理归档文件
-			local archive_type=$(jq -r '.filetype' <<< "$findpath")
-			archive_path=$(jq -r '.filepath' <<< "$findpath")
-			archive_name=$(jq -r '.name' <<< "$findpath")
-			
-			if [[ -z "$archive_type" ]] || ! [[ "$archive_type" =~ ^(file|directory)$ ]]; then
-				echo "[ERROR] 解析 $name 文件失败,请检查!" >&2
-				ret=1; break
-			fi
-			
-			# 文件处理
-			if [ "$archive_type" = "file" ]; then
-				latest_path=$(extract_and_validate "$archive_path" "$output_dir" "$name.*") || {
-					echo "[ERROR] 解压 $name 源码文件失败,请检查!" >&2
-					ret=3; break
-				}
-			else
-				if [ ! -e "$output_dir/$archive_name" ]; then
-					rsync -a "$archive_path/" "$output_dir/$archive_name/"
-				fi
-				
-				latest_path="$output_dir/$archive_name"
-			fi
+		# 如果repo为空，跳过该源码获取
+		if [[ -z "$repo" ]]; then
+			echo "[INFO] 跳过 $name 源码获取,未配置仓库" >&2
+			continue
 		fi
 		
-		freeswitch_sources[$key]=$(jq --arg path "$latest_path" '. + {path: $path}' <<< "$source_config")
+		local url="https://github.com/$repo.git"
+		echo "[INFO] 正在获取$name源码..." >&2
+		
+		# 构建克隆仓库的配置
+		local json_config=$(jq -n \
+				--arg type "github" \
+				--arg name "$name" \
+				--arg repo "$repo" \
+				--arg version "$version" \
+				--arg url "${url}" \
+				'{
+					type: $type,
+					name: $name,
+					repo: $repo,
+					version:$version,
+					url: $url
+				}')
+				
+		# 获取源码路径
+		local source_path
+		source_path=$(get_service_sources "$name" "$downloads_dir" "$json_config")
+		
+		local ret=$?
+		if [ $ret -ne 0 ]; then
+			echo "[ERROR] 获取 $name 源码失败，错误码: $ret" >&2
+			break
+		fi
+	
+		freeswitch_sources[$key]=$(jq --arg path "$source_path" '. + {path: $path}' <<< "$source_config")
 	done 
 	
 	return $ret
@@ -114,23 +86,17 @@ fetch_freeswitch_source()
 # 编译 libks 源码
 build_libks_source()
 {
-	# 编译libks源码
-	local json_config="${freeswitch_sources[libks]}"
-	if [ -z "$json_config" ]; then
-		echo "[ERROR] libks源码配置存在问题,请检查!"
-		return 1
-	fi
-	
-	local path=$(jq -r '.path' <<< "$json_config")
+	# 获取 libks 源码路径
+	local path=$(jq -r '.path // empty' <<< "${freeswitch_sources[libks]}" 2>/dev/null || echo '{}')
 	if [ ! -d "$path" ]; then
-		echo "[ERROR] libks源码路径不存在:$path"
+		echo "[ERROR] 获取 libks 源码路径失败! ($path)"
 		return 1
 	fi
 	
 	cd "$path"
 	
 	# 配置 CMake	-DWITH_LIBBACKTRACE=1
-	cmake . -DCMAKE_INSTALL_PREFIX:PATH=/usr/local -DCMAKE_BUILD_TYPE=Release || {
+	cmake . -DCMAKE_INSTALL_PREFIX:PATH=$(dirname "${freeswitch_config[sys_path]}") -DCMAKE_BUILD_TYPE=Release || {
 		echo "[ERROR] libks源码CMake配置失败,请检查!"
 		return 2
 	}
@@ -155,22 +121,23 @@ build_libks_source()
 # 编译 sofia-sip 源码
 build_sofia-sip_source()
 {
-	local json_config="${freeswitch_sources[sofia-sip]}"
-	if [ -z "$json_config" ]; then
-		echo "[ERROR] sofia-sip源码配置存在问题,请检查!"
-		return 1
-	fi
-	
-	local path=$(jq -r '.path' <<< "$json_config")
+	# 获取 sofia-sip 源码路径
+	local path=$(jq -r '.path // empty' <<< "${freeswitch_sources[sofia-sip]}" 2>/dev/null || echo '{}')
 	if [ ! -d "$path" ]; then
-		echo "[ERROR] sofia-sip源码路径不存在:$path"
+		echo "[ERROR] 获取 sofia-sip 源码路径失败! ($path)"
 		return 1
 	fi
 	
 	cd "$path"
 	
+	# 配置 configure 源码编译环境
 	./bootstrap.sh
-	./configure CFLAGS="-g -ggdb" --with-pic --with-glib=no --without-doxygen --disable-stun --prefix=/usr/local
+	./configure CFLAGS="-g -ggdb" \
+		--with-pic \
+		--with-glib=no \
+		--without-doxygen \
+		--disable-stun \
+		--prefix="$(dirname "${freeswitch_config[sys_path]}")"
 	
 	# 编译 sofia-sip
 	make -j$(nproc) || {
@@ -192,15 +159,10 @@ build_sofia-sip_source()
 # 编译 spandsp 源码
 build_spandsp_source()
 {
-	local json_config="${freeswitch_sources[spandsp]}"
-	if [ -z "$json_config" ]; then
-		echo "[ERROR] spandsp源码配置存在问题,请检查!"
-		return 1
-	fi
-	
-	local path=$(jq -r '.path' <<< "$json_config")
+	# 获取 spandsp 源码路径
+	local path=$(jq -r '.path // empty' <<< "${freeswitch_sources[spandsp]}" 2>/dev/null || echo '{}')
 	if [ ! -d "$path" ]; then
-		echo "[ERROR] spandsp源码路径不存在:$path"
+		echo "[ERROR] 获取 spandsp 源码路径失败! ($path)"
 		return 1
 	fi
 	
@@ -209,8 +171,11 @@ build_spandsp_source()
 	
 	cd "$path"
 	
+	# 配置 configure 源码编译环境
 	./bootstrap.sh
-	./configure CFLAGS="-g -ggdb" --with-pic --prefix=/usr/local
+	./configure CFLAGS="-g -ggdb" \
+		--with-pic 
+		--prefix="$(dirname "${freeswitch_config[sys_path]}")"
 	
 	# 编译 spandsp
 	make -j$(nproc) || {
@@ -242,22 +207,17 @@ build_spandsp_source()
 # 编译 signalwire-c 源码
 build_signalwire-c_source()
 {
-	local json_config="${freeswitch_sources[signalwire-c]}"
-	if [ -z "$json_config" ]; then
-		echo "[ERROR] signalwire-c源码配置存在问题,请检查!"
-		return 1
-	fi
-	
-	local path=$(jq -r '.path' <<< "$json_config")
+	# 获取 signalwire-c 源码路径
+	local path=$(jq -r '.path // empty' <<< "${freeswitch_sources[signalwire-c]}" 2>/dev/null || echo '{}')
 	if [ ! -d "$path" ]; then
-		echo "[ERROR] signalwire-c源码路径不存在:$path"
+		echo "[ERROR] 获取 signalwire-c 源码路径失败! ($path)"
 		return 1
 	fi
 	
-	cd "$path"; 
+	cd "$path"
 	
 	# 配置 CMake
-	cmake . -DCMAKE_INSTALL_PREFIX:PATH=/usr/local -DCMAKE_BUILD_TYPE=Release || {
+	cmake . -DCMAKE_INSTALL_PREFIX:PATH="$(dirname "${freeswitch_config[sys_path]}")" -DCMAKE_BUILD_TYPE=Release || {
 		echo "[ERROR] signalwire-c源码CMake配置失败,请检查!"
 		return 2
 	}
@@ -282,15 +242,10 @@ build_signalwire-c_source()
 # 编译 freeswitch 源码
 build_freeswitch_source()
 {
-	local json_config="${freeswitch_sources[freeswitch]}"
-	if [ -z "$json_config" ]; then
-		echo "[ERROR] freeswitch源码配置存在问题,请检查!"
-		return 1
-	fi
-	
-	local path=$(jq -r '.path' <<< "$json_config")
+	# 获取 signalwire-c 源码路径
+	local path=$(jq -r '.path // empty' <<< "${freeswitch_sources[freeswitch]}" 2>/dev/null || echo '{}')
 	if [ ! -d "$path" ]; then
-		echo "[ERROR] freeswitch源码路径不存在:$path"
+		echo "[ERROR] 获取 freeswitch 源码路径失败! ($path)"
 		return 1
 	fi
 	
@@ -303,8 +258,9 @@ build_freeswitch_source()
 	# --sysconfdir=/etc --localstatedir=/var -with-python --with-erlang
 	./bootstrap.sh -j
 	
+	# 配置 configure 源码编译环境
 	./configure --enable-portable-binary \
-				--prefix=/usr/local/freeswitch \
+				--prefix="${freeswitch_config[sys_path]}" \
 				--sysconfdir="${freeswitch_config[etc_path]}" \
 				--localstatedir="${freeswitch_config[data_path]}" \
 				--with-gnu-ld \
@@ -325,17 +281,17 @@ build_freeswitch_source()
 		return 4
 	}
 	
-	make sounds-install && \
-	make moh-install
+	make sounds-install		# 安装所有语音提示音 (8kHz / 16kHz)
+	make moh-install		# 安装所有音乐保持音
 	
-	#make cd-sounds-install && \
-	make cd-moh-install && \
-	make uhd-sounds-install && \
-	make uhd-moh-install && \
-	make hd-sounds-install && \
-	make hd-moh-install && \
-	make sounds-install && \
-	make moh-install
+	#make hd-sounds-install  # 安装 HD 质量提示音 (16kHz)
+	#make hd-moh-install 	# 安装 HD 质量保持音
+	
+	#make uhd-sounds-install # 安装 UHD 质量提示音 (Ultra HD, 48kHz)
+	#make uhd-moh-install 	# 安装 UHD 质量保持音
+	
+	#make cd-sounds-install  # 安装 CD 质量提示音 (16-bit, 44.1kHz)
+	#make cd-moh-install 	# 安装 CD 质量保持音 
 
 	# 清理源码
 	rm -rf "$path"
@@ -381,14 +337,11 @@ install_freeswitch_env()
 	local arg=$1
 	echo "[INFO] 安装${freeswitch_config[name]}服务"
 	
-	local downloads_dir="${system_config[downloads_dir]}"
-	
-	local install_dir="${system_config[install_dir]}"
 	local target_dir="${freeswitch_config[sys_path]}"
-	
 	if [ "$arg" = "init" ]; then
 		if [ ! -d "${target_dir}" ]; then
-		
+			local downloads_dir="${system_config[downloads_dir]}"
+			
 			# 获取 freeswitch 源码
 			if ! fetch_freeswitch_source "${downloads_dir}"; then
 				echo "[ERROR] 获取${freeswitch_config[name]}失败,请检查!" >&2
@@ -405,12 +358,11 @@ install_freeswitch_env()
 			rm -rf "$downloads_dir/output"
 		fi
 	elif [ "$arg" = "config" ]; then
-		return 0
 		if [ -d "${target_dir}" ]; then
 		
 			# 创建freeswitch符号链接
 			install_binary "${freeswitch_config[bin_path]}/${freeswitch_config[name]}" "" "/usr/local/bin/${freeswitch_config[name]}"
-			
+
 			# 创建fs_cli符号链接
 			install_binary "${freeswitch_config[bin_path]}/fs_cli" "" "/usr/local/bin/fs_cli"
 		fi

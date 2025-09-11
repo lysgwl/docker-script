@@ -94,4 +94,75 @@ close_modules()
 	close_freeswitch_service
 }
 
-
+# 获取源码
+get_service_sources()
+{
+	local name="$1"
+	local downloads_dir="$2"
+	local json_config="$3"
+	
+	# 创建输出目录，存放解压后的源代码
+	local output_dir="$downloads_dir/output"
+	mkdir -p "$output_dir" || return 1
+	
+	# 声明局部变量
+	local findpath latest_path archive_path archive_name archive_type
+	
+	# 在下载目录, 查找现有归档文件
+	if ! findpath=$(find_latest_archive "$downloads_dir" ".*${name}.*"); then
+		echo "[WARNING] 未匹配到$name软件包..." >&2
+		
+		# 克隆Git仓库到下载目录
+		archive_path=$(clone_repo "$json_config" "$downloads_dir") || {
+			echo "[ERROR] 克隆 $name 源代码失败,请检查!" >&2
+			return 2
+		}
+		
+		# 获取归档名称和类型
+		archive_type="directory"
+		archive_name=$(basename "$archive_path")
+	else
+		# 解析文件类型和路径
+		archive_type=$(jq -r '.filetype' <<< "$findpath")
+		archive_path=$(jq -r '.filepath' <<< "$findpath")
+		archive_name=$(jq -r '.name' <<< "$findpath")
+		
+		# 验证文件类型
+		if [[ -z "$archive_type" ]] || ! [[ "$archive_type" =~ ^(file|directory)$ ]]; then
+			echo "[ERROR] 解析 $name 文件失败,请检查!" >&2
+			return 1
+		fi
+		
+		# 解压源码文件
+		if [ "$archive_type" = "file" ]; then
+			archive_path=$(extract_and_validate "$archive_path" "$output_dir" "$name.*") || {
+				echo "[ERROR] 解压 $name 源码文件失败,请检查!" >&2
+				return 3
+			}
+			
+			archive_name=$(basename "$archive_path")
+		fi
+	fi
+	
+	# 确定源代码路径
+	if [[ -f "$archive_path" ]]; then
+		latest_path="$archive_path"
+	else
+		# 如果是目录类型, 同步到输出目录
+		local target_dir="$output_dir/$archive_name"
+		
+		if [ "$archive_type" = "directory" ]; then
+			# 同步内容至输出目录
+			if [ ! -e "$target_dir" ]; then
+				rsync -a "$archive_path/" "$target_dir/"
+			fi
+		fi
+		
+		# 输出目录中的路径
+		latest_path="$target_dir"
+	fi
+	
+	# 返回源代码路径
+	echo "$latest_path"
+	return 0
+}

@@ -13,19 +13,22 @@ find_latest_archive()
 	while IFS= read -r -d $'\0' filepath; do
 		local filetype="unknown"
 		local filename=$(basename "$filepath")
+		local name="$filename"
 		
 		[[ -f "$filepath" ]] && filetype="file"
 		[[ -d "$filepath" ]] && filetype="directory"
 		
-		local suffix="" name="$filename"
+		local suffix="" base_name=""
 		if [[ "$filename" =~ \.([[:alpha:]]{3,})\.([[:alpha:]]{2,3})$ ]]; then
 			# 匹配两段式后缀（如 .tar.gz）
 			suffix=".${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
 			base_name="${filename%$suffix}"
+			name="$base_name"
 		elif [[ "$filename" =~ \.([[:alpha:]]{2,})$ ]]; then
 			# 匹配单一段式后缀（如 .gz）
 			suffix=".${BASH_REMATCH[1]}"
 			base_name="${filename%$suffix}"
+			name="$base_name"
 		fi
 		
 		# 获取修改时间戳
@@ -181,102 +184,313 @@ install_binary()
 	local dest_path=$2
 	local symlink_path=${3:-}
 	
-	# 校验源路径类型
-	if [[ ! -e "$src_path" ]]; then 
-		echo "[ERROR] 源文件$src_path不存在,请检查!" >&2
-		return 1
-	fi
-
-	# 处理目标路径
-	if [[ -n "$dest_path" ]]; then
-		local target_name=$(basename "$src_path")
-		local target_path
+	# 处理通配符
+	local has_wildcard=0
+	[[ "$src_path" == *[\*\?\[]* ]] && has_wildcard=1
+	
+	local sources=()
+	if [[ $has_wildcard -eq 1 ]]; then
+		for file in $src_path; do
+			[[ -e "$file" ]] && sources+=("$file")
+		done
 		
-		# 如果目标路径是文件
-		if [[ -f "$dest_path" ]]; then
-			local parent=$(dirname "$dest_path")
-			target_path="$parent"
-		else
-			# 如果目标路径是目录，确保目录存在
-			mkdir -p "$dest_path" || {
-				echo "[ERROR] 无法创建目录,请检查!" >&2
-				return 2
-			}
-			
-			target_path="$dest_path"
+		# 检查是否匹配到任何文件
+		if [[ ${#sources[@]} -eq 0 ]]; then
+			echo "[ERROR] 通配符未匹配到任何文件: $src_path" >&2
+			return 1
 		fi
-		
-		# 删除已存在的目标文件或符号链接
-		rm -rf "$target_path/$target_name"
-		
-		# 复制源到目标
-		if [[ -d "$src_path" ]]; then
-			# 如果源是目录，则复制整个目录
-			cp -a "$src_path" "$target_path/" || {
-				echo "[ERROR] 文件复制失败,请检查!" >&2
-				return 3
-			}
-		else
-			cp -a "$src_path" "$target_path/$target_name" || {
-				echo "[ERROR] 文件复制失败, 请检查!" >&2
-				return 3
-			}
-		fi
-		
-		# 设置目标文件可执行权限
-		if [[ -f "$target_path/$target_name" ]]; then
-			chmod +x "$target_path/$target_name"
-		fi
-		
-		# 创建符号链接
-		[[ -n "$symlink_path" ]] && ln -sf "$target_path/$target_name" "$symlink_path" 2>/dev/null || :
 	else
+		# 校验源路径类型
+		if [[ ! -e "$src_path" ]]; then
+			echo "[ERROR] 源文件$src_path不存在,请检查!" >&2
+			return 1
+		fi
+		
+		sources=("$src_path")
+	fi
+	
+	if [[ -z "$dest_path" ]]; then
 		# 创建符号链接
-		[[ -n "$symlink_path" ]] && ln -sf "$src_path" "$symlink_path" 2>/dev/null || :
+		if [[ -n "$symlink_path" ]]; then
+			ln -sfn "${sources[0]}" "$symlink_path" 2>/dev/null || {
+				echo "[ERROR] 创建符号链接失败: $symlink_path" >&2
+				return 4
+			}
+		fi
+	else
+		mkdir -p "$dest_path" || {
+			echo "[ERROR] 无法创建目录 $dest_path !" >&2
+			return 2
+		}
+		
+		# 复制文件/目录
+		for source in "${sources[@]}"; do
+			local target_name=$(basename "$source")
+			local target_path="$dest_path/$target_name"
+			
+			# 删除已存在的目标
+			rm -rf "$target_path"
+			
+			# 复制源到目标
+			if [[ -d "$source" ]]; then
+				# 复制整个目录
+				cp -a "$source" "$dest_path/" || {
+					echo "[ERROR] 目录复制失败: $source" >&2
+					return 3
+				}
+			else
+				# 复制单个文件
+				cp -a "$source" "$target_path" || {
+					 echo "[ERROR] 文件复制失败: $source" >&2
+					 return 3
+				}
+				
+				# 设置可执行权限
+				chmod +x "$target_path"
+			fi
+		done
+		
+		# 创建符号链接
+		if [[ -n "$symlink_path" ]]; then
+			local symlink_target="$dest_path"
+			if [[ ${#sources[@]} -eq 1 && ! -d "${sources[0]}" ]]; then
+				symlink_target="$dest_path/$(basename "${sources[0]}")"
+			fi
+			
+			ln -sfn "$symlink_target" "$symlink_path" 2>/dev/null || {
+				echo "[ERROR] 创建符号链接失败: $symlink_path" >&2
+				return 4
+			}
+		fi
 	fi
 	
 	return 0
 }
 
+# 获取重定向URL
+get_redirect_url()
+{
+	local url="$1"
+	
+	local timeout=30
+	local retries=2
+	
+	# 特殊处理GitHub发布下载链接
+	if [[ "$url" =~ ^https?://(www\.)?github.com/[^/]+/[^/]+/releases/download/ ]]; then
+		echo "$url"
+		return 0
+	fi
+	
+	local US=$'\x1f'  # Unit Separator
+	
+	# 获取HTTP状态码和头信息
+	local response
+	response=$(curl -s -I -k \
+		--connect-timeout "$timeout" \
+		--max-time "$timeout" \
+		--retry "$retries" \
+		--retry-delay 3 \
+		-w "HTTP_CODE:%{http_code}${US}REDIRECT_URL:%{redirect_url}${US}EFFECTIVE_URL:%{url_effective}\n" \
+		-o /dev/null \
+		"$url") || {
+		echo "[ERROR] 访问 ${url} 失败,请检查!" >&2
+		return 2
+	}
+		
+	# 解析字段
+	local status_code redirect_url effective_url
+	IFS=$'\x1f' read -r status_code redirect_url effective_url <<< "$response"
+	
+	# 提取状态码、重定向URL、最终有效URL
+	status_code=${status_code#HTTP_CODE:}
+	redirect_url=${redirect_url#REDIRECT_URL:}
+	effective_url=${effective_url#EFFECTIVE_URL:}
+
+	# 清理null值
+	redirect_url="${redirect_url//(null)/}"
+	
+	# 检查是否是重定向状态码
+	if [[ "$status_code" =~ ^3[0-9]{2}$ ]] && [ -n "$redirect_url" ]; then
+		echo "$redirect_url"
+	elif [ -n "$effective_url" ] && [ "$effective_url" != "$url" ]; then
+		echo "$effective_url"
+	else
+		echo "$url"
+	fi
+
+	return 0
+}
+
+# 解析文件扩展名
+get_file_extension()
+{
+	local filename="$1"
+	
+	# 优先匹配常见压缩格式扩展名
+	local extension=$(echo "$filename" | grep -oE '\.tar\.(gz|xz|bz2|lzma|Z)$|\.tar$|\.tgz$|\.tbz2$|\.zip$|\.gz$|\.xz$|\.bz2$')
+	
+	# 如果优先匹配没有找到
+	if [[ -z "$extension" && "$filename" =~ \.[^./]*$  ]]; then
+		extension="${BASH_REMATCH[0]}"
+		
+		# 避免把纯数字当作扩展名
+		if [[ "$extension" =~ ^\.[0-9]+$ ]]; then
+			extension=""
+		fi
+	fi
+
+: <<'COMMENT_BLOCK'	
+	if [[ "$filename" =~ ^(.*)\.([^.]+)\.([^.]+)$ ]]; then
+		# 处理复合扩展名（如 .tar.gz）
+		extension=".${BASH_REMATCH[2]}.${BASH_REMATCH[3]}"
+	else
+		# 处理单扩展名或无扩展名
+		extension="${filename##*.}"
+		# 确保扩展名以点开头
+		if [ "$extension" = "$filename" ]; then
+			extension=""  # 没有扩展名
+		else
+			extension=".$extension"
+		fi
+	fi
+COMMENT_BLOCK
+	
+	# 确保扩展名不为null
+	echo "${extension:-}"
+}
+
+# 生成最终文件名
+generate_filename() 
+{
+	local default_name="$1"
+	local redirect_url="$2"
+	
+	# 从重定向URL中提取文件名
+	local redirect_name=$(basename "$redirect_url" | sed 's/[?#].*$//')
+	local redirect_extension=$(get_file_extension "$redirect_name")
+	
+	if [ -n "$default_name" ]; then
+		# 检查默认名称是否包含扩展名
+		local default_extension=$(get_file_extension "$default_name")
+		
+		if [ -n "$default_extension" ]; then
+			# 默认名称已经包含扩展名
+			echo "$default_name"
+		else
+			# 默认名称没有扩展名
+			if [ -n "$redirect_extension" ]; then
+				echo "${default_name}${redirect_extension}"
+			else
+				# 重定向URL也没有扩展名，使用默认名称
+				echo "$default_name"
+			fi
+		fi
+	else
+		# 没有提供默认名称，使用重定向URL的文件名
+		if [ -n "$redirect_name" ] && [ "$redirect_name" != "/" ] && [ "$redirect_name" != "." ]; then
+			echo "$redirect_name"
+		else
+			# 生成默认文件名
+			local generated_name="downloaded_file_$(date +%Y%m%d_%H%M%S)"
+			if [ -n "$redirect_extension" ]; then
+				echo "${generated_name}${redirect_extension}"
+			else
+				echo "$generated_name"
+			fi
+		fi
+	fi
+}
+
 # 下载文件
 download_file()
 {
-	local url=$1
-	local dest_path=$2
+	local url="$1"
+	local download_dir="$2"
+	local default_name="$3"
 	
 	if [ -z "$url" ]; then
 		echo "[ERROR]下载URL参数为空,请检查!" >&2
 		return 1
 	fi
 	
-	local filename=$(basename "$url")
-	local save_path=$(realpath "$dest_path" 2>/dev/null || echo "$dest_path")
+	if [ -z "$download_dir" ]; then
+		echo "[ERROR] 下载目录参数为空,请检查!" >&2
+		return 1
+	fi
 	
-	echo "[INFO] 正在下载:$(basename "$dest_path")" >&2
-	echo "[INFO] 下载URL: $url" >&2
+	# 获取重定向URL
+	local redirect_url
+	redirect_url=$(get_redirect_url "$url") || {
+		echo "[WARNING] 获取重定向URL失败, 使用原始URL: $url" >&2
+		redirect_url="$url"
+	}
 	
-	#curl -L -o "${dest_path}" "${url}" >/dev/null 2>&1 || {
-	#	echo "[ERROR] 下载失败,请检查!${url}" >&2
-	#	return 1
-	#}
+	# 生成文件名
+	local filename=$(generate_filename "$default_name" "$redirect_url")
 	
-	curl -L --fail \
+	# 构建输出文件路径
+	local output_file="${download_dir}/${filename}"
+	
+	echo "[INFO] 正在下载: $filename" >&2
+	echo "[INFO] 下载URL: $redirect_url" >&2
+	echo "[INFO] 保存文件: $output_file" >&2
+	
+	local response
+	response=$(curl -L --fail \
+		--insecure \
 		--silent \
 		--show-error \
+		--connect-timeout 30 \
 		--max-time 300 \
 		--retry 3 \
 		--retry-delay 5 \
-		--output "$dest_path" "$url" 2>/dev/null || {
-		echo "[ERROR] 下载失败,请检查!${url}" >&2
-		return 1
-	}
+		--progress-bar \
+		--output "$output_file" \
+		--write-out "HTTP_STATUS:%{http_code}\nSIZE_DOWNLOAD:%{size_download}\n" \
+		 "$redirect_url" 2>&1)
+		 
+	local exit_code=$?
+	
+	# 提取HTTP状态码和下载大小
+	local http_status=$(echo "$response" | awk -F: '/HTTP_STATUS:/ {print $2}' | tr -d '[:space:]')
+	local download_size=$(echo "$response" | awk -F: '/SIZE_DOWNLOAD:/ {print $2}' | tr -d '[:space:]')
+	
+	if [ $exit_code -ne 0 ]; then
+		# 显示具体的错误信息
+		local error_msg=$(echo "$response" | grep -v -E '^[[:space:]]*[0-9]*#$' | grep -v -E '^(HTTP_STATUS|SIZE_DOWNLOAD)')
+		
+		if [ -n "$error_msg" ]; then
+			echo "[ERROR] 错误详情: $(echo "$error_msg" | head -1)" >&2
+		fi
+		
+		echo "[DEBUG] HTTP状态: $http_status, 下载大小: $download_size 字节" >&2
+		
+		# 清理部分下载文件
+		if [ -f "$output_file" ]; then
+			rm -f "$output_file"
+		fi
+		
+		return 2
+	fi
 	
 	# 验证下载文件
-	if [ ! -f "$dest_path" ]; then
+	if [ ! -f "$output_file" ]; then
 		echo "[ERROR] 文件未正确保存,请检查!" >&2
-		return 1
+		return 3
 	fi
+	
+	if [ ! -s "$output_file" ]; then
+		echo "[ERROR] 下载的文件为空,请检查!" >&2
+		rm -f "$output_file"
+		return 4
+	fi
+	
+	# 获取文件信息
+	local file_size=$(du -h "$output_file" | cut -f1)
+	echo "[INFO] 文件大小: $file_size" >&2
 
+	echo "[SUCCESS] 下载完成: $output_file" >&2
+	echo "$output_file"
 	return 0
 }
 
@@ -566,57 +780,22 @@ download_package()
 	# 解析配置	
 	local type=$(echo "$processed_config" | jq -r '.type // empty')
 	local name=$(echo "$processed_config" | jq -r '.name // empty')
+
+	local default_name="${name:-}"
+	local repo_branch repo_url
 	
 	case $type in
 		"static")
-			local url=$(jq -r '.url // empty' <<< "${processed_config}")
-			
-			local filename="${name:-$(basename "$url")}"
-			local dest_file="$downloads_path/$filename"
-			
-			download_file "$url" "$dest_file" || return 2
+			repo_url=$(jq -r '.url // empty' <<< "${processed_config}")
 			;;
 		"github")
-			local repo_branch repo_url
 			if ! get_github_info "$processed_config" repo_branch repo_url; then
-				return 3
+				return 2
 			fi
-			
-			# 原始文件名
-			local filename=$(basename "$repo_url")
-			
-			# 拆分文件名和扩展名
-			local base_name extension
-			if [[ "$filename" =~ ^(.*)\.([^.]+)\.([^.]+)$ ]]; then
-				# 处理复合扩展名（如 .tar.gz）
-				base_name="${BASH_REMATCH[1]}"
-				extension="${BASH_REMATCH[2]}.${BASH_REMATCH[3]}"
-			else
-				base_name="${filename%.*}"
-				extension="${filename##*.}"
-			fi
-			
-			# 定义新文件名
-			local new_filename=""
 			
 			if [ -n "$name" ]; then
-				new_filename="$name-$repo_branch.$extension"
-			else
-				new_filename="$filename"
-				
-				# 检查原始文件名是否已包含版本号
-				if [[ "$new_filename" != *"$repo_branch"* ]]; then
-					if [[ "$new_filename" =~ \.tar\.gz$ ]]; then
-						local new_base="${base_name%.tar}"
-						new_filename="$new_base-$repo_branch.tar.gz"
-					else
-						new_filename="$base_name-$repo_branch.$extension"
-					fi
-				fi
+				default_name="$name-$repo_branch"
 			fi
-			
-			local dest_file="$downloads_path/$new_filename"
-			download_file "$repo_url" "$dest_file" || return 2
 			;;
 		*)
 			echo "[ERROR] 不支持的类型下载: $type" >&2
@@ -624,8 +803,13 @@ download_package()
 			;;
 	esac
 	
+	local target_file
+	if ! target_file=$(download_file "$repo_url" "$downloads_path" "$default_name"); then
+		return 3
+	fi
+
 	# 设置输出变量
-	echo "$dest_file"
+	echo "$target_file"
 	return 0
 }
 
@@ -1182,7 +1366,7 @@ check_nginx_conf()
 	elif command -v awk &>/dev/null; then
 		awk_cmd="awk"
 	else
-		echo "[ERROR] awk命令不存在，请检查系统环境！"
+		echo "[ERROR] awk命令不存在，请检查系统环境！" >&2
 		return 1
 	fi
 
@@ -1269,22 +1453,22 @@ check_nginx_conf()
 	
 	# 错误处理
 	if [ $awk_exit -ne 0 ]; then
-		echo "[ERROR] awk处理配置文件失败(退出码: $awk_exit)"
+		echo "[ERROR] awk处理配置文件失败(退出码: $awk_exit)" >&2
 		return 1
 	fi
 	
 	case $status_code in
 		0)
-			echo "[INFO] 配置文件完整且有效"
+			echo "[INFO] 配置文件完整且有效" >&2
 			;;
 		2)
-			echo "[WARNING] 配置文件中仅有http块，未包含server块"
+			echo "[WARNING] 配置文件中仅有http块，未包含server块" >&2
 			;;
 		3)
-			echo "[WARNING] 配置文件中server块未包含在http块内"
+			echo "[WARNING] 配置文件中server块未包含在http块内" >&2
 			;;
 		4)
-			echo "[ERROR] 配置文件无效，未包含有效的http或server块"
+			echo "[ERROR] 配置文件无效，未包含有效的http或server块" >&2
 			;;
 		*)
 			echo "[ERROR] 未知错误"
@@ -1305,13 +1489,13 @@ modify_nginx_location()
 	
 	# 验证参数
 	if [[ -z "$conf_file" || -z "$location_path" || -z "$reference_content" || -z "$new_content" ]]; then
-		echo "[ERROR] 必要参数不能为空,请检查!"
+		echo "[ERROR] 必要参数不能为空,请检查!" >&2
 		return 1
 	fi
 	
 	# 检查配置文件
 	if [[ ! -f "$conf_file" ]]; then
-		echo "[ERROR] 配置文件不存在,请检查!"
+		echo "[ERROR] 配置文件不存在,请检查!" >&2
 		return 1
 	fi
 	
@@ -1321,14 +1505,14 @@ modify_nginx_location()
 	elif command -v awk &>/dev/null; then
 		awk_cmd="awk"
 	else
-		echo "[ERROR] awk命令不存在，请检查系统环境！"
+		echo "[ERROR] awk命令不存在，请检查系统环境!" >&2
 		return 1
 	fi
 	
 	# 创建备份文件
 	local backup_file="${conf_file}.bak"
 	if ! cp "$conf_file" "$backup_file"; then
-		 echo "[ERROR] 创建备份文件失败: $backup_file"
+		 echo "[ERROR] 创建备份文件失败: $backup_file" >&2
 		 return 1
 	fi
 	
@@ -1467,17 +1651,17 @@ modify_nginx_location()
 	
 	# 错误处理
 	if [ $awk_exit -ne 0 ]; then
-		echo "[ERROR] awk处理配置文件失败(退出码: $awk_exit)"
+		echo "[ERROR] awk处理配置文件失败(退出码: $awk_exit)" >&2
 		
-		echo "=== awk错误输出 ==="
+		echo "=== awk错误输出 ===" >&2
 		cat "$temp_file"
-		echo "=================="
+		echo "==================" >&2
 		
 		# 恢复备份
 		if cp "$backup_file" "$conf_file"; then
-			echo "[INFO] 备份恢复配置文件: $backup_file -> $conf_file"
+			echo "[INFO] 备份恢复配置文件: $backup_file -> $conf_file" >&2
 		else
-			echo "[WARNING] 恢复备份失败! 请手动恢复: $backup_file"
+			echo "[WARNING] 恢复备份失败! 请手动恢复: $backup_file" >&2
 		fi
 
 		rm "$temp_file"
@@ -1485,7 +1669,7 @@ modify_nginx_location()
 	fi
 	
 	if ! cp "$temp_file" "$conf_file"; then
-		echo "[ERROR] 配置文件替换失败，恢复备份!"
+		echo "[ERROR] 配置文件替换失败，恢复备份!" >&2
 		
 		cp "$backup_file" "$conf_file"
 		rm "$temp_file"
@@ -1494,7 +1678,7 @@ modify_nginx_location()
 	fi
 
 	rm "$temp_file"
-	echo "[INFO] 配置文件修改成功! $conf_file"
+	echo "[INFO] 配置文件修改成功! $conf_file" >&2
 	
 	return 0
 }
