@@ -17,8 +17,6 @@ services:
       - ${CONFIG_PATH}:/config
       - ${CACHE_PATH}:/cache
       - ${DATA_PATH}:/data
-      - ${NGINX_CONFIG_DIR}:/config/nginx
-      - ${NGINX_PROXY_CONF_FILE}:/config/jellyfin.conf
       - nas-films:/media/films
     env_file:
       - .env
@@ -28,22 +26,6 @@ services:
     hostname: jellyfin
     networks:
       - local_network
-    entrypoint: ["/bin/sh", "-c"]
-    command: >
-      '
-        # 复制配置文件
-        if [ -d "/config/nginx/extra/proxy-config" ]; then
-            src="/config/jellyfin.conf"
-            dst="/config/nginx/extra/proxy-config/jellyfin.conf"
-            
-            if [ -f "$${src}" ] && [ ! -f "$${dst}" ]; then
-                cp -v "$${src}" "$${dst}"
-            fi
-        fi
-        
-        # 启动主进程
-        exec /jellyfin/jellyfin
-      '
     restart: always
       
 networks:

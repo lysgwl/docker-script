@@ -59,7 +59,7 @@ install_verysync_env()
 			
 			# 获取安装包
 			local latest_path
-			latest_path=$(get_service_archive "${verysync_config[name]}" "$downloads_dir" download_verysync) || {
+			latest_path=$(get_service_archive "${verysync_config[name]}" "$downloads_dir" download_verysync "*.sig") || {
 				echo "[ERROR] 获取 ${verysync_config[name]} 安装包失败,请检查!" >&2
 				return 1
 			}

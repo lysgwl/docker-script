@@ -153,7 +153,8 @@ get_service_archive()
 {
 	local name="$1"
 	local downloads_dir="$2"
-	local download_callback="$3"
+	local download_callback="$3"		# 下载回调函数
+	local exclude_patterns=("${@:4}") 	# 排除模式数组
 	
 	local output_dir="$downloads_dir/output"
 	mkdir -p "$output_dir" || return 1
@@ -202,7 +203,22 @@ get_service_archive()
 	if [[ -f "$archive_path" ]]; then
 		latest_path="$archive_path"
 	else
-		latest_path=$(find "$archive_path" -maxdepth 1 -mindepth 1 -type f -name "${name}*" -print -quit 2>/dev/null)
+		if [ ${#exclude_patterns[@]} -gt 0 ]; then
+			# 构建排除条件
+			local exclude_conditions=()
+			for pattern in "${exclude_patterns[@]}"; do
+				exclude_conditions+=(-name "$pattern" -o)
+			done
+			
+			# 移除最后多余的"-o"
+			unset 'exclude_conditions[${#exclude_conditions[@]}-1]'
+			
+			latest_path=$(find "$archive_path" -maxdepth 1 -mindepth 1 -type f \
+				-name "${name}*" -not \( "${exclude_conditions[@]}" \) \
+				-print -quit 2>/dev/null)
+		else
+			latest_path=$(find "$archive_path" -maxdepth 1 -mindepth 1 -type f -name "${name}*" -print -quit 2>/dev/null)
+		fi
 		
 		if [[ -z "$latest_path" ]] || [[ ! -f "$latest_path" ]]; then
 			echo "[ERROR] $name可执行文件不存在,请检查!" >&2
