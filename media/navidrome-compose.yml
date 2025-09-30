@@ -1,0 +1,36 @@
+
+name: navidrome
+
+services:
+  navidrome-server:
+    container_name: navidrome
+    image: deluan/navidrome:latest
+    #user: 1000:1000
+    environment:
+      ND_SCANSCHEDULE: 1h
+      ND_LOGLEVEL: info
+      ND_SESSIONTIMEOUT: 24h
+      ND_BASEURL: ""
+      #ND_PLAYLISTSPATH: .
+      ND_ENABLESHARING: true
+      ND_SEARCHFULLSTRING: true
+      ND_ENABLEARTWORKPRECACHE: false
+      ND_SPOTIFY_ID:
+      ND_SPOTIFY_SECRET:
+      ND_LASTFM_APIKEY:
+      ND_LASTFM_SECRET:
+      ND_LASTFM_LANGUAGE: zh
+    volumes:
+      - /app/usr/navidrome/data:/data
+      - /app/usr/navidrome/cache:/data/cache
+      - /app/usr/navidrome/music:/music:ro
+    ports:
+      - 8020:4533
+    hostname: navidrome
+    restart: unless-stopped
+    networks:
+      - local_network
+      
+networks:
+  local_network:
+    external: true
