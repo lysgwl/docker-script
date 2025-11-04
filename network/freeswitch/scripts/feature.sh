@@ -1,5 +1,86 @@
 #!/bin/bash
 
+# 打印日志
+print_log()
+{
+	# 参数验证
+	if [ "$#" -lt 2 ] || [ -z "$1" ]; then
+		echo "Usage: print_log <log_level> <message> [func_type]"
+		return 1
+	fi
+	
+	local log_level="$1"
+	local message="$2"
+	local func_type="${3:-}"  # 可选参数
+	
+	# 获取当前时间
+	local time1="$(date +"%Y-%m-%d %H:%M:%S")"
+	
+	# 初始化颜色变量
+	local log_time=""
+	local log_level_color=""
+	local log_func=""
+	local log_message=""
+	
+	# 时间戳格式
+	if [ -n "$time1" ]; then
+		log_time="\x1b[38;5;208m[${time1}]\x1b[0m"
+	fi
+	
+	# 日志级别颜色设置
+	case "$log_level" in
+		"TRACE")
+			log_level_color="\x1b[38;5;76m[TRACE]:\x1b[0m"        # 深绿色
+			;;
+		"DEBUG")
+			log_level_color="\x1b[38;5;208m[DEBUG]:\x1b[0m"       # 浅橙色
+			;;
+		"WARNING")
+			log_level_color="\033[1;43;31m[WARNING]:\x1b[0m"      # 黄色底红字
+			;;
+		"INFO")
+			log_level_color="\x1b[38;5;76m[INFO]:\x1b[0m"         # 深绿色
+			;;
+		"ERROR")
+			log_level_color="\x1b[38;5;196m[ERROR]:\x1b[0m"       # 深红色
+			;;
+		*)
+			echo "Unknown log level: $log_level"
+			return 1
+			;;
+	esac
+	
+	 # 功能名称
+	if [ -n "$func_type" ]; then
+		log_func="\x1b[38;5;210m(${func_type})\x1b[0m"
+	fi
+	
+	# 消息内容
+	if [ -n "$message" ]; then
+		log_message="\x1b[38;5;87m${message}\x1b[0m"
+	else
+		log_message="\x1b[38;5;87m(No message)\x1b[0m"
+	fi
+	
+	# 构建输出字符串
+	local output=""
+	
+	# 添加时间戳
+	[ -n "$log_time" ] && output="${output}${log_time} "
+	
+	# 添加日志级别
+	output="${output}${log_level_color}"
+	
+	# 添加功能类型
+	[ -n "$log_func" ] && output="${output} ${log_func}"
+	
+	# 添加消息内容
+	output="${output} ${log_message}"
+	
+	# 输出日志
+	printf "${output}\n"
+}
+
 # 查找版本的压缩包
 find_latest_archive()
 {
