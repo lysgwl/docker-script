@@ -9,6 +9,7 @@ set_service_user()
 	echo "[DEBUG] 正在创建用户目录"
 	mkdir -p "${system_config[downloads_dir]}" \
 			 "${system_config[install_dir]}" \
+			 "${system_config[update_dir]}" \
 			 "${system_config[config_dir]}" \
 			 "${system_config[data_dir]}" \
 			 "${system_config[usr_dir]}"
@@ -16,6 +17,8 @@ set_service_user()
 	# 设置目录拥有者
 	echo "[DEBUG] 正在设置目录拥有者(${user_config[user]}:${user_config[group]})"
 	chown -R ${user_config[user]}:${user_config[group]} \
+			 "${system_config[downloads_dir]}" \
+			 "${system_config[update_dir]}" \
 			"${system_config[config_dir]}" \
 			"${system_config[data_dir]}"
 			

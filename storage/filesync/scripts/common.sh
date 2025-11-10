@@ -5,10 +5,15 @@
 [[ -n "${_COMMON_SH_LOADED}" ]] && return 0
 _COMMON_SH_LOADED=1
 
+export ENABLE_FILEBROWSER=false
+export ENABLE_OPENLIST=true
+export ENABLE_SYNCTHING=true
+export ENABLE_VERYSYNC=true
+
 # root 用户密码
 readonly ROOT_PASSWORD="123456"
 
-# 定时计划
+# 定时计划(0 3 * * 0) (* * * * *)
 readonly UPDATE_CHECK_SCHEDULE="0 3 * * 0"
 
 # 初始标识
@@ -27,6 +32,7 @@ declare -A user_config=(
 	["user"]="${USERNAME:-root}"
 	["group"]="${GROUPNAME:-root}"
 )
+readonly -A user_config
 
 # 定义 SSHD 配置数组
 declare -A sshd_config=(
@@ -36,11 +42,13 @@ declare -A sshd_config=(
 	["hostkey"]="/etc/ssh/ssh_host_rsa_key"
 	["logfile"]="/var/log/sshd.log"
 )
+readonly -A sshd_config
 
 # 定义系统配置数组
 declare -A system_config=(
 	["downloads_dir"]="${WORK_DIR}/downloads"		# 下载目录
 	["install_dir"]="${WORK_DIR}/install"			# 安装目录
+	["update_dir"]="/mnt/usr/downloads"				# 更新目录
 	["conf_dir"]="${WORK_DIR}/config"				# 预配置目录
 	["config_dir"]="/config"						# 配置目录
 	["data_dir"]="/data"							# 数据目录
@@ -48,12 +56,18 @@ declare -A system_config=(
 	["arch"]="$(uname -m)"							# 系统架构
 	["type"]="$(uname | tr '[A-Z]' '[a-z]')"		# 系统类型
 )
+readonly -A system_config
+
+# 定义服务状态数组
+declare -A service_enabled=(
+	["filebrowser"]=${ENABLE_FILEBROWSER:-false}
+	["openlist"]=${ENABLE_OPENLIST:-false}
+	["syncthing"]=${ENABLE_SYNCTHING:-false}
+	["verysync"]=${ENABLE_VERYSYNC:-false}
+)
+readonly -A service_enabled
 
 umask ${UMASK:-022}
-
-readonly -A user_config
-readonly -A sshd_config
-readonly -A system_config
 
 # 加载 feature 脚本
 source $WORK_DIR/scripts/feature.sh
@@ -73,6 +87,38 @@ source $WORK_DIR/scripts/set_verysync.sh
 # 加载 filebrowser 脚本
 source $WORK_DIR/scripts/set_filebrowser.sh
 
+# 检查服务是否启用
+check_service_enabled()
+{
+	local service="$1"
+	[[ "${service_enabled[$service]:-false}" == "true" ]]
+}
+
+# 动态构建执行函数
+execute_service_function()
+{
+	local service="$1"
+	local operation="$2"
+	local param="${3:-}"
+	
+	if check_service_enabled "$service"; then
+		# 动态构建函数名
+		local function_name="${operation}_${service}_service"
+		
+		if type -t "$function_name" &>/dev/null; then
+			if [[ -n "$param" ]]; then
+				$function_name "$param"
+			else
+				$function_name
+			fi
+			
+			return $?
+		fi
+	fi
+	
+	return 0
+}
+
 # 初始化模块
 init_modules()
 {
@@ -91,27 +137,20 @@ init_modules()
 		return 1
 	fi
 	
-	# 初始 filebrowser 环境
-	#if ! init_filebrowser_service "$param"; then
-	#	return 1
-	#fi
-	
-	# 初始 openlist 环境
-	if ! init_openlist_service "$param"; then
-		return 1
-	fi
-	
-	# 初始 syncthing 环境
-	if ! init_syncthing_service "$param"; then
-		return 1
-	fi
-	
-	# 初始 verysync 环境
-	if ! init_verysync_service "$param"; then
-		return 1
-	fi
-	
-	return 0
+	# 执行操作
+	for service in "${!service_enabled[@]}"; do
+		if ! check_service_enabled "$service"; then
+			continue
+		fi
+		
+		echo "[INFO] 初始化服务: $service"
+		
+		# 执行函数
+		if ! execute_service_function "$service" "init" "$param"; then
+			 echo "[ERROR] $service 初始化失败!"
+			 return 1
+		fi
+	done
 }
 
 # 运行模块
@@ -119,33 +158,37 @@ run_modules()
 {
 	echo "[WARNING] running 当前用户:$(id -un), UID:$(id -u), UMASK:$(umask)"
 	
-	# 运行 filebrowser 服务
-	#run_filebrowser_service
-	
-	# 运行 openlist 服务
-	run_openlist_service
-
-	# 运行 syncthing 服务
-	run_syncthing_service
-	
-	# 运行 verysync 服务
-	run_verysync_service
+	# 执行操作
+	for service in "${!service_enabled[@]}"; do
+		if ! check_service_enabled "$service"; then
+			continue
+		fi
+		
+		echo "[INFO] 启动服务: $service"
+		
+		# 执行函数
+		if ! execute_service_function "$service" "run"; then
+			echo "[ERROR] $service 启动失败!"
+		fi
+	done
 }
 
 # 关闭模块
 close_modules()
 {
-	# 关闭 filebrowser 服务
-	#close_filebrowser_service
-	
-	# 关闭 openlist 服务
-	close_openlist_service
-	
-	# 关闭 syncthing 服务
-	close_syncthing_service
-	
-	# 关闭 verysync 服务
-	close_verysync_service
+	# 执行操作
+	for service in "${!service_enabled[@]}"; do
+		if ! check_service_enabled "$service"; then
+			continue
+		fi
+		
+		echo "[INFO] 关闭服务: $service"
+		
+		# 执行函数
+		if ! execute_service_function "$service" "close"; then
+			echo "[ERROR] $service 关闭失败!"
+		fi
+	done
 }
 
 # 获取安装包

@@ -350,7 +350,8 @@ run_syncthing_service()
 update_syncthing_service()
 {
 	echo "[INFO] 更新${syncthing_config[name]}服务"
-	local downloads_dir="${system_config[usr_dir]}/downloads"
+	local downloads_dir="${system_config[update_dir]}"
+	local install_dir="${syncthing_config[sys_path]}"
 	
 	# 获取安装包
 	local latest_path
@@ -361,10 +362,12 @@ update_syncthing_service()
 	
 	# 安装软件包
 	if [ ! -f "${syncthing_config[bin_file]}" ]; then
-		install_binary "$latest_path" "${syncthing_config[bin_file]}" "/usr/local/bin/${syncthing_config[name]}" || {
+		install_binary "$latest_path" "$install_dir" "/usr/local/bin/${syncthing_config[name]}" || {
 			echo "[ERROR] 安装 ${syncthing_config[name]} 失败" >&2
 			return 2
 		}
+		
+		rm -rf "$downloads_dir/output"
 		return 0
 	fi
 	
@@ -385,7 +388,7 @@ update_syncthing_service()
 			close_syncthing_service
 			
 			# 安装软件包
-			install_binary "$latest_path" "${syncthing_config[bin_file]}" || {
+			install_binary "$latest_path" "$install_dir" || {
 				echo "[ERROR] 更新 ${syncthing_config[name]} 失败" >&2
 				return 3
 			}

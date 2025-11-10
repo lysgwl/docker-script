@@ -242,7 +242,8 @@ run_verysync_service()
 update_verysync_service()
 {
 	echo "[INFO] 更新${verysync_config[name]}服务"
-	local downloads_dir="${system_config[usr_dir]}/downloads"
+	local downloads_dir="${system_config[update_dir]}"
+	local install_dir="${verysync_config[sys_path]}"
 	
 	# 获取安装包
 	local latest_path
@@ -253,10 +254,12 @@ update_verysync_service()
 	
 	# 安装软件包
 	if [ ! -f "${verysync_config[bin_file]}" ]; then
-		install_binary "$latest_path" "${verysync_config[bin_file]}" "/usr/local/bin/${verysync_config[name]}" || {
+		install_binary "$latest_path" "$install_dir" "/usr/local/bin/${verysync_config[name]}" || {
 			echo "[ERROR] 安装 ${verysync_config[name]} 失败" >&2
 			return 2
 		}
+		
+		rm -rf "$downloads_dir/output"
 		return 0
 	fi
 	
@@ -277,7 +280,7 @@ update_verysync_service()
 			close_verysync_service
 			
 			# 安装软件包
-			install_binary "$latest_path" "${verysync_config[bin_file]}" || {
+			install_binary "$latest_path" "$install_dir" || {
 				echo "[ERROR] 更新 ${verysync_config[name]} 失败" >&2
 				return 3
 			}
