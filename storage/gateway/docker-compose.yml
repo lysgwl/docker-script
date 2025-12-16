@@ -1,0 +1,42 @@
+
+name: gateway
+
+services:
+  gateway-server:
+    container_name: gateway
+    image: gateway-image
+    environment:
+      - TZ=${TZ}
+      - UMASK=${UMASK:-022}
+      - MOUNT_DIR=/data
+      - LOG_FILE=/data/mount.log
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - CONFIG_FILE=/config/mount-config.json
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ${GATEWAY_PATH}/config:/config
+      #- shared_mounts:/data:rshared
+      - /app/data/shared/gateway-data:/data:rshared
+    env_file:
+      - .env
+    #ports:
+    privileged: true
+    cap_add:
+      - SYS_ADMIN
+      - MKNOD
+    security_opt:
+      - apparmor:unconfined
+    devices:
+      - /dev/fuse:/dev/fuse
+    hostname: gateway
+    networks:
+      - local_network
+    restart: unless-stopped
+    
+networks:
+  local_network:
+    external: true
+    
+volumes:
+  shared_mounts:
+    external: true

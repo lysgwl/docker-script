@@ -1,0 +1,25 @@
+
+name: dpanel
+
+services:
+  dpanel-server:
+    container_name: dpanel
+    image: dpanel/dpanel:lite # latest lite
+    command: -H unix:///var/run/docker.sock
+    environment:
+      - TZ=Asia/Shanghai
+      - APP_NAME=dpanel
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /app/usr/dpanel:/dpanel
+    ports:
+      #- 8000:80
+      - 8080:8080
+    hostname: dpanel
+    restart: always
+    networks:
+      - local_network
+     
+networks:
+  local_network:
+    external: true

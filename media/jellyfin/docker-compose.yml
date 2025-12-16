@@ -4,7 +4,7 @@ name: jellyfin
 services:
   jellyfin-server:
     container_name: jellyfin
-    image: nyanmisaka/jellyfin     # nyanmisaka/jellyfin | jellyfin/jellyfin | linuxserver/jellyfin
+    image: nyanmisaka/jellyfin:latest     # nyanmisaka/jellyfin | jellyfin/jellyfin | linuxserver/jellyfin
     devices:
       - /dev/dri:/dev/dri
     environment:
@@ -14,14 +14,37 @@ services:
       - HTTP_PROXY=${PROXY_HOST}
       - HTTPS_PROXY=${PROXY_HOST}
     volumes:
+      - ${DATA_PATH}:/data
       - ${CONFIG_PATH}:/config
       - ${CACHE_PATH}:/cache
-      - ${DATA_PATH}:/data
-      - nas-films:/media/films
+      - ${MOUNT_SCRIPTS}:/usr/local/bin/wait-for-mount.sh:ro
+      - ${MOUNT_PROBES_DIR}:/var/run/mount-probes:ro
+      - /mnt/nas/films:/media/films
     env_file:
       - .env
     ports:
       - 8096:8096
+    entrypoint: |
+      sh -c "
+      wait-for-mount.sh \"${MOUNT_NAMES}\" /var/run/mount-probes || {
+          echo '等待挂载超时...'
+          exit 1
+      }
+      
+      echo '挂载点等待成功'
+      
+      # 启动服务
+      exec /jellyfin/jellyfin
+      "
+    healthcheck:
+      test: |
+        sh -c "
+        wait-for-mount.sh --quick \"${MOUNT_NAMES}\" /var/run/mount-probes
+        "
+      interval: 30s         # 每30秒检查一次
+      timeout: 10s          # 每次检查10秒
+      retries: 3        
+      start_period: 60s
     privileged: true
     hostname: jellyfin
     networks:
@@ -30,8 +53,4 @@ services:
       
 networks:
   local_network:
-    external: true
-    
-volumes:
-  nas-films:
     external: true

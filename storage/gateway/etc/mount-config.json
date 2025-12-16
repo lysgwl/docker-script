@@ -1,0 +1,89 @@
+{
+  "mounts": [
+    {
+      "name": "nas-files",
+      "type": "nfs",
+      "server": "192.168.2.15",
+      "remote_path": "/volume1/files",
+      "local_path": "/nas/files",
+      "mount_method": "script",
+      "options": "rw,hard,intr,tcp,vers=3,timeo=100,retrans=2,rsize=131072,wsize=131072,noatime,nolock",
+      "enabled": false,
+      "required": true
+    },
+    {
+      "name": "nas-project",
+      "type": "nfs",
+      "server": "192.168.2.15",
+      "remote_path": "/volume1/project",
+      "local_path": "/nas/project",
+      "mount_method": "script",
+      "options": "rw,hard,intr,tcp,vers=3,timeo=100,retrans=2,rsize=131072,wsize=131072,noatime,nolock",
+      "enabled": false,
+      "required": true
+    },
+	{
+      "name": "nas-images",
+      "type": "nfs",
+      "server": "192.168.2.15",
+      "remote_path": "/volume1/media/我的图库/图片资源",
+      "local_path": "/nas/images",
+      "mount_method": "script",
+      "options": "rw,hard,intr,tcp,vers=3,timeo=100,retrans=2,rsize=131072,wsize=131072,noatime,nolock",
+      "enabled": false,
+      "required": true
+    },
+	{
+      "name": "nas-photos",
+      "type": "nfs",
+      "server": "192.168.2.15",
+      "remote_path": "/volume1/media/我的图库/相册图库",
+      "local_path": "/nas/photos",
+      "mount_method": "script",
+      "options": "rw,hard,intr,tcp,vers=3,timeo=100,retrans=2,rsize=131072,wsize=131072,noatime,nolock",
+      "enabled": false,
+      "required": true
+    },
+	{
+      "name": "nas-films",
+      "type": "nfs",
+      "server": "192.168.2.15",
+      "remote_path": "/volume1/media/影视媒体",
+      "local_path": "/nas/films",
+      "mount_method": "script",
+      "options": "rw,hard,intr,tcp,vers=3,timeo=100,retrans=2,rsize=131072,wsize=131072,noatime,nolock",
+      "enabled": false,
+      "required": true
+    },
+	{
+      "name": "nas-files-test",
+      "type": "nfs",
+      "server": "192.168.2.15",
+      "remote_path": "/volume1/project",
+      "mount_method": "docker",
+      "volume_name": "nas-files-test",
+      "docker_options": {
+        "driver": "local",
+        "driver_opts": {
+          "type": "nfs",
+          "device": ":/volume1/project",
+          "o": "addr=192.168.2.15,rw,hard,intr,vers=3,timeo=100,retrans=2,rsize=131072,wsize=131072,noatime,nolock"
+        }
+      },
+      "enabled": false,
+      "required": true
+    },
+	{
+      "name": "fileshare",
+      "type": "smb",
+      "server": "192.168.2.11",
+      "remote_path": "fileshare",
+      "local_path": "/smb/fileshare",
+      "mount_method": "script",
+      "options": "vers=3.0,uid=1000,gid=1000,file_mode=0644,dir_mode=0755",
+      "credentials": "/config/smb/nas.cred",
+      "enabled": true,
+      "required": false
+    }
+  ]
+}

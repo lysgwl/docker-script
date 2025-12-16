@@ -1,0 +1,26 @@
+
+name: firefox
+
+services:
+  firefox-server:
+    container_name: firefox
+    image: linuxserver/firefox:latest
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Asia/Shanghai
+      - LC_ALL=zh_CN.UTF-8
+      - FIREFOX_CLI=https://www.baidu.com
+    volumes:
+      - /app/usr/firefox/config:/config
+    ports:
+      - 8018:3001
+    shm_size: "1gb"
+    hostname: firefox
+    networks:
+      - local_network
+    restart: unless-stopped
+    
+networks:
+  local_network:
+    external: true

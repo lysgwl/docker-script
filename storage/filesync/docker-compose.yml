@@ -9,27 +9,45 @@ services:
       - PUID=${PUID}
       - PGID=${PGID}
       - TZ=${TZ}
-      #- HTTP_PROXY=${PROXY_HOST}
-      #- HTTPS_PROXY=${PROXY_HOST}
     volumes:
-      - ${FILESYNC_PATH}/config:/config
-      - ${FILESYNC_PATH}/data:/data
-      - ${FILESYNC_PATH}/usr:/mnt/usr
-      - ${DOWNLOADS_PATH}:/mnt/usr/downloads
-      - nas-files:/mnt/usr/files
-      - nas-project:/mnt/usr/project
-      - nas-images:/mnt/usr/images
-      - nas-photos:/mnt/usr/photos
-      - nas-films:/mnt/usr/films
+      - ${FILESYNC_DIR}/data:/data
+      - ${FILESYNC_DIR}/config:/config
+      - ${FILESYNC_DIR}/usr:/mnt/usr
+      - ${DOWNLOADS_DIR}:/mnt/usr/downloads
+      - ${MOUNT_SCRIPTS}:/usr/local/bin/wait-for-mount.sh:ro
+      - ${MOUNT_PROBES_DIR}:/var/run/mount-probes:ro
+      - /mnt/nas/files:/mnt/usr/files
+      - /mnt/nas/project:/mnt/usr/project
+      - /mnt/nas/images:/mnt/usr/images
+      - /mnt/nas/photos:/mnt/usr/photos
+      - /mnt/nas/films:/mnt/usr/films
     env_file:
       - .env
     ports:
-      #- '8014:8384'
-      #- '8015:5244'
-      #- '8016:8886'
       - '22000:22000/tcp'   # 文件传输端口映射（TCP）
       - '22000:22000/udp'   # 文件传输端口映射（UDP）
       - '21027:21027/udp'   # 设备发现端口映射（UDP）
+    entrypoint: |
+      sh -c "
+      wait-for-mount.sh \"${MOUNT_NAMES}\" /var/run/mount-probes || {
+          echo '等待挂载超时...'
+          exit 1
+      }
+      
+      echo '挂载点等待成功'
+      
+      # 启动服务
+      exec /app/scripts/entrypoint.sh run
+      "
+    healthcheck:
+      test: |
+        sh -c "
+        wait-for-mount.sh --quick \"${MOUNT_NAMES}\" /var/run/mount-probes
+        "
+      interval: 30s         # 每30秒检查一次
+      timeout: 10s          # 每次检查10秒
+      retries: 3        
+      start_period: 60s
     hostname: filesync
     networks:
       - local_network
@@ -37,16 +55,4 @@ services:
 
 networks:
   local_network:
-    external: true
-
-volumes:
-  nas-files:
-    external: true
-  nas-project:
-    external: true
-  nas-images:
-    external: true
-  nas-photos:
-    external: true
-  nas-films:
     external: true
