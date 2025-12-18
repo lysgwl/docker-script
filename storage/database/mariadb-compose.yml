@@ -3,8 +3,9 @@ name: mariadb
 
 services:
   mariadb-server:
-    container_name: mariadb
     image: mariadb:10.5
+    container_name: mariadb
+    restart: unless-stopped
     security_opt:
       - seccomp:unconfined
       - apparmor:unconfined
@@ -13,16 +14,20 @@ services:
       - PGID=${PGID}
       - TZ=${TZ}
       - MYSQL_ROOT_PASSWORD=${ROOT_PASSWD}
-      - MYSQL_INIT_DIR=/opt/scripts/monitor
-      - MYSQL_WATCH_DIR=/docker-entrypoint-initdb.d
-      - MYSQL_INIT_SCRIPT=/opt/scripts/monitor/init-script.sh
-      - MYSQL_EXECUTED_LOG=/opt/scripts/monitor/sql-executed_log.log
+      - DB_TYPE=mariadb
+      - DB_HOST=localhost
+      - DB_PORT=3306
+      - DB_USER=root
+      - DB_PASSWD=${ROOT_PASSWD}
+      - LOG_LEVEL=INFO
+      - LOG_FILE=/logs/sql.log
+      - HASH_FILE=/logs/sql-hashes.db
     volumes:
-      - ${CONFIG_PATH}:/etc/mysql/conf.d
-      - ${DATA_PATH}:/var/lib/mysql
-      - ${LOG_PATH}:/logs
-      - ./etc/sql-scripts:/docker-entrypoint-initdb.d:ro
-      - ./etc/init-scripts:/opt/scripts/monitor:rw
+      - ${USER_DIR}/mariadb/data:/var/lib/mysql
+      - ${USER_DIR}/mariadb/config:/etc/mysql/conf.d
+      - ${USER_DIR}/mariadb/log:/logs
+      - ${WATCH_SCRIPT}:/opt/scripts/sql-watcher.sh
+      - ${WATCH_DIR:-./etc/sql}:/docker-entrypoint-initdb.d:ro
     env_file:
       - .env
     ports:
@@ -31,9 +36,9 @@ services:
       - local_network
     command: >
       sh -c "
-      if test -f \"$$MYSQL_INIT_SCRIPT\"; then
-          chmod +x \"$$MYSQL_INIT_SCRIPT\"
-          \"$$MYSQL_INIT_SCRIPT\" &
+      if [ -f \"$$WATCH_SQL_SCRIPT\" ]; then
+          chmod +x \"$$WATCH_SQL_SCRIPT\"
+          \"$$WATCH_SQL_SCRIPT\" &
       fi
       
       exec /usr/local/bin/docker-entrypoint.sh mysqld \
@@ -46,8 +51,6 @@ services:
         --innodb_buffer_pool_size=512M \
         --innodb_log_file_size=512M
       "
-    restart: unless-stopped
-    
 networks:
   local_network:
     external: true

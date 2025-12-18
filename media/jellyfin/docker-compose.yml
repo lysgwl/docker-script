@@ -27,13 +27,13 @@ services:
     entrypoint: |
       sh -c "
       wait-for-mount.sh \"${MOUNT_NAMES}\" /var/run/mount-probes || {
-          echo 'µÈ´ı¹ÒÔØ³¬Ê±...'
+          echo 'ç­‰å¾…æŒ‚è½½è¶…æ—¶...'
           exit 1
       }
       
-      echo '¹ÒÔØµãµÈ´ı³É¹¦'
+      echo 'æŒ‚è½½ç‚¹ç­‰å¾…æˆåŠŸ'
       
-      # Æô¶¯·şÎñ
+      # å¯åŠ¨æœåŠ¡
       exec /jellyfin/jellyfin
       "
     healthcheck:
@@ -41,8 +41,8 @@ services:
         sh -c "
         wait-for-mount.sh --quick \"${MOUNT_NAMES}\" /var/run/mount-probes
         "
-      interval: 30s         # Ã¿30Ãë¼ì²éÒ»´Î
-      timeout: 10s          # Ã¿´Î¼ì²é10Ãë
+      interval: 30s         # æ¯30ç§’æ£€æŸ¥ä¸€æ¬¡
+      timeout: 10s          # æ¯æ¬¡æ£€æŸ¥10ç§’
       retries: 3        
       start_period: 60s
     privileged: true
