@@ -1,0 +1,50 @@
+
+name: postgres
+
+services:
+  postgres-server:
+    image: ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0@sha256:bcf63357191b76a916ae5eb93464d65c07511da41e3bf7a8416db519b40b1c23
+    container_name: postgres
+    restart: unless-stopped
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - LANG=en_US.UTF-8
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${ROOT_PASSWD}
+      - POSTGRES_DB=postgres
+      - POSTGRES_INITDB_ARGS='--data-checksums'
+      - DB_TYPE=postgres
+      - DB_HOST=localhost
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWD=${ROOT_PASSWD}
+      - LOG_LEVEL=INFO
+      - LOG_FILE=/var/log/postgresql/sql.log
+      - HASH_FILE=/var/log/postgresql/sql-hashes.db
+    volumes:
+      - ${USER_DIR}/postgres/data:/var/lib/postgresql/data
+      - ${USER_DIR}/postgres/config:/etc/postgresql
+      - ${USER_DIR}/postgres/log:/var/log/postgresql
+      - ${WATCH_SCRIPT}:/opt/scripts/sql-watcher.sh
+      - ${WATCH_DIR:-./etc/sql}:/docker-entrypoint-initdb.d:ro
+    env_file:
+      - .env
+    ports:
+      - '5432:5432'
+    networks:
+      - local_network
+    shm_size: 128mb
+    command: >
+      sh -c "
+      if [ -f \"$$WATCH_SQL_SCRIPT\" ]; then
+          chmod +x \"$$WATCH_SQL_SCRIPT\"
+          \"$$WATCH_SQL_SCRIPT\" &
+      fi
+      
+      exec /usr/local/bin/immich-docker-entrypoint.sh postgres -c config_file=/etc/postgresql/postgresql.conf
+      "
+networks:
+  local_network:
+    external: true

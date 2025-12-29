@@ -5,13 +5,12 @@ set -eo pipefail
 export WORK_DIR="${WORK_DIR:-$(pwd)}"
 
 # 加载 common 脚本
-source $WORK_DIR/scripts/common.sh
+source $WORK_DIR/scripts/common.sh || exit 1
 
 # 加载 update 脚本
-source $WORK_DIR/scripts/update.sh
+source $WORK_DIR/scripts/update.sh || exit 1
 
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
-
 	if [[ ! -f "${RUN_FIRST_LOCK}" ]]; then
 		echo "===== 初始化阶段（$1）====="
 		
@@ -35,8 +34,7 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
 		crond -l 2 -L /dev/stdout &
 
 		# 执行模块
-		su-exec ${user_config[user]}:${user_config[group]} bash -c "
-			source \"$WORK_DIR/scripts/common.sh\"
+		exec_as_user ${user_config[user]} "
 			run_modules
 		" &
 		

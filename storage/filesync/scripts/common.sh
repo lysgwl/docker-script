@@ -2,13 +2,13 @@
 #
 
 # 添加防重复加载检查
-[[ -n "${_COMMON_SH_LOADED}" ]] && return 0
-_COMMON_SH_LOADED=1
+[[ "${_COMMON_SH_LOADED}" == "$$:${BASH_SOURCE[0]}" ]] && return 0
+_COMMON_SH_LOADED="$$:${BASH_SOURCE[0]}"
 
 export ENABLE_FILEBROWSER=false
-export ENABLE_OPENLIST=true
-export ENABLE_SYNCTHING=true
-export ENABLE_VERYSYNC=true
+export ENABLE_OPENLIST=false
+export ENABLE_SYNCTHING=false
+export ENABLE_VERYSYNC=false
 
 # root 用户密码
 readonly ROOT_PASSWORD="123456"
@@ -24,6 +24,9 @@ readonly RUN_UPDATE_LOCK="/var/run/run_update_flag.pid"
 
 # 更新日志
 readonly RUN_UPDATE_LOG="/var/log/run_update_log.log"
+
+# utils模块目录
+: ${UTILS_DIR:=${WORK_DIR:-/app}/utils}
 
 # 定义用户配置数组
 declare -A user_config=(
@@ -69,9 +72,6 @@ readonly -A service_enabled
 
 umask ${UMASK:-022}
 
-# 加载 feature 脚本
-source $WORK_DIR/scripts/feature.sh
-
 # 加载服务脚本
 source $WORK_DIR/scripts/set_service.sh
 
@@ -86,6 +86,47 @@ source $WORK_DIR/scripts/set_verysync.sh
 
 # 加载 filebrowser 脚本
 source $WORK_DIR/scripts/set_filebrowser.sh
+
+# 加载utils模块
+auto_load_utils()
+{
+	# 检查是否已加载
+	#[[ "${UTILS_MODULE_LOADED:-}" == "$$" ]] && return 0
+	
+	# 检查 UTILS_DIR 目录
+	if [[ ! -d "${UTILS_DIR}" ]]; then
+		echo "[ERROR] utils目录不存在: ${UTILS_DIR}"
+		return 1
+	fi
+	
+	# 定义feature.sh路径
+	local feature_file="${UTILS_DIR}/feature.sh"
+	
+	# 检查feature.sh是否存在
+	if [[ ! -f "${feature_file}" ]]; then
+		echo "[ERROR] utils模块文件不存在: ${feature_file}"
+		return 1
+	fi
+	
+	# 加载feature.sh
+	echo "[INFO] 加载utils模块: ${feature_file}"
+	source "${feature_file}"
+	
+	# 检查load_feature函数是否存在
+	if ! declare -f load_feature >/dev/null; then
+		echo "[ERROR] load_feature函数未在feature.sh中定义"
+		return 1
+	fi
+	
+	echo "[INFO] 执行load_feature函数"
+	
+	# 执行加载
+	load_feature
+	
+	# 标记已加载
+	#export UTILS_MODULE_LOADED="$$"
+	return 0
+}
 
 # 检查服务是否启用
 check_service_enabled()
@@ -117,6 +158,46 @@ execute_service_function()
 	fi
 	
 	return 0
+}
+
+# 执行命令作为指定用户
+exec_as_user()
+{
+	local user="$1"
+	shift
+	
+	local cmd="$*"
+	
+	# 验证用户存在
+	if ! id "$user" &>/dev/null; then
+		echo "[ERROR] 用户 '$user' 不存在" >&2
+		return 1
+	fi
+	
+	echo "[DEBUG] 切换到用户 $user，执行命令" >&2
+	
+	su-exec "$user" bash -c "
+		echo '[DEBUG] 子进程ID ($$): ' \$\$ >&2
+		echo '[DEBUG] BASHPID: ' \$BASHPID >&2
+		echo '[DEBUG] 父进程ID (PPID): ' \$PPID >&2
+		
+		echo '[DEBUG] WORK_DIR: $WORK_DIR' >&2
+		echo '[DEBUG] UTILS_DIR: $UTILS_DIR' >&2
+		
+		# 取消所有加载标记
+		unset _COMMON_SH_LOADED UTILS_MODULE_LOADED 2>/dev/null || true
+		
+		# 重新加载 common.sh
+		if ! source \"$WORK_DIR/scripts/common.sh\" 2>/dev/null; then
+			echo '[ERROR] 无法加载脚本 common.sh' >&2
+			exit 1
+		fi
+		
+		# 执行命令
+		$cmd
+	"
+	
+	return $?
 }
 
 # 初始化模块
@@ -157,6 +238,8 @@ init_modules()
 run_modules()
 {
 	echo "[WARNING] running 当前用户:$(id -un), UID:$(id -u), UMASK:$(umask)"
+	print_log "DEBUG" "Setting up Freeswitch"
+	return 0
 	
 	# 执行操作
 	for service in "${!service_enabled[@]}"; do
@@ -271,3 +354,6 @@ get_service_archive()
 	
 	echo "$latest_path"
 }
+
+# 自动加载utils模块
+auto_load_utils
