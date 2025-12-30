@@ -1,8 +1,6 @@
 #!/bin/bash
 # 压缩包处理工具模块
 
-echo "[DEBUG] 加载archive_utils.sh，PID=$$" >&2
-
 if [[ -n "${ARCHIVE_UTILS_LOADED:-}" ]]; then
 	return 0
 fi
@@ -11,8 +9,6 @@ export ARCHIVE_UTILS_LOADED=1
 # 解析文件扩展名
 get_file_extension()
 {
-	echo "[DEBUG] 调用 get_file_extension" >&2
-	
 	local filename="$1"
 	
 	# 优先匹配常见压缩格式扩展名
@@ -51,8 +47,6 @@ COMMENT_BLOCK
 # 查找版本的压缩包
 find_latest_archive()
 {
-	echo "[DEBUG] 调用 find_latest_archive" >&2
-	
 	local search_dir=$1
 	local pattern=$2
 	
@@ -126,8 +120,6 @@ find_latest_archive()
 # 解压并验证文件
 extract_and_validate() 
 {
-	echo "[DEBUG] 调用 extract_and_validate" >&2
-	
 	local archive_file=$1
 	local extract_dir=$2
 	local pattern=${3:-".*"}
