@@ -6,7 +6,7 @@
 _COMMON_SH_LOADED="$$:${BASH_SOURCE[0]}"
 
 export ENABLE_FILEBROWSER=false
-export ENABLE_OPENLIST=false
+export ENABLE_OPENLIST=true
 export ENABLE_SYNCTHING=false
 export ENABLE_VERYSYNC=false
 
@@ -22,33 +22,30 @@ readonly RUN_FIRST_LOCK="/var/run/run_init_flag.pid"
 # 更新标识
 readonly RUN_UPDATE_LOCK="/var/run/run_update_flag.pid"
 
-# 更新日志
-readonly RUN_UPDATE_LOG="/var/log/run_update_log.log"
-
 # utils模块目录
 : ${UTILS_DIR:=${WORK_DIR:-/app}/utils}
 
 # 定义用户配置数组
-declare -A user_config=(
+declare -A USER_CONFIG=(
 	["uid"]="${PUID:-0}"
 	["gid"]="${PGID:-0}"
 	["user"]="${USERNAME:-root}"
 	["group"]="${GROUPNAME:-root}"
 )
-readonly -A user_config
+readonly -A USER_CONFIG
 
 # 定义 SSHD 配置数组
-declare -A sshd_config=(
+declare -A SSHD_CONFIG=(
 	["port"]="${SSHD_PORT:-22}"
 	["listen"]="0.0.0.0"
 	["confile"]="/etc/ssh/sshd_config"
 	["hostkey"]="/etc/ssh/ssh_host_rsa_key"
 	["logfile"]="/var/log/sshd.log"
 )
-readonly -A sshd_config
+readonly -A SSHD_CONFIG
 
 # 定义系统配置数组
-declare -A system_config=(
+declare -A SYSTEM_CONFIG=(
 	["downloads_dir"]="${WORK_DIR}/downloads"		# 下载目录
 	["install_dir"]="${WORK_DIR}/install"			# 安装目录
 	["update_dir"]="/mnt/usr/downloads"				# 更新目录
@@ -58,17 +55,18 @@ declare -A system_config=(
 	["usr_dir"]="/mnt/usr"							# 用户目录
 	["arch"]="$(uname -m)"							# 系统架构
 	["type"]="$(uname | tr '[A-Z]' '[a-z]')"		# 系统类型
+	["update_log"]="/var/log/update.log"			# 更新日志
 )
-readonly -A system_config
+readonly -A SYSTEM_CONFIG
 
 # 定义服务状态数组
-declare -A service_enabled=(
+declare -A SERVICE_ENABLED=(
 	["filebrowser"]=${ENABLE_FILEBROWSER:-false}
 	["openlist"]=${ENABLE_OPENLIST:-false}
 	["syncthing"]=${ENABLE_SYNCTHING:-false}
 	["verysync"]=${ENABLE_VERYSYNC:-false}
 )
-readonly -A service_enabled
+readonly -A SERVICE_ENABLED
 
 umask ${UMASK:-022}
 
@@ -87,11 +85,12 @@ source $WORK_DIR/scripts/set_verysync.sh
 # 加载 filebrowser 脚本
 source $WORK_DIR/scripts/set_filebrowser.sh
 
+# ============================================================================
 # 加载utils模块
 auto_load_utils()
 {
 	# 检查是否已加载
-	#[[ "${UTILS_MODULE_LOADED:-}" == "$$" ]] && return 0
+	[[ -n "${UTILS_MODULE_LOADED:-}" ]] && [[ "${UTILS_MODULE_LOADED}" =~ ^utils_.*_${BASHPID:-$$}$ ]] && return 0
 	
 	# 检查 UTILS_DIR 目录
 	if [[ ! -d "${UTILS_DIR}" ]]; then
@@ -102,9 +101,8 @@ auto_load_utils()
 	# 定义feature.sh路径
 	local feature_file="${UTILS_DIR}/feature.sh"
 	
-	# 检查feature.sh是否存在
 	if [[ ! -f "${feature_file}" ]]; then
-		echo "[ERROR] utils模块文件不存在: ${feature_file}"
+		echo "[ERROR] feature.sh文件不存在: ${feature_file}"
 		return 1
 	fi
 	
@@ -114,17 +112,15 @@ auto_load_utils()
 	
 	# 检查load_feature函数是否存在
 	if ! declare -f load_feature >/dev/null; then
-		echo "[ERROR] load_feature函数未在feature.sh中定义"
+		echo "[ERROR] load_feature函数未定义!"
 		return 1
 	fi
-	
-	echo "[INFO] 执行load_feature函数"
 	
 	# 执行加载
 	load_feature
 	
-	# 标记已加载
-	#export UTILS_MODULE_LOADED="$$"
+	# 设置加载标记
+	export UTILS_MODULE_LOADED="utils_$(date +%s)_${BASHPID:-$$}"
 	return 0
 }
 
@@ -132,7 +128,7 @@ auto_load_utils()
 check_service_enabled()
 {
 	local service="$1"
-	[[ "${service_enabled[$service]:-false}" == "true" ]]
+	[[ "${SERVICE_ENABLED[$service]:-false}" == "true" ]]
 }
 
 # 动态构建执行函数
@@ -170,26 +166,21 @@ exec_as_user()
 	
 	# 验证用户存在
 	if ! id "$user" &>/dev/null; then
-		echo "[ERROR] 用户 '$user' 不存在" >&2
+		print_log "ERROR" "用户 '$user' 不存在!"
 		return 1
 	fi
 	
-	echo "[DEBUG] 切换到用户 $user，执行命令" >&2
-	
 	su-exec "$user" bash -c "
-		echo '[DEBUG] 子进程ID ($$): ' \$\$ >&2
-		echo '[DEBUG] BASHPID: ' \$BASHPID >&2
-		echo '[DEBUG] 父进程ID (PPID): ' \$PPID >&2
-		
-		echo '[DEBUG] WORK_DIR: $WORK_DIR' >&2
-		echo '[DEBUG] UTILS_DIR: $UTILS_DIR' >&2
+		#echo '[DEBUG] su-exec: ID($$)=' \$\$ >&2
+		#echo '[DEBUG] su-exec: BASHPID=' \$BASHPID >&2
+		#echo '[DEBUG] su-exec: ID(PPID)=' \$PPID >&2
 		
 		# 取消所有加载标记
 		unset _COMMON_SH_LOADED UTILS_MODULE_LOADED 2>/dev/null || true
 		
 		# 重新加载 common.sh
 		if ! source \"$WORK_DIR/scripts/common.sh\" 2>/dev/null; then
-			echo '[ERROR] 无法加载脚本 common.sh' >&2
+			echo '[ERROR] 加载脚本 common.sh 失败!' >&2
 			exit 1
 		fi
 		
@@ -200,78 +191,56 @@ exec_as_user()
 	return $?
 }
 
-# 初始化模块
-init_modules()
+# 锁文件管理
+lock_manager() 
 {
-	echo "[WARNING] init 当前用户:$(id -un), UID:$(id -u), UMASK:$(umask)"
+	local action="$1"
 	
-	if [ "$(id -u)" -ne 0 ]; then
-		echo "[ERROR] 非root用户权限无法初始环境, 请检查!" >&2
-		return 1
-	fi
-	
-	local param=$1
-	[ "$param" = "run" ] && param="config"
-	
-	# 初始服务环境
-	if ! init_service "$param"; then
-		return 1
-	fi
-	
-	# 执行操作
-	for service in "${!service_enabled[@]}"; do
-		if ! check_service_enabled "$service"; then
-			continue
-		fi
-		
-		echo "[INFO] 初始化服务: $service"
-		
-		# 执行函数
-		if ! execute_service_function "$service" "init" "$param"; then
-			 echo "[ERROR] $service 初始化失败!"
-			 return 1
-		fi
-	done
+	case "$action" in
+		"check")
+			if [ -f "$RUN_UPDATE_LOCK" ]; then
+				print_log "WARNING" "更新已在进行中，跳过本次更新" "${SYSTEM_CONFIG[update_log]}"
+				return 1
+			fi
+			
+			return 0
+			;;
+		"create")
+			touch "$RUN_UPDATE_LOCK" || {
+				print_log "ERROR" "无法创建锁文件: $RUN_UPDATE_LOCK" "${SYSTEM_CONFIG[update_log]}"
+				return 1
+			}
+			;;
+		"remove")
+			rm -f "$RUN_UPDATE_LOCK"
+			;;
+	esac
 }
 
-# 运行模块
-run_modules()
+# 时间管理
+time_manager() 
 {
-	echo "[WARNING] running 当前用户:$(id -un), UID:$(id -u), UMASK:$(umask)"
-	print_log "DEBUG" "Setting up Freeswitch"
-	return 0
+	local action="$1"
+	local value="${2:-}"
 	
-	# 执行操作
-	for service in "${!service_enabled[@]}"; do
-		if ! check_service_enabled "$service"; then
-			continue
-		fi
-		
-		echo "[INFO] 启动服务: $service"
-		
-		# 执行函数
-		if ! execute_service_function "$service" "run"; then
-			echo "[ERROR] $service 启动失败!"
-		fi
-	done
-}
-
-# 关闭模块
-close_modules()
-{
-	# 执行操作
-	for service in "${!service_enabled[@]}"; do
-		if ! check_service_enabled "$service"; then
-			continue
-		fi
-		
-		echo "[INFO] 关闭服务: $service"
-		
-		# 执行函数
-		if ! execute_service_function "$service" "close"; then
-			echo "[ERROR] $service 关闭失败!"
-		fi
-	done
+	case "$action" in
+		"start")
+			echo $(date +%s)
+			;;
+		"calculate")
+			local start_time=$value
+			local end_time=$(date +%s)
+			local duration=$((end_time - start_time))
+			local minutes=$((duration / 60))
+			local seconds=$((duration % 60))
+			
+			if [[ $minutes -gt 0 ]]; then
+				echo "${minutes}分${seconds}秒"
+			else
+				echo "${duration}秒"
+			fi
+			;;
+	esac
 }
 
 # 获取安装包
@@ -289,18 +258,18 @@ get_service_archive()
 	
 	# 尝试查找现有归档文件
 	if ! findpath=$(find_latest_archive "$downloads_dir" ".*${name}.*"); then
-		echo "[WARNING] 未匹配到$name软件包..." >&2
+		print_log "WARNING" "未匹配到$name软件包..." >&2
 		
 		# 回调函数下载文件
 		local download_file
 		download_file=$($download_callback "$downloads_dir") && [ -n "$download_file" ] || {
-			echo "[ERROR] 下载$name软件包失败,请检查!" >&2
+			print_log "ERROR" "下载$name软件包失败,请检查!" >&2
 			return 2
 		}
 		
 		# 提取并验证下载的文件
 		archive_path=$(extract_and_validate "$download_file" "$output_dir" ".*${name}.*") || {
-			echo "[ERROR] 解压 $name 文件失败,请检查!" >&2
+			print_log "ERROR" "解压 $name 文件失败,请检查!" >&2
 			return 3
 		}
 		
@@ -313,13 +282,13 @@ get_service_archive()
 		
 		# 验证文件类型
 		if [[ -z "$archive_type" ]] || ! [[ "$archive_type" =~ ^(file|directory)$ ]]; then
-			echo "[ERROR] 解析 $name 文件失败,请检查!" >&2
+			print_log "ERROR" "解析 $name 文件失败,请检查!" >&2
 			return 1
 		fi
 		
 		if [ "$archive_type" = "file" ]; then
 			archive_path=$(extract_and_validate "$archive_path" "$output_dir" ".*${name}.*") || {
-				echo "[ERROR] 解压 $name 文件失败,请检查!" >&2
+				print_log "ERROR" "解压 $name 文件失败,请检查!" >&2
 				return 3
 			}
 		fi
@@ -347,12 +316,75 @@ get_service_archive()
 		fi
 		
 		if [[ -z "$latest_path" ]] || [[ ! -f "$latest_path" ]]; then
-			echo "[ERROR] $name可执行文件不存在,请检查!" >&2
+			print_log "ERROR" "可执行文件 $name 不存在,请检查!" >&2
 			return 1
 		fi
 	fi
 	
 	echo "$latest_path"
+}
+
+# ============================================================================
+# 初始化模块
+init_modules()
+{
+	if [ "$(id -u)" -ne 0 ]; then
+		print_log "ERROR" "非root用户权限无法初始环境, 请检查!"
+		return 1
+	fi
+	
+	local param=$1
+	[ "$param" = "run" ] && param="config"
+	
+	# 初始服务环境
+	if ! init_service "$param"; then
+		return 1
+	fi
+	
+	# 执行操作
+	for service in "${!SERVICE_ENABLED[@]}"; do
+		if ! check_service_enabled "$service"; then
+			continue
+		fi
+
+		# 执行函数
+		if ! execute_service_function "$service" "init" "$param"; then
+			 print_log "ERROR" "初始化 $service 失败!"
+			 return 1
+		fi
+	done
+}
+
+# 运行模块
+run_modules()
+{
+	# 执行操作
+	for service in "${!SERVICE_ENABLED[@]}"; do
+		if ! check_service_enabled "$service"; then
+			continue
+		fi
+
+		# 执行函数
+		if ! execute_service_function "$service" "run"; then
+			print_log "ERROR" "启动 $service 失败!"
+		fi
+	done
+}
+
+# 关闭模块
+close_modules()
+{
+	# 执行操作
+	for service in "${!SERVICE_ENABLED[@]}"; do
+		if ! check_service_enabled "$service"; then
+			continue
+		fi
+		
+		# 执行函数
+		if ! execute_service_function "$service" "close"; then
+			print_log "ERROR" "关闭 $service 失败!"
+		fi
+	done
 }
 
 # 自动加载utils模块

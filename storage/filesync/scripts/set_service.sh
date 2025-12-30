@@ -3,49 +3,49 @@
 # 设置系统用户
 set_service_user()
 {
-	echo "[INFO] 设置系统用户"
+	print_log "TRACE" "设置系统用户"
 	
 	# 创建用户目录
-	echo "[DEBUG] 正在创建用户目录"
-	mkdir -p "${system_config[downloads_dir]}" \
-			 "${system_config[install_dir]}" \
-			 "${system_config[update_dir]}" \
-			 "${system_config[config_dir]}" \
-			 "${system_config[data_dir]}" \
-			 "${system_config[usr_dir]}"
+	print_log "DEBUG" "正在创建用户目录"
+	mkdir -p "${SYSTEM_CONFIG[downloads_dir]}" \
+			 "${SYSTEM_CONFIG[install_dir]}" \
+			 "${SYSTEM_CONFIG[update_dir]}" \
+			 "${SYSTEM_CONFIG[config_dir]}" \
+			 "${SYSTEM_CONFIG[data_dir]}" \
+			 "${SYSTEM_CONFIG[usr_dir]}"
 	
 	# 设置目录拥有者
-	echo "[DEBUG] 正在设置目录拥有者(${user_config[user]}:${user_config[group]})"
+	print_log "DEBUG" "正在设置目录拥有者(${user_config[user]}:${user_config[group]})"
 	chown -R ${user_config[user]}:${user_config[group]} \
-			 "${system_config[downloads_dir]}" \
-			 "${system_config[update_dir]}" \
-			"${system_config[config_dir]}" \
-			"${system_config[data_dir]}"
+			 "${SYSTEM_CONFIG[downloads_dir]}" \
+			 "${SYSTEM_CONFIG[update_dir]}" \
+			"${SYSTEM_CONFIG[config_dir]}" \
+			"${SYSTEM_CONFIG[data_dir]}"
 			
 	chown "${user_config[user]}:${user_config[group]}" \
-			"${system_config[usr_dir]}"
+			"${SYSTEM_CONFIG[usr_dir]}"
 			
-	echo "[INFO] 设置用户完成!"
+	print_log "TRACE" "设置用户完成!"
 }
 
 # 设置系统配置
 set_service_conf()
 {
-	echo "[INFO] 设置系统配置文件"
+	print_log "TRACE" "设置系统配置文件"
 	
-	local target_dir="${system_config[conf_dir]}"
+	local target_dir="${SYSTEM_CONFIG[conf_dir]}"
 	if [[ -d "$target_dir" ]] && find "$target_dir" -mindepth 1 -maxdepth 1 -quit 2>/dev/null; then
 	
 		# nginx 配置
-		local dest_dir="${system_config[config_dir]}/nginx/extra/proxy-config"
+		local dest_dir="${SYSTEM_CONFIG[config_dir]}/nginx/extra/proxy-config"
 		if [[ -d "$dest_dir" ]]; then
 			if ! rsync -av --remove-source-files --include='*.conf' --exclude='*' "$target_dir"/ "$dest_dir"/ >/dev/null; then
-				echo "[ERROR] nginx 配置文件设置失败, 请检查!" >&2
+				print_log "ERROR" "nginx 配置文件设置失败, 请检查!" >&2
 				return 1
 			fi
 			
 			# nginx server配置
-			local target_file="${system_config[config_dir]}/nginx/extra/www.conf"
+			local target_file="${SYSTEM_CONFIG[config_dir]}/nginx/extra/www.conf"
 			
 			if [[ -f "$target_file" ]]; then
 				local reference_content=$(cat <<'EOF'
@@ -73,8 +73,8 @@ EOF
 # 设置服务
 set_service_env()
 {
+	print_log "TRACE" "设置系统服务"
 	local arg=$1
-	echo "[INFO] 设置系统服务"
 	
 	# 设置系统用户
 	set_service_user
@@ -82,7 +82,7 @@ set_service_env()
 	if [ "$arg" = "config" ]; then
 : <<'COMMENT_BLOCK'
 		# 设置SSH服务
-		local params=("${sshd_config[port]}" "${sshd_config[listen]}" "${sshd_config[confile]}" "${sshd_config[hostkey]}")
+		local params=("${SSHD_CONFIG[port]}" "${SSHD_CONFIG[listen]}" "${SSHD_CONFIG[confile]}" "${SSHD_CONFIG[hostkey]}")
 		if ! set_ssh_service "${params[@]}"; then
 			return 1
 		fi
@@ -92,53 +92,53 @@ COMMENT_BLOCK
 		echo "root:$ROOT_PASSWORD" | chpasswd
 	fi
 
-	echo "[INFO] 设置服务完成!"
+	print_log "TRACE" "设置服务完成!"
 	return 0
 }
 
 # 初始化服务
 init_service()
 {
+	print_log "TRACE" "初始化系统服务"
 	local arg=$1
-	echo "[INFO] 初始化系统服务"
 	
 	# 设置服务
 	if ! set_service_env "$arg"; then
 		return 1
 	fi
 	
-	echo "[INFO] 初始化系统服务成功!"
+	print_log "TRACE" "初始化系统服务成功!"
 	return 0
 }
 
 # 运行服务
 run_service()
 {
-	echo "[INFO] 运行系统服务"
+	print_log "TRACE" "运行系统服务"
 	
 	# 启动 SSH 服务
 	if [ -x /usr/sbin/sshd ] && ! pgrep -x sshd > /dev/null; then
-		echo "[INFO] 正在启动服务sshd..."
+		print_log "INFO" "正在启动服务sshd..."
 		
 		mkdir -p /run/sshd 2>/dev/null
-		touch "${sshd_config[logfile]}"
+		touch "${SSHD_CONFIG[logfile]}"
 
 		#nohup /usr/sbin/sshd -D -e "$@" > /var/log/sshd.log 2>&1 &
-		/usr/sbin/sshd -e "$@" -E "${sshd_config[logfile]}"
+		/usr/sbin/sshd -e "$@" -E "${SSHD_CONFIG[logfile]}"
 	fi
 	
-	echo "[INFO] 启动系统服务成功!"
+	print_log "TRACE" "启动系统服务成功!"
 }
 
 # 停止服务
 close_service()
 {
-	echo "[INFO] 关闭系统服务"
+	print_log "TRACE" "关闭系统服务"
 	
 	if pgrep -x "sshd" > /dev/null; then
-		echo "[INFO] sshd服务即将关闭中..."
+		print_log "INFO" "sshd服务即将关闭中..."
 		killall -q "sshd"
 	fi
 	
-	echo "[INFO] 关闭系统服务成功!"
+	print_log "TRACE" "关闭系统服务成功!"
 }

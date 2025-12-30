@@ -1,44 +1,44 @@
 #!/bin/bash
 
 # 定义 alist 配置数组
-declare -A alist_config=(
+declare -A ALIST_CONFIG=(
 	["name"]="alist"		# 服务名称
 	["passwd"]="123456"		# 缺省密码
 	["port"]="${ALIST_HTTP_PORT:-5244}"					# 端口号
-	["etc_path"]="${system_config[config_dir]}/alist"	# 配置目录
-	["data_path"]="${system_config[data_dir]}/alist"	# 数据目录
+	["etc_path"]="${SYSTEM_CONFIG[config_dir]}/alist"	# 配置目录
+	["data_path"]="${SYSTEM_CONFIG[data_dir]}/alist"	# 数据目录
 	["sys_path"]="/usr/local/alist"						# 安装路径
 	["pid_path"]="/var/run/alist"						# 标识路径
 	["bin_file"]="/usr/local/alist/alist"				# 运行文件
-	["log_file"]="${system_config[data_dir]}/alist/alist.log"			# 日志文件
-	["db_file"]="${system_config[data_dir]}/alist/database.db"			# 数据库文件
-	["conf_file"]="${system_config[config_dir]}/alist/config.json"		# 配置文件
+	["log_file"]="${SYSTEM_CONFIG[data_dir]}/alist/alist.log"			# 日志文件
+	["db_file"]="${SYSTEM_CONFIG[data_dir]}/alist/database.db"			# 数据库文件
+	["conf_file"]="${SYSTEM_CONFIG[config_dir]}/alist/config.json"		# 配置文件
 )
 
-readonly -A alist_config
+readonly -A ALIST_CONFIG
 
 # 下载 alist 安装包
 download_alist()
 {
+	print_log "TRACE" "下载 ${ALIST_CONFIG[name]} 安装包" >&2
 	local downloads_dir=$1
-	echo "[INFO] 下载${alist_config[name]}安装包" >&2
-	
+
 	# 动态生成配置
 	local arch_map='{"x86_64":"amd64","aarch64":"arm64","armv7l":"armv7"}'
-	local mapped_arch=$(jq -r ".\"${system_config[arch]}\" // empty" <<< "$arch_map")
+	local mapped_arch=$(jq -r ".\"${SYSTEM_CONFIG[arch]}\" // empty" <<< "$arch_map")
 	
 	if [ -z "$mapped_arch" ]; then
-		echo "[ERROR] 不支持的架构${system_config[arch]},请检查!" >&2
+		print_log "ERROR" "不支持的架构 ${SYSTEM_CONFIG[arch]}, 请检查!" >&2
 		return 1
 	fi
 	
 	# 动态生成匹配条件
 	local matcher_conditions=(
-		"[[ \$name =~ ${system_config[type]} ]]"
+		"[[ \$name =~ ${SYSTEM_CONFIG[type]} ]]"
 		"[[ \$name =~ $mapped_arch ]]"
 	)
 	
-	local name_value="${alist_config[name]}"
+	local name_value="${ALIST_CONFIG[name]}"
 	name_value+="-musl"
 	
 	# 检测 musl
@@ -77,12 +77,12 @@ download_alist()
 install_alist_env()
 {
 	local arg=$1
-	echo "[INFO] 安装${alist_config[name]}服务环境"
+	echo "[INFO] 安装${ALIST_CONFIG[name]}服务环境"
 	
-	local install_dir="${system_config[install_dir]}"
-	local downloads_dir="${system_config[downloads_dir]}"
+	local install_dir="${SYSTEM_CONFIG[install_dir]}"
+	local downloads_dir="${SYSTEM_CONFIG[downloads_dir]}"
 	
-	local name="${alist_config[name]}"
+	local name="${ALIST_CONFIG[name]}"
 	local target_path="$install_dir/$name"
 
 	if [ "$arg" = "init" ]; then
@@ -137,43 +137,43 @@ install_alist_env()
 			rm -rf "$output_dir"
 		fi
 	elif [ "$arg" = "config" ]; then
-		if [[ ! -d "${alist_config[sys_path]}" && ! -e "${alist_config[bin_file]}" ]]; then
+		if [[ ! -d "${ALIST_CONFIG[sys_path]}" && ! -e "${ALIST_CONFIG[bin_file]}" ]]; then
 			# 安装二进制文件
-			install_binary "$target_path" "${alist_config[bin_file]}" "/usr/local/bin/$name" || return 4
+			install_binary "$target_path" "${ALIST_CONFIG[bin_file]}" "/usr/local/bin/$name" || return 4
 			
 			# 清理临时文件
 			rm -rf "$target_path"
 		fi
 	fi
 
-	echo "[INFO] 安装${alist_config[name]}完成!"
+	echo "[INFO] 安装${ALIST_CONFIG[name]}完成!"
 	return 0
 }
 
 # 设置 alist 配置
 set_alist_conf()
 {
-	echo "[INFO] 设置${alist_config[name]}配置文件"
+	echo "[INFO] 设置${ALIST_CONFIG[name]}配置文件"
 	local jwt_secret=`openssl rand -base64 12`
 
-	local tmp_dir="${alist_config[data_path]}/temp"
+	local tmp_dir="${ALIST_CONFIG[data_path]}/temp"
 	if [ ! -d "$tmp_dir" ]; then
 		mkdir -p "$tmp_dir"
 	fi
 	
-	local bleve_dir="${alist_config[data_path]}/bleve"
+	local bleve_dir="${ALIST_CONFIG[data_path]}/bleve"
 	if [ ! -d "$bleve_dir" ]; then
 		mkdir -p "$bleve_dir"
 	fi
 	
 	# alist 默认配置
-	if [ ! -e "${alist_config[conf_file]}" ]; then
-		echo "${alist_config[name]}配置文件:${alist_config[conf_file]}"
+	if [ ! -e "${ALIST_CONFIG[conf_file]}" ]; then
+		echo "${ALIST_CONFIG[name]}配置文件:${ALIST_CONFIG[conf_file]}"
 		
-		cat <<EOF > "${alist_config[conf_file]}"
+		cat <<EOF > "${ALIST_CONFIG[conf_file]}"
 {
   "force": false,
-  "site_url": "/${alist_config[name]}",
+  "site_url": "/${ALIST_CONFIG[name]}",
   "cdn": "",
   "jwt_secret": "$jwt_secret",
   "token_expires_in": 48,
@@ -184,7 +184,7 @@ set_alist_conf()
     "user": "",
     "password": "",
     "name": "",
-    "db_file": "${alist_config[db_file]}",
+    "db_file": "${ALIST_CONFIG[db_file]}",
     "table_prefix": "x_",
     "ssl_mode": "",
     "dsn": ""
@@ -196,7 +196,7 @@ set_alist_conf()
   },
   "scheme": {
     "address": "0.0.0.0",
-    "http_port": ${alist_config[port]},
+    "http_port": ${ALIST_CONFIG[port]},
     "https_port": -1,
     "force_https": false,
     "cert_file": "",
@@ -210,7 +210,7 @@ set_alist_conf()
   "dist_dir": "",
   "log": {
     "enable": true,
-    "name": "${alist_config[log_file]}",
+    "name": "${ALIST_CONFIG[log_file]}",
     "max_size": 50,
     "max_backups": 30,
     "max_age": 28,
@@ -290,22 +290,22 @@ set_alist_conf()
 EOF
 	fi
 	
-	echo "[INFO] 设置${alist_config[name]}配置完成!"
+	echo "[INFO] 设置${ALIST_CONFIG[name]}配置完成!"
 }
 
 # 设置 alist 用户
 set_alist_user()
 {
-	echo "[INFO] 设置${alist_config[name]}用户权限"
-	mkdir -p "${alist_config[pid_path]}"
+	echo "[INFO] 设置${ALIST_CONFIG[name]}用户权限"
+	mkdir -p "${ALIST_CONFIG[pid_path]}"
 
-	chown -R ${user_config[user]}:${user_config[group]} \
-		"${alist_config[sys_path]}" \
-		"${alist_config[etc_path]}" \
-		"${alist_config[data_path]}" \
-		"${alist_config[pid_path]}" 2>/dev/null || return 1
+	chown -R ${USER_CONFIG[user]}:${USER_CONFIG[group]} \
+		"${ALIST_CONFIG[sys_path]}" \
+		"${ALIST_CONFIG[etc_path]}" \
+		"${ALIST_CONFIG[data_path]}" \
+		"${ALIST_CONFIG[pid_path]}" 2>/dev/null || return 1
 
-	echo "[INFO] 设置${alist_config[name]}权限完成!"
+	echo "[INFO] 设置${ALIST_CONFIG[name]}权限完成!"
 	return 0
 }
 
@@ -313,11 +313,11 @@ set_alist_user()
 set_alist_env()
 {
 	local arg=$1
-	echo "[INFO] 设置${alist_config[name]}服务配置"
+	echo "[INFO] 设置${ALIST_CONFIG[name]}服务配置"
 	
 	if [ "$arg" = "config" ]; then
 		# 创建环境目录
-		mkdir -p "${alist_config[etc_path]}" "${alist_config[data_path]}"
+		mkdir -p "${ALIST_CONFIG[etc_path]}" "${ALIST_CONFIG[data_path]}"
 		
 		# 设置 alist 配置
 		set_alist_conf
@@ -327,19 +327,19 @@ set_alist_env()
 			return 1
 		fi
 		
-		if [ ! -f "${alist_config[bin_file]}" ]; then
-			echo "[ERROR] ${alist_config[name]}可执行文件不存在,请检查!"
+		if [ ! -f "${ALIST_CONFIG[bin_file]}" ]; then
+			echo "[ERROR] ${ALIST_CONFIG[name]}可执行文件不存在,请检查!"
 			return 1
 		fi
 		
 		# 查看 alist 管理员密码
-		su-exec ${user_config[user]} "${alist_config[bin_file]}" admin --data "${alist_config[etc_path]}"
+		su-exec ${USER_CONFIG[user]} "${ALIST_CONFIG[bin_file]}" admin --data "${ALIST_CONFIG[etc_path]}"
 
 		# 设置 alist 缺省密码	
-		su-exec ${user_config[user]} "${alist_config[bin_file]}" admin --data "${alist_config[etc_path]}" set "${alist_config[passwd]}"
+		su-exec ${USER_CONFIG[user]} "${ALIST_CONFIG[bin_file]}" admin --data "${ALIST_CONFIG[etc_path]}" set "${ALIST_CONFIG[passwd]}"
 	fi
 
-	echo "[INFO] 设置${alist_config[name]}完成!"
+	echo "[INFO] 设置${ALIST_CONFIG[name]}完成!"
 	return 0
 }
 
@@ -347,7 +347,7 @@ set_alist_env()
 init_alist_service()
 {
 	local arg=$1
-	echo "[INFO] 初始化${alist_config[name]}服务"
+	echo "[INFO] 初始化${ALIST_CONFIG[name]}服务"
 	
 	# 安装 alist 环境
 	if ! install_alist_env "$arg"; then
@@ -359,22 +359,22 @@ init_alist_service()
 		return 1
 	fi
 	
-	echo "[INFO] 初始化${alist_config[name]}服务成功!"
+	echo "[INFO] 初始化${ALIST_CONFIG[name]}服务成功!"
 	return 0
 }
 
 # 运行 alist 服务
 run_alist_service()
 {
-	echo "[INFO] 运行${alist_config[name]}服务"
+	echo "[INFO] 运行${ALIST_CONFIG[name]}服务"
 	
-	if [ ! -e "${alist_config[bin_file]}" ] && [ ! -e "${alist_config[etc_path]}" ]; then
-		echo "[ERROR] ${alist_config[name]}服务运行失败,请检查!"
+	if [ ! -e "${ALIST_CONFIG[bin_file]}" ] && [ ! -e "${ALIST_CONFIG[etc_path]}" ]; then
+		echo "[ERROR] ${ALIST_CONFIG[name]}服务运行失败,请检查!"
 		return 1
 	fi
 	
 	# 标识文件
-	local pid_file="${alist_config[pid_path]}/${alist_config[name]}.pid"
+	local pid_file="${ALIST_CONFIG[pid_path]}/${ALIST_CONFIG[name]}.pid"
 	
 	# 检查服务是否已运行
 	if [ -f "$pid_file" ]; then
@@ -382,17 +382,17 @@ run_alist_service()
 		if ! kill -0 "$pid" >/dev/null 2>&1; then
 			rm -f "$pid_file"
 		else
-			if ! grep -qF "${alist_config[name]}" "/proc/$pid/cmdline" 2>/dev/null; then
+			if ! grep -qF "${ALIST_CONFIG[name]}" "/proc/$pid/cmdline" 2>/dev/null; then
 				rm -f "$pid_file"
 			else
-				echo "[WARNING] ${alist_config[name]}服务已经在运行!(PID:$pid)"
+				echo "[WARNING] ${ALIST_CONFIG[name]}服务已经在运行!(PID:$pid)"
 				return 0
 			fi
 		fi
 	fi
 	
 	# 后台运行 alist 服务
-	nohup "${alist_config[bin_file]}" server --data "${alist_config[etc_path]}" &> /dev/null &
+	nohup "${ALIST_CONFIG[bin_file]}" server --data "${ALIST_CONFIG[etc_path]}" &> /dev/null &
 	
 	# 获取后台进程的 PID
 	local alist_pid=$!
@@ -403,43 +403,43 @@ run_alist_service()
 	fi
 	
 	# 启动端口检测
-	if ! wait_for_ports "${alist_config[port]}"; then
-		echo "[ERROR] ${alist_config[name]} 端口未就绪！"
+	if ! wait_for_ports "${ALIST_CONFIG[port]}"; then
+		echo "[ERROR] ${ALIST_CONFIG[name]} 端口未就绪！"
 		return 1
 	fi
 
 	echo "$alist_pid" > "$pid_file"
-	echo "[INFO] 启动${alist_config[name]}服务成功!"
+	echo "[INFO] 启动${ALIST_CONFIG[name]}服务成功!"
 }
 
 # 停止 alist 服务
 close_alist_service()
 {
-	echo "[INFO] 关闭${alist_config[name]}服务"
+	echo "[INFO] 关闭${ALIST_CONFIG[name]}服务"
 	
-	if [ ! -x "${alist_config[bin_file]}" ]; then
-		echo "[ERROR] ${alist_config[name]}服务不存在,请检查!"
+	if [ ! -x "${ALIST_CONFIG[bin_file]}" ]; then
+		echo "[ERROR] ${ALIST_CONFIG[name]}服务不存在,请检查!"
 		return
 	fi
 	
 	# 标识文件
-	local pid_file="${alist_config[pid_path]}/${alist_config[name]}.pid"
+	local pid_file="${ALIST_CONFIG[pid_path]}/${ALIST_CONFIG[name]}.pid"
 	
 	# 检查 alist 服务进程
 	if [ -f "$pid_file" ]; then
 		# 关闭 alist 服务进程
 		for PID in $(cat "$pid_file" 2>/dev/null); do
-			echo "[INFO] ${alist_config[name]}服务进程:${PID}"
+			echo "[INFO] ${ALIST_CONFIG[name]}服务进程:${PID}"
 			kill $PID
 		done
 		
 		rm -rf "$pid_file"
 	fi
 	
-	for PID in $(pidof ${alist_config[name]}); do
-		echo "[INFO] ${alist_config[name]}服务进程:${PID}"
+	for PID in $(pidof ${ALIST_CONFIG[name]}); do
+		echo "[INFO] ${ALIST_CONFIG[name]}服务进程:${PID}"
 		kill $PID
 	done
 	
-	echo "[INFO] 关闭${alist_config[name]}服务成功!"
+	echo "[INFO] 关闭${ALIST_CONFIG[name]}服务成功!"
 }

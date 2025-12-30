@@ -5,88 +5,11 @@ set -eo pipefail
 WORK_DIR="${WORK_DIR:-/app}"
 
 # 加载 common 脚本
-source $WORK_DIR/scripts/common.sh
+source $WORK_DIR/scripts/common.sh || exit 1
 
-#更新日志
-update_log()
-{
-	local level="$1"
-	local message="$2"
-	local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
-	
-	case "$level" in
-		"INFO")
-			echo "[INFO] $timestamp $message" >> "$RUN_UPDATE_LOG"
-			;;
-		"WARNING") 
-			echo "[WARNING] $timestamp $message" >> "$RUN_UPDATE_LOG"
-			;;
-		"ERROR")
-			echo "[ERROR] $timestamp $message" >> "$RUN_UPDATE_LOG"
-			;;
-		"SECTION")
-			echo "=== $message ===" >> "$RUN_UPDATE_LOG"
-			;;
-		"HEADER")
-			echo "================= $message =================" >> "$RUN_UPDATE_LOG"
-			;;
-		"DIVIDER")
-			echo "------------------------------------------------------------" >> "$RUN_UPDATE_LOG"
-			;;
-	esac
-}
 
-# 锁文件管理
-lock_manager() 
-{
-	local action="$1"
-	
-	case "$action" in
-		"check")
-			if [ -f "$RUN_UPDATE_LOCK" ]; then
-				update_log "WARNING" "更新已在进行中，跳过本次更新"
-				return 1
-			fi
-			
-			return 0
-			;;
-		"create")
-			touch "$RUN_UPDATE_LOCK" || {
-				update_log "ERROR" "无法创建锁文件: $RUN_UPDATE_LOCK"
-				return 1
-			}
-			;;
-		"remove")
-			rm -f "$RUN_UPDATE_LOCK"
-			;;
-	esac
-}
 
-# 时间管理
-time_manager() 
-{
-	local action="$1"
-	local value="${2:-}"
-	
-	case "$action" in
-		"start")
-			echo $(date +%s)
-			;;
-		"calculate")
-			local start_time=$value
-			local end_time=$(date +%s)
-			local duration=$((end_time - start_time))
-			local minutes=$((duration / 60))
-			local seconds=$((duration % 60))
-			
-			if [[ $minutes -gt 0 ]]; then
-				echo "${minutes}分${seconds}秒"
-			else
-				echo "${duration}秒"
-			fi
-			;;
-	esac
-}
+
 
 # 初始化服务状态
 init_service_status()
@@ -96,7 +19,7 @@ init_service_status()
 	# 清空数组
 	status_ref=()
 	
-	for service in "${!service_enabled[@]}"; do
+	for service in "${!SERVICE_ENABLED[@]}"; do
 		if check_service_enabled "$service"; then
 			status_ref["$service"]="未执行"
 		fi
@@ -152,7 +75,7 @@ update_executor()
 	local total_count=${#status_array[@]}
 	local updated_count=0
 	
-	for service in "${!service_enabled[@]}"; do
+	for service in "${!SERVICE_ENABLED[@]}"; do
 		if [[ -z "${status_array[$service]:-}" ]]; then
 			continue
 		fi
@@ -246,7 +169,7 @@ update_modules()
 	local start_time=$(time_manager "start")
 	update_log "HEADER" "开始自动更新"
 	update_log "INFO" "工作目录: $WORK_DIR"
-	update_log "INFO" "用户: ${user_config[user]}:${user_config[group]}"
+	update_log "INFO" "用户: ${USER_CONFIG[user]}:${USER_CONFIG[group]}"
 	
 	# 定义局部状态数组
 	declare -gA service_status=()
@@ -315,11 +238,11 @@ schedule_updates()
 
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
 	if [ "$1" = "update" ]; then
-		echo "===== ${user_config[user]}:${user_config[group]} 更新服务阶段 =====" >> "$RUN_UPDATE_LOG"
+		echo "===== ${USER_CONFIG[user]}:${USER_CONFIG[group]} 更新服务阶段 =====" >> "$RUN_UPDATE_LOG"
 		update_modules
 		
 		# 执行模块
-		su-exec ${user_config[user]}:${user_config[group]} bash -c "
+		su-exec ${USER_CONFIG[user]}:${USER_CONFIG[group]} bash -c "
 			source \"$WORK_DIR/scripts/common.sh\"
 			run_modules
 		" &

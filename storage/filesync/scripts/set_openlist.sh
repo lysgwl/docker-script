@@ -1,42 +1,42 @@
 #!/bin/bash
 
 # 定义 openlist 配置数组
-declare -A openlist_config=(
+declare -A OPENLIST_CONFIG=(
 	["name"]="openlist"		# 服务名称
 	["passwd"]="123456"		# 缺省密码
 	["port"]="${ALIST_HTTP_PORT:-5244}"						# 端口号
-	["etc_path"]="${system_config[config_dir]}/openlist"	# 配置目录
-	["data_path"]="${system_config[data_dir]}/openlist"		# 数据目录
+	["etc_path"]="${SYSTEM_CONFIG[config_dir]}/openlist"	# 配置目录
+	["data_path"]="${SYSTEM_CONFIG[data_dir]}/openlist"		# 数据目录
 	["sys_path"]="/usr/local/openlist"						# 安装路径
 	["pid_path"]="/var/run/openlist"						# 标识路径
 	["bin_file"]="/usr/local/openlist/openlist"				# 运行文件
-	["log_file"]="${system_config[data_dir]}/openlist/openlist.log"			# 日志文件
-	["db_file"]="${system_config[data_dir]}/openlist/database.db"			# 数据库文件
-	["conf_file"]="${system_config[config_dir]}/openlist/config.json"		# 配置文件
+	["log_file"]="${SYSTEM_CONFIG[data_dir]}/openlist/openlist.log"			# 日志文件
+	["db_file"]="${SYSTEM_CONFIG[data_dir]}/openlist/database.db"			# 数据库文件
+	["conf_file"]="${SYSTEM_CONFIG[config_dir]}/openlist/config.json"		# 配置文件
 )
 
-readonly -A openlist_config
+readonly -A OPENLIST_CONFIG
 
 # 下载 openlist 安装包
 download_openlist()
 {
-	local downloads_dir=$1
-	echo "[INFO] 下载${openlist_config[name]}安装包" >&2
+	print_log "TRACE" "下载 ${OPENLIST_CONFIG[name]} 安装包" >&2
 	
-	local name="${openlist_config[name]}-musl"
+	local downloads_dir=$1
+	local name="${OPENLIST_CONFIG[name]}-musl"
 	
 	# 动态生成配置
 	local arch_map='{"x86_64":"amd64","aarch64":"arm64","armv7l":"armv7"}'
-	local mapped_arch=$(jq -r ".\"${system_config[arch]}\" // empty" <<< "$arch_map")
+	local mapped_arch=$(jq -r ".\"${SYSTEM_CONFIG[arch]}\" // empty" <<< "$arch_map")
 	
 	if [ -z "$mapped_arch" ]; then
-		echo "[ERROR] 不支持的架构${system_config[arch]},请检查!" >&2
+		print_log "ERROR" "不支持的架构 ${SYSTEM_CONFIG[arch]}, 请检查!" >&2
 		return 1
 	fi
 	
 	# 动态生成匹配条件
 	local matcher_conditions=(
-		"[[ \$name =~ ${system_config[type]} ]]"
+		"[[ \$name =~ ${SYSTEM_CONFIG[type]} ]]"
 		"[[ \$name =~ $mapped_arch ]]"
 	)
 
@@ -65,7 +65,7 @@ download_openlist()
 	# 调用下载函数
 	local latest_file
 	if ! latest_file=$(download_package "$json_config" "$downloads_dir"); then
-		echo "[ERROR] 下载 $name 文件失败,请检查!" >&2
+		print_log "ERROR" "下载 $name 文件失败,请检查!" >&2
 		return 2
 	fi
 	
@@ -75,24 +75,24 @@ download_openlist()
 # 安装 openlist 环境
 install_openlist_env()
 {
+	print_log "TRACE" "安装 ${OPENLIST_CONFIG[name]} 服务环境"
 	local arg=$1
-	echo "[INFO] 安装${openlist_config[name]}服务环境"
 	
-	local target_path="${system_config[install_dir]}/${openlist_config[name]}"
+	local target_path="${SYSTEM_CONFIG[install_dir]}/${OPENLIST_CONFIG[name]}"
 	if [ "$arg" = "init" ]; then
 		if [ ! -d "$target_path" ]; then
-			local downloads_dir="${system_config[downloads_dir]}"
+			local downloads_dir="${SYSTEM_CONFIG[downloads_dir]}"
 			
 			# 获取安装包
 			local latest_path
-			latest_path=$(get_service_archive "${openlist_config[name]}" "$downloads_dir" download_openlist) || {
-				echo "[ERROR] 获取 ${openlist_config[name]} 安装包失败,请检查!" >&2
+			latest_path=$(get_service_archive "${OPENLIST_CONFIG[name]}" "$downloads_dir" download_openlist) || {
+				print_log "ERROR" "获取 ${OPENLIST_CONFIG[name]} 安装包失败, 请检查!" >&2
 				return 1
 			}
 			
 			# 安装软件包
 			install_binary "$latest_path" "$target_path" || {
-				echo "[ERROR] 安装 ${openlist_config[name]} 失败,请检查!" >&2
+				print_log "ERROR" "安装 ${OPENLIST_CONFIG[name]} 失败, 请检查!" >&2
 				return 2
 			}
 			
@@ -100,18 +100,18 @@ install_openlist_env()
 			rm -rf "$downloads_dir/output"
 		fi
 	elif [ "$arg" = "config" ]; then
-		if [[ ! -d "${openlist_config[sys_path]}" && ! -e "${openlist_config[bin_file]}" ]]; then
-			local install_dir=$(dirname "${openlist_config[sys_path]}")
+		if [[ ! -d "${OPENLIST_CONFIG[sys_path]}" && ! -e "${OPENLIST_CONFIG[bin_file]}" ]]; then
+			local install_dir=$(dirname "${OPENLIST_CONFIG[sys_path]}")
 			
 			# 安装软件包
 			install_binary "$target_path" "$install_dir" || {
-				echo "[ERROR] 安装 ${openlist_config[name]} 失败,请检查!" >&2
+				print_log "ERROR" "安装 ${OPENLIST_CONFIG[name]} 失败, 请检查!" >&2
 				return 2
 			}
 			
 			# 创建符号链接
-			install_binary "${openlist_config[bin_file]}" "" "$install_dir/bin/${openlist_config[name]}" || {
-				echo "[ERROR] 创建 ${openlist_config[name]} 符号链接失败,请检查" >&2
+			install_binary "${OPENLIST_CONFIG[bin_file]}" "" "$install_dir/bin/${OPENLIST_CONFIG[name]}" || {
+				print_log "ERROR" "创建 ${OPENLIST_CONFIG[name]} 符号链接失败, 请检查" >&2
 				return 4
 			}
 			
@@ -119,35 +119,35 @@ install_openlist_env()
 			rm -rf "$target_path"
 		fi
 	fi
-
-	echo "[INFO] 安装${openlist_config[name]}完成!"
+	
+	print_log "INFO" "安装 ${OPENLIST_CONFIG[name]} 完成!"
 	return 0
 }
 
 # 设置 openlist 配置
 set_openlist_conf()
 {
-	echo "[INFO] 设置${openlist_config[name]}配置文件"
+	print_log "TRACE" "设置 ${OPENLIST_CONFIG[name]} 配置文件"
 	local jwt_secret=`openssl rand -base64 12 | tr -dc 'a-zA-Z'`
 
-	local tmp_dir="${openlist_config[data_path]}/temp"
+	local tmp_dir="${OPENLIST_CONFIG[data_path]}/temp"
 	if [ ! -d "$tmp_dir" ]; then
 		mkdir -p "$tmp_dir"
 	fi
 	
-	local bleve_dir="${openlist_config[data_path]}/bleve"
+	local bleve_dir="${OPENLIST_CONFIG[data_path]}/bleve"
 	if [ ! -d "$bleve_dir" ]; then
 		mkdir -p "$bleve_dir"
 	fi
 	
-	echo "[INFO] 初始化${openlist_config[name]}配置文件:${openlist_config[conf_file]}"
-	
+	print_log "INFO" "初始化 ${OPENLIST_CONFIG[name]} 配置文件:${OPENLIST_CONFIG[conf_file]}"
+
 	# openlist 默认配置
-	if [ ! -e "${openlist_config[conf_file]}" ]; then
-		cat <<EOF > "${openlist_config[conf_file]}"
+	if [ ! -e "${OPENLIST_CONFIG[conf_file]}" ]; then
+		cat <<EOF > "${OPENLIST_CONFIG[conf_file]}"
 {
   "force": false,
-  "site_url": "/${openlist_config[name]}",
+  "site_url": "/${OPENLIST_CONFIG[name]}",
   "cdn": "",
   "jwt_secret": "$jwt_secret",
   "token_expires_in": 48,
@@ -158,7 +158,7 @@ set_openlist_conf()
     "user": "",
     "password": "",
     "name": "",
-    "db_file": "${openlist_config[db_file]}",
+    "db_file": "${OPENLIST_CONFIG[db_file]}",
     "table_prefix": "x_",
     "ssl_mode": "",
     "dsn": ""
@@ -170,7 +170,7 @@ set_openlist_conf()
   },
   "scheme": {
     "address": "0.0.0.0",
-    "http_port": ${openlist_config[port]},
+    "http_port": ${OPENLIST_CONFIG[port]},
     "https_port": -1,
     "force_https": false,
     "cert_file": "",
@@ -184,7 +184,7 @@ set_openlist_conf()
   "dist_dir": "",
   "log": {
     "enable": true,
-    "name": "${openlist_config[log_file]}",
+    "name": "${OPENLIST_CONFIG[log_file]}",
     "max_size": 50,
     "max_backups": 30,
     "max_age": 28,
@@ -283,35 +283,35 @@ set_openlist_conf()
 }
 EOF
 	fi
-	
-	echo "[INFO] 设置${openlist_config[name]}配置完成!"
+
+	print_log "TRACE" "设置 ${OPENLIST_CONFIG[name]} 配置完成!"
 }
 
 # 设置 openlist 用户
 set_openlist_user()
 {
-	echo "[INFO] 设置${openlist_config[name]}用户权限"
-	mkdir -p "${openlist_config[pid_path]}"
+	print_log "TRACE" "设置 ${OPENLIST_CONFIG[name]} 用户权限"
+	mkdir -p "${OPENLIST_CONFIG[pid_path]}"
 
-	chown -R ${user_config[user]}:${user_config[group]} \
-		"${openlist_config[sys_path]}" \
-		"${openlist_config[etc_path]}" \
-		"${openlist_config[data_path]}" \
-		"${openlist_config[pid_path]}" 2>/dev/null || return 1
+	chown -R ${USER_CONFIG[user]}:${USER_CONFIG[group]} \
+		"${OPENLIST_CONFIG[sys_path]}" \
+		"${OPENLIST_CONFIG[etc_path]}" \
+		"${OPENLIST_CONFIG[data_path]}" \
+		"${OPENLIST_CONFIG[pid_path]}" 2>/dev/null || return 1
 
-	echo "[INFO] 设置${openlist_config[name]}权限完成!"
+	print_log "TRACE" "设置 ${OPENLIST_CONFIG[name]} 权限完成!"
 	return 0
 }
 
 # 设置 openlist 环境
 set_openlist_env()
 {
+	print_log "TRACE" "设置 ${OPENLIST_CONFIG[name]} 服务配置"
 	local arg=$1
-	echo "[INFO] 设置${openlist_config[name]}服务配置"
 	
 	if [ "$arg" = "config" ]; then
 		# 创建环境目录
-		mkdir -p "${openlist_config[etc_path]}" "${openlist_config[data_path]}"
+		mkdir -p "${OPENLIST_CONFIG[etc_path]}" "${OPENLIST_CONFIG[data_path]}"
 		
 		# 设置 openlist 配置
 		set_openlist_conf
@@ -321,27 +321,27 @@ set_openlist_env()
 			return 1
 		fi
 		
-		if [ ! -f "${openlist_config[bin_file]}" ]; then
-			echo "[ERROR] ${openlist_config[name]}可执行文件不存在,请检查!" >&2
+		if [ ! -f "${OPENLIST_CONFIG[bin_file]}" ]; then
+			print_log "ERROR" "${OPENLIST_CONFIG[name]} 可执行文件不存在,请检查!" >&2
 			return 1
 		fi
 		
 		# 查看 openlist 管理员密码
-		su-exec ${user_config[user]} "${openlist_config[bin_file]}" admin --data "${openlist_config[etc_path]}"
+		su-exec ${USER_CONFIG[user]} "${OPENLIST_CONFIG[bin_file]}" admin --data "${OPENLIST_CONFIG[etc_path]}"
 
 		# 设置 openlist 缺省密码	
-		su-exec ${user_config[user]} "${openlist_config[bin_file]}" admin --data "${openlist_config[etc_path]}" set "${openlist_config[passwd]}"
+		su-exec ${USER_CONFIG[user]} "${OPENLIST_CONFIG[bin_file]}" admin --data "${OPENLIST_CONFIG[etc_path]}" set "${OPENLIST_CONFIG[passwd]}"
 	fi
 
-	echo "[INFO] 设置${openlist_config[name]}完成!"
+	print_log "TRACE" "设置 ${OPENLIST_CONFIG[name]} 完成!"
 	return 0
 }
 
 # 初始化 openlist 环境
 init_openlist_service()
 {
+	print_log "TRACE" "初始化 ${OPENLIST_CONFIG[name]} 服务"
 	local arg=$1
-	echo "[INFO] 初始化${openlist_config[name]}服务"
 	
 	# 安装 openlist 环境
 	if ! install_openlist_env "$arg"; then
@@ -353,22 +353,22 @@ init_openlist_service()
 		return 1
 	fi
 	
-	echo "[INFO] 初始化${openlist_config[name]}服务成功!"
+	print_log "TRACE" "初始化 ${OPENLIST_CONFIG[name]} 服务成功!"
 	return 0
 }
 
 # 运行 openlist 服务
 run_openlist_service()
 {
-	echo "[INFO] 运行${openlist_config[name]}服务"
+	print_log "TRACE" "运行 ${OPENLIST_CONFIG[name]} 服务"
 	
-	if [ ! -e "${openlist_config[bin_file]}" ] && [ ! -e "${openlist_config[etc_path]}" ]; then
-		echo "[ERROR] ${openlist_config[name]}服务运行失败,请检查!" >&2
+	if [ ! -e "${OPENLIST_CONFIG[bin_file]}" ] && [ ! -e "${OPENLIST_CONFIG[etc_path]}" ]; then
+		print_log "ERROR" "运行 ${OPENLIST_CONFIG[name]} 服务失败, 请检查!"
 		return 1
 	fi
 	
 	# 标识文件
-	local pid_file="${openlist_config[pid_path]}/${openlist_config[name]}.pid"
+	local pid_file="${OPENLIST_CONFIG[pid_path]}/${OPENLIST_CONFIG[name]}.pid"
 	
 	# 检查服务是否已运行
 	if [ -f "$pid_file" ]; then
@@ -376,17 +376,17 @@ run_openlist_service()
 		if ! kill -0 "$pid" >/dev/null 2>&1; then
 			rm -f "$pid_file"
 		else
-			if ! grep -qF "${openlist_config[name]}" "/proc/$pid/cmdline" 2>/dev/null; then
+			if ! grep -qF "${OPENLIST_CONFIG[name]}" "/proc/$pid/cmdline" 2>/dev/null; then
 				rm -f "$pid_file"
 			else
-				echo "[WARNING] ${openlist_config[name]}服务已经在运行!(PID:$pid)" >&2
+				print_log "WARNING" "${OPENLIST_CONFIG[name]} 服务已经在运行!(PID:$pid)"
 				return 0
 			fi
 		fi
 	fi
 	
 	# 后台运行 openlist 服务
-	nohup "${openlist_config[bin_file]}" server --data "${openlist_config[etc_path]}" &> /dev/null &
+	nohup "${OPENLIST_CONFIG[bin_file]}" server --data "${OPENLIST_CONFIG[etc_path]}" &> /dev/null &
 	
 	# 获取后台进程的 PID
 	local openlist_pid=$!
@@ -397,33 +397,34 @@ run_openlist_service()
 	fi
 	
 	# 启动端口检测
-	if ! wait_for_ports "${openlist_config[port]}"; then
-		echo "[ERROR] ${openlist_config[name]} 端口未就绪!" >&2
+	if ! wait_for_ports "${OPENLIST_CONFIG[port]}"; then
+		print_log "ERROR" "${OPENLIST_CONFIG[name]} 端口未就绪!"
 		return 1
 	fi
 
 	echo "$openlist_pid" > "$pid_file"
-	echo "[INFO] 启动${openlist_config[name]}服务成功!"
+	print_log "TRACE" "启动 ${OPENLIST_CONFIG[name]} 服务成功!"
 }
 
 # 更新 openlist 服务
 update_openlist_service()
 {
-	echo "[INFO] 更新${openlist_config[name]}服务"
-	local downloads_dir="${system_config[update_dir]}"
-	local install_dir="${openlist_config[sys_path]}"
+	print_log "TRACE" "更新 ${OPENLIST_CONFIG[name]} 服务"
+	
+	local downloads_dir="${SYSTEM_CONFIG[update_dir]}"
+	local install_dir="${OPENLIST_CONFIG[sys_path]}"
 	
 	# 获取安装包
 	local latest_path
-	latest_path=$(get_service_archive "${openlist_config[name]}" "$downloads_dir" download_openlist) || {
-		echo "[ERROR] 获取 ${openlist_config[name]} 安装包失败" >&2
+	latest_path=$(get_service_archive "${OPENLIST_CONFIG[name]}" "$downloads_dir" download_openlist) || {
+		print_log "ERROR" "获取 ${OPENLIST_CONFIG[name]} 安装包失败!"
 		return 1
 	}
 	
 	# 安装软件包
-	if [ ! -f "${openlist_config[bin_file]}" ]; then
-		install_binary "$latest_path" "$install_dir" "/usr/local/bin/${openlist_config[name]}" || {
-			echo "[ERROR] 安装 ${openlist_config[name]} 失败" >&2
+	if [ ! -f "${OPENLIST_CONFIG[bin_file]}" ]; then
+		install_binary "$latest_path" "$install_dir" "/usr/local/bin/${OPENLIST_CONFIG[name]}" || {
+			print_log "ERROR" "安装 ${OPENLIST_CONFIG[name]} 失败!"
 			return 2
 		}
 		
@@ -431,7 +432,7 @@ update_openlist_service()
 		return 0
 	fi
 	
-	local current_version=$(${openlist_config[bin_file]} version | awk '/^Version:/ {print $2}' | tr -d 'v')
+	local current_version=$(${OPENLIST_CONFIG[bin_file]} version | awk '/^Version:/ {print $2}' | tr -d 'v')
 	local new_version=$($latest_path version | awk '/^Version:/ {print $2}' | tr -d 'v')
 	
 	# 版本比较
@@ -440,7 +441,7 @@ update_openlist_service()
 
 	case $result in
 		0)
-			echo "[INFO] ${openlist_config[name]} 已是最新版本 (v$current_version)"
+			print_log "INFO" "${OPENLIST_CONFIG[name]} 已是最新版本 (v$current_version)"
 			return 0 
 			;;
 		1)
@@ -449,22 +450,22 @@ update_openlist_service()
 			
 			# 安装软件包
 			install_binary "$latest_path" "$install_dir" || {
-				echo "[ERROR] 更新 ${openlist_config[name]} 失败" >&2
+				print_log "ERROR" "更新 ${OPENLIST_CONFIG[name]} 失败!"
 				return 3
 			}
 			
 			# 清理临时文件
 			rm -rf "$downloads_dir/output"
 			
-			echo "[INFO] ${openlist_config[name]} 已更新至 v$new_version"
+			print_log "INFO" "${OPENLIST_CONFIG[name]} 已更新至 v$new_version"
 			return 0
 			;;
 		2)
-			echo "[INFO] 当前版本 (v$current_version) 比下载版本 (v$new_version) 更高"
+			print_log "INFO" "当前版本 (v$current_version) 比下载版本 (v$new_version) 更高"
 			return 0
 			;;
 		*)
-			echo "[ERROR] 版本比较异常 $current_version -> $new_version" >&2
+			print_log "ERROR" "版本比较异常 $current_version -> $new_version"
 			return 2
 			;;
 	esac
@@ -473,31 +474,31 @@ update_openlist_service()
 # 停止 openlist 服务
 close_openlist_service()
 {
-	echo "[INFO] 关闭${openlist_config[name]}服务"
+	print_log "TRACE" "关闭 ${OPENLIST_CONFIG[name]} 服务"
 	
-	if [ ! -x "${openlist_config[bin_file]}" ]; then
-		echo "[ERROR] ${openlist_config[name]}服务不存在,请检查!" >&2
+	if [ ! -x "${OPENLIST_CONFIG[bin_file]}" ]; then
+		print_log "ERROR" "${OPENLIST_CONFIG[name]} 服务不存在, 请检查!"
 		return
 	fi
 	
 	# 标识文件
-	local pid_file="${openlist_config[pid_path]}/${openlist_config[name]}.pid"
+	local pid_file="${OPENLIST_CONFIG[pid_path]}/${OPENLIST_CONFIG[name]}.pid"
 	
 	# 检查 openlist 服务进程
 	if [ -f "$pid_file" ]; then
 		# 关闭 openlist 服务进程
 		for PID in $(cat "$pid_file" 2>/dev/null); do
-			echo "[INFO] ${openlist_config[name]}服务进程:${PID}"
+			print_log "INFO" "${OPENLIST_CONFIG[name]} 服务进程:${PID}"
 			kill $PID
 		done
 		
 		rm -rf "$pid_file"
 	fi
 	
-	for PID in $(pidof ${openlist_config[name]}); do
-		echo "[INFO] ${openlist_config[name]}服务进程:${PID}"
+	for PID in $(pidof ${OPENLIST_CONFIG[name]}); do
+		print_log "INFO" "${OPENLIST_CONFIG[name]} 服务进程:${PID}"
 		kill $PID
 	done
-	
-	echo "[INFO] 关闭${openlist_config[name]}服务成功!"
+
+	print_log "TRACE" "关闭 ${OPENLIST_CONFIG[name]} 服务成功!"
 }
