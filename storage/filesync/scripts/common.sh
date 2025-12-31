@@ -16,11 +16,11 @@ readonly ROOT_PASSWORD="123456"
 # 定时计划(0 3 * * 0) (* * * * *)
 readonly UPDATE_CHECK_SCHEDULE="0 3 * * 0"
 
-# 初始标识
-readonly RUN_FIRST_LOCK="/var/run/run_init_flag.pid"
+# 初始锁
+readonly INIT_LOCK="/var/run/init.lock"
 
-# 更新标识
-readonly RUN_UPDATE_LOCK="/var/run/run_update_flag.pid"
+# 更新锁
+readonly UPDATE_LOCK="/var/run/update.lock"
 
 # utils模块目录
 : ${UTILS_DIR:=${WORK_DIR:-/app}/utils}
@@ -86,133 +86,58 @@ source $WORK_DIR/scripts/set_verysync.sh
 source $WORK_DIR/scripts/set_filebrowser.sh
 
 # ============================================================================
-# 加载utils模块
-auto_load_utils()
-{
-	# 检查是否已加载
-	[[ -n "${UTILS_MODULE_LOADED:-}" ]] && [[ "${UTILS_MODULE_LOADED}" =~ ^utils_.*_${BASHPID:-$$}$ ]] && return 0
-	
-	# 检查 UTILS_DIR 目录
-	if [[ ! -d "${UTILS_DIR}" ]]; then
-		echo "[ERROR] utils目录不存在: ${UTILS_DIR}"
-		return 1
-	fi
-	
-	# 定义feature.sh路径
-	local feature_file="${UTILS_DIR}/feature.sh"
-	
-	if [[ ! -f "${feature_file}" ]]; then
-		echo "[ERROR] feature.sh文件不存在: ${feature_file}"
-		return 1
-	fi
-	
-	# 加载feature.sh
-	echo "[INFO] 加载utils模块: ${feature_file}"
-	source "${feature_file}"
-	
-	# 检查load_feature函数是否存在
-	if ! declare -f load_feature >/dev/null; then
-		echo "[ERROR] load_feature函数未定义!"
-		return 1
-	fi
-	
-	# 执行加载
-	load_feature
-	
-	# 设置加载标记
-	export UTILS_MODULE_LOADED="utils_$(date +%s)_${BASHPID:-$$}"
-	return 0
-}
-
-# 检查服务是否启用
-check_service_enabled()
-{
-	local service="$1"
-	[[ "${SERVICE_ENABLED[$service]:-false}" == "true" ]]
-}
-
-# 动态构建执行函数
-execute_service_function()
-{
-	local service="$1"
-	local operation="$2"
-	local param="${3:-}"
-	
-	if check_service_enabled "$service"; then
-		# 动态构建函数名
-		local function_name="${operation}_${service}_service"
-		
-		if type -t "$function_name" &>/dev/null; then
-			if [[ -n "$param" ]]; then
-				$function_name "$param"
-			else
-				$function_name
-			fi
-			
-			return $?
-		fi
-	fi
-	
-	return 0
-}
-
-# 执行命令作为指定用户
-exec_as_user()
-{
-	local user="$1"
-	shift
-	
-	local cmd="$*"
-	
-	# 验证用户存在
-	if ! id "$user" &>/dev/null; then
-		print_log "ERROR" "用户 '$user' 不存在!"
-		return 1
-	fi
-	
-	su-exec "$user" bash -c "
-		#echo '[DEBUG] su-exec: ID($$)=' \$\$ >&2
-		#echo '[DEBUG] su-exec: BASHPID=' \$BASHPID >&2
-		#echo '[DEBUG] su-exec: ID(PPID)=' \$PPID >&2
-		
-		# 取消所有加载标记
-		unset _COMMON_SH_LOADED UTILS_MODULE_LOADED 2>/dev/null || true
-		
-		# 重新加载 common.sh
-		if ! source \"$WORK_DIR/scripts/common.sh\" 2>/dev/null; then
-			echo '[ERROR] 加载脚本 common.sh 失败!' >&2
-			exit 1
-		fi
-		
-		# 执行命令
-		$cmd
-	"
-	
-	return $?
-}
+# 工具函数
 
 # 锁文件管理
 lock_manager() 
 {
 	local action="$1"
+	local lock_file="$2"
 	
 	case "$action" in
 		"check")
-			if [ -f "$RUN_UPDATE_LOCK" ]; then
-				print_log "WARNING" "更新已在进行中，跳过本次更新" "${SYSTEM_CONFIG[update_log]}"
+			# 检查锁是否存在
+			if [ -f "$lock_file" ]; then
+				print_log "WARNING" "锁文件已存在: $lock_file，进程可能正在运行中"
 				return 1
 			fi
 			
 			return 0
 			;;
 		"create")
-			touch "$RUN_UPDATE_LOCK" || {
-				print_log "ERROR" "无法创建锁文件: $RUN_UPDATE_LOCK" "${SYSTEM_CONFIG[update_log]}"
+			# 先检查锁是否已存在
+			if [ -f "$lock_file" ]; then
+				print_log "ERROR" "无法创建锁文件，锁已存在: $lock_file"
 				return 1
-			}
+			fi
+			
+			# 创建锁文件
+			if ! touch "$lock_file" 2>/dev/null; then
+				print_log "ERROR" "无法创建锁文件: $lock_file"
+				return 1
+			fi
+			
+			echo "PID: $$" > "$lock_file"
+			echo "Timestamp: $(date '+%Y-%m-%d %H:%M:%S')" >> "$lock_file"
+			echo "Command: $0" >> "$lock_file"
+			
+			print_log "INFO" "锁文件创建成功: $lock_file"
+			return 0
 			;;
 		"remove")
-			rm -f "$RUN_UPDATE_LOCK"
+			# 移除锁文件
+			if [ ! -f "$lock_file" ]; then
+				print_log "WARNING" "锁文件不存在: $lock_file"
+				return 0
+			fi
+			
+			if ! rm -f "$lock_file"; then
+				print_log "ERROR" "无法移除锁文件: $lock_file"
+				return 1
+			fi
+			
+			print_log "INFO" "锁文件已移除: $lock_file"
+			return 0
 			;;
 	esac
 }
@@ -225,12 +150,16 @@ time_manager()
 	
 	case "$action" in
 		"start")
+			# 返回当前Unix时间戳
 			echo $(date +%s)
 			;;
 		"calculate")
+			[[ -z "$value" ]] || return 1
+			
 			local start_time=$value
 			local end_time=$(date +%s)
 			local duration=$((end_time - start_time))
+			
 			local minutes=$((duration / 60))
 			local seconds=$((duration % 60))
 			
@@ -324,8 +253,126 @@ get_service_archive()
 	echo "$latest_path"
 }
 
+# 执行命令作为指定用户
+exec_as_user()
+{
+	local user="$1"
+	shift
+	
+	local cmd="$*"
+	
+	# 验证用户存在
+	if ! id "$user" &>/dev/null; then
+		print_log "ERROR" "用户 '$user' 不存在!"
+		return 1
+	fi
+	
+	su-exec "$user" bash -c "
+		#echo '[DEBUG] su-exec: ID($$)=' \$\$ >&2
+		#echo '[DEBUG] su-exec: BASHPID=' \$BASHPID >&2
+		#echo '[DEBUG] su-exec: ID(PPID)=' \$PPID >&2
+		
+		# 取消所有加载标记
+		unset _COMMON_SH_LOADED UTILS_MODULE_LOADED 2>/dev/null || true
+		
+		# 重新加载 common.sh
+		if ! source \"$WORK_DIR/scripts/common.sh\" 2>/dev/null; then
+			echo '[ERROR] 加载脚本 common.sh 失败!' >&2
+			exit 1
+		fi
+		
+		# 执行命令
+		$cmd
+	"
+	
+	return $?
+}
+
 # ============================================================================
-# 初始化模块
+# 服务管理相关函数
+
+# 检查服务是否启用
+check_service_enabled()
+{
+	local service="$1"
+	[[ "${SERVICE_ENABLED[$service]:-false}" == "true" ]]
+}
+
+# 动态构建执行函数
+execute_service_function()
+{
+	local service="$1"
+	local operation="$2"
+	local param="${3:-}"
+	
+	if check_service_enabled "$service"; then
+		# 动态构建函数名
+		local function_name="${operation}_${service}_service"
+		
+		if type -t "$function_name" &>/dev/null; then
+			if [[ -n "$param" ]]; then
+				$function_name "$param"
+			else
+				$function_name
+			fi
+			
+			return $?
+		fi
+	fi
+	
+	return 0
+}
+
+# 初始化服务状态
+init_service_status()
+{
+	local -n status_ref=$1
+	
+	# 清空数组
+	status_ref=()
+	
+	for service in "${!SERVICE_ENABLED[@]}"; do
+		if check_service_enabled "$service"; then
+			status_ref["$service"]="未执行"
+		fi
+	done
+}
+
+# 获取服务状态
+get_service_status()
+{
+	local -n status_ref=$1
+	
+	local success_count=0
+	local failure_count=0
+	local total_count=0
+	
+	for service in "${!status_ref[@]}"; do
+		((total_count++))
+		case "${status_ref[$service]}" in
+			*成功*) ((success_count++)) ;;
+			*失败*) ((failure_count++)) ;;
+		esac
+	done
+	
+	echo "$total_count:$success_count:$failure_count"
+}
+
+# 显示服务状态
+show_service_status()
+{
+	local -n status_ref=$1
+	local log_file="${2:-}"
+
+	for service in "${!status_ref[@]}"; do
+		printf "  %-15s: %s\n" "$service" "${status_ref[$service]}" >> "$RUN_UPDATE_LOG"
+	done
+}
+
+# ============================================================================
+# 模块周期函数
+
+# 初始化业务模块
 init_modules()
 {
 	if [ "$(id -u)" -ne 0 ]; then
@@ -355,7 +402,7 @@ init_modules()
 	done
 }
 
-# 运行模块
+# 运行业务模块
 run_modules()
 {
 	# 执行操作
@@ -371,7 +418,7 @@ run_modules()
 	done
 }
 
-# 关闭模块
+# 关闭业务模块
 close_modules()
 {
 	# 执行操作
@@ -385,6 +432,45 @@ close_modules()
 			print_log "ERROR" "关闭 $service 失败!"
 		fi
 	done
+}
+
+# ============================================================================
+# 加载utils模块
+auto_load_utils()
+{
+	# 检查是否已加载
+	[[ -n "${UTILS_MODULE_LOADED:-}" ]] && [[ "${UTILS_MODULE_LOADED}" =~ ^utils_.*_${BASHPID:-$$}$ ]] && return 0
+	
+	# 检查 UTILS_DIR 目录
+	if [[ ! -d "${UTILS_DIR}" ]]; then
+		echo "[ERROR] utils目录不存在: ${UTILS_DIR}"
+		return 1
+	fi
+	
+	# 定义feature.sh路径
+	local feature_file="${UTILS_DIR}/feature.sh"
+	
+	if [[ ! -f "${feature_file}" ]]; then
+		echo "[ERROR] feature.sh文件不存在: ${feature_file}"
+		return 1
+	fi
+	
+	# 加载feature.sh
+	echo "[INFO] 加载utils模块: ${feature_file}"
+	source "${feature_file}"
+	
+	# 检查load_feature函数是否存在
+	if ! declare -f load_feature >/dev/null; then
+		echo "[ERROR] load_feature函数未定义!"
+		return 1
+	fi
+	
+	# 执行加载
+	load_feature
+	
+	# 设置加载标记
+	export UTILS_MODULE_LOADED="utils_$(date +%s)_${BASHPID:-$$}"
+	return 0
 }
 
 # 自动加载utils模块

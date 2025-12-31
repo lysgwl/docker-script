@@ -9,9 +9,11 @@ export WORK_DIR="${WORK_DIR:-$(pwd)}"
 source $WORK_DIR/scripts/update.sh || exit 1
 
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
-	if [[ ! -f "${RUN_FIRST_LOCK}" ]]; then
+	# 检查初始锁
+	if lock_manager "check" "$INIT_LOCK"; then
 		print_section "初始化 ($1)"
 		
+		# 初始化业务模块
 		if ! init_modules "$1"; then
 			exit 1
 		fi
@@ -19,7 +21,8 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
 		# 设置定时更新任务
 		schedule_updates
 		
-		touch "${RUN_FIRST_LOCK}"
+		# 创建初始锁
+		lock_manager "create" "INIT_LOCK"
 	fi
 	
 	if [ "$1" = "run" ]; then
@@ -31,7 +34,7 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
 		# 重新加载cron配置
 		crond -l 2 -L /dev/stdout &
 
-		# 执行模块
+		# 执行业务模块
 		exec_as_user ${USER_CONFIG[user]} "
 			run_modules
 		" &

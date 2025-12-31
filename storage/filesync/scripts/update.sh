@@ -1,129 +1,75 @@
 #!/bin/bash
 set -eo pipefail
 
-# 获取工作目录
-WORK_DIR="${WORK_DIR:-/app}"
-
 # 加载 common 脚本
 source $WORK_DIR/scripts/common.sh || exit 1
 
-
-
-
-
-# 初始化服务状态
-init_service_status()
+# 执行服务更新
+_execute_update()
 {
-	local -n status_ref=$1
+	local -n status_array_var=$1
 	
-	# 清空数组
-	status_ref=()
-	
-	for service in "${!SERVICE_ENABLED[@]}"; do
-		if check_service_enabled "$service"; then
-			status_ref["$service"]="未执行"
-		fi
-	done
-}
-
-# 获取服务状态
-get_service_status()
-{
-	local -n status_ref=$1
-	
-	local success_count=0
-	local failure_count=0
-	local total_count=0
-	
-	for service in "${!status_ref[@]}"; do
-		((total_count++))
-		case "${status_ref[$service]}" in
-			*成功*) ((success_count++)) ;;
-			*失败*) ((failure_count++)) ;;
-		esac
-	done
-	
-	echo "$total_count:$success_count:$failure_count"
-}
-
-# 显示服务状态
-show_service_status()
-{
-	local -n status_ref=$1
-	
-	update_log "SECTION" "服务更新状态汇总"
-	
-	for service in "${!status_ref[@]}"; do
-		printf "  %-15s: %s\n" "$service" "${status_ref[$service]}" >> "$RUN_UPDATE_LOG"
-	done
-}
-
-# 更新执行器
-update_executor()
-{
-	local -n status_array=$1
-	
-	# 更新开始日志
-	update_log "SECTION" "执行服务更新"
-	update_log "INFO" "开始执行服务更新..."
-	
-	# 初始化状态
-	init_service_status status_array
-	
-	# 执行更新操作
-	local overall_success=true
-	local total_count=${#status_array[@]}
 	local updated_count=0
+	local total_count=${#status_array[@]}
 	
+	local overall_success=true
 	for service in "${!SERVICE_ENABLED[@]}"; do
-		if [[ -z "${status_array[$service]:-}" ]]; then
-			continue
-		fi
+		[[ -z "${status_array_var[$service]:-}" ]] && continue
 		
 		# 设置运行状态
-		status_array["$service"]="进行中"
+		status_array_var["$service"]="进行中"
 		
 		((updated_count++))
 		
 		# 显示当前进度
-		update_log "INFO" "正在更新服务 [$updated_count/$total_count]: $service"
+		print_log "INFO" "正在更新服务 $service: [$updated_count/$total_count]" "${SYSTEM_CONFIG[update_log]}"
 		
 		# 执行服务更新
 		if execute_service_function "$service" "update"; then
-			status_array["$service"]="✅ 成功"
-			update_log "INFO" "$service 更新成功"
+			status_array_var["$service"]="✅ 成功"
+			print_log "INFO" "$service 更新成功" "${SYSTEM_CONFIG[update_log]}"
 		else
-			status_array["$service"]="❌ 失败"
-			update_log "WARNING" "$service 更新失败"
+			status_array_var["$service"]="❌ 失败"
 			
 			overall_success=false
+			print_log "INFO" "$service 更新失败" "${SYSTEM_CONFIG[update_log]}"
 		fi
 	done
 	
-	# 更新完成日志
-	if [[ "$overall_success" == "true" ]]; then
-		update_log "INFO" "所有服务更新操作完成"
-	else
-		update_log "WARNING" "部分服务更新操作失败"
-	fi
+	[[ "$overall_success" == "true" ]] && return 0 || return 1
+}
+
+# 更新执行器
+_update_executor()
+{
+	local -n status_array_ref=$1
 	
-	# 返回结果
-	if [[ "$overall_success" == "true" ]]; then
-		return 0
-	else
+	print_section "执行服务更新" "${SYSTEM_CONFIG[update_log]}"
+	print_log "INFO" "开始执行服务更新..."
+
+	# 初始化服务状态
+	init_service_status status_array_ref
+	
+	# 执行服务更新
+	if ! _execute_update status_array_ref; then
+		print_log "WARNING" "部分服务更新操作失败, 请检查!" "${SYSTEM_CONFIG[update_log]}"
 		return 1
 	fi
+	
+	print_log "INFO" "所有服务更新操作完成!" "${SYSTEM_CONFIG[update_log]}"
 }
 
 # 结果报告器
-result_reporter() 
+_result_reporter() 
 {
-	local -n status_array=$1
-	local duration=$2
-	local overall_success=$3
+	local duration="$1"
+	local overall_success="$2"
+	local -n status_array_ref="$3"
 	
 	# 显示状态汇总
+	print_section "业务更新状态汇总:" "${SYSTEM_CONFIG[update_log]}"
 	show_service_status status_array
+	return
 	
 	# 显示统计信息
 	update_log "DIVIDER" ""
@@ -149,104 +95,85 @@ result_reporter()
 	fi
 }
 
-# 更新模块
+# 更新业务模块
 update_modules()
 {
-	# 检查锁状态
-	if ! lock_manager "check"; then
-		return 0
-	fi
+	# 检查更新锁
+	[[ ! lock_manager "check" "$UPDATE_LOCK" ]] && return 0
 	
-	# 创建锁文件
-	if ! lock_manager "create"; then
-		return 1
-	fi
+	# 创建更新锁
+	[[ ! lock_manager "create" "$UPDATE_LOCK" ]] && return 1
 	
-	# 确保锁文件被清理
-	trap 'lock_manager "remove"' EXIT
+	# 清除更新锁
+	trap 'lock_manager "remove" "$UPDATE_LOCK"' EXIT
 	
-	 # 记录开始
-	local start_time=$(time_manager "start")
-	update_log "HEADER" "开始自动更新"
-	update_log "INFO" "工作目录: $WORK_DIR"
-	update_log "INFO" "用户: ${USER_CONFIG[user]}:${USER_CONFIG[group]}"
-	
-	# 定义局部状态数组
 	declare -gA service_status=()
+	print_header "开始自动更新" "${SYSTEM_CONFIG[update_log]}"
 	
-	# 执行更新并获取结果
-	local overall_success
-	if update_executor service_status; then
-		overall_success="true"
-	else
-		overall_success="false"
-	fi
+	# 记录开始
+	local start_time=$(time_manager "start")
+	
+	# 执行更新
+	local overall_success=$(_update_executor service_status && echo "true" || echo "false")
 	
 	# 计算耗时
 	local duration=$(time_manager "calculate" "$start_time")
 	
-	# 生成报告
-	result_reporter service_status "$duration" "$overall_success"
+	# 报告结果
+	_result_reporter "$duration" "$overall_success" service_status
+	print_header "完成业务更新"$'\n' "${SYSTEM_CONFIG[update_log]}"
 	
-	# 记录结束
-	update_log "HEADER" "更新完成"
-	echo "" >> "$RUN_UPDATE_LOG"
-	
-	if [[ "$overall_success" == "true" ]]; then
-		return 0
-	else
-		return 1
-	fi
+	# 返回结果
+	[[ "$overall_success" == "true" ]] && return 0 || return 1
 }
 
 # 设置定时更新任务
 schedule_updates()
 {
-	echo "[INFO] 设置定时更新检查任务..."
+	print_log "TRACE" "设置定时更新检查任务"
 	
 	# 默认配置
 	local default_schedule="0 3 * * 0"
 	local schedule=${UPDATE_CHECK_SCHEDULE:-$default_schedule}
 	
 	if [[ $(echo "$schedule" | wc -w) -ne 5 ]]; then
-		echo "[ERROR] cron表达式必须有5个字段" >&2
+		print_log "ERROR" "cron表达式格式不正确, 请检查!"
 		return
 	fi
 	
 	if ! [[ "$schedule" =~ ^([0-9*/,\-]+[[:space:]]+){4}[0-9*/,\-]+$ ]]; then
-		echo "[ERROR] cron表达式包含无效字符" >&2
+		print_log "ERROR" "cron表达式包含无效字符, 请检查!"
 		return 1
 	fi
 	
-	# 脚本路径
-	local run_script="$WORK_DIR/scripts/update.sh"
-
 	# 检查 dcron
 	local cron_file="/etc/crontabs/root"
 	if [[ ! -f "$cron_file" ]]; then
-		echo "[ERROR] cron 配置文件不存在, 请检查!"
+		print_log "ERROR" "cron 配置文件不存在, 请检查!"
 		return
 	fi
 	
+	# 脚本路径
+	local run_script="${BASH_SOURCE[0]}"
+	
 	# 检查任务
-	if ! grep "$run_script update" "$cron_file" > /dev/null 2>&1; then
-		echo "$schedule $run_script update" >> "$cron_file"
+	if ! grep "$run_script" "$cron_file" > /dev/null 2>&1; then
+		echo "$schedule $run_script" >> "$cron_file"
 	fi
 
-	echo "[INFO] 完成设置定时任务..."
+	print_log "TRACE" "完成设置定时任务"
 }
 
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
-	if [ "$1" = "update" ]; then
-		echo "===== ${USER_CONFIG[user]}:${USER_CONFIG[group]} 更新服务阶段 =====" >> "$RUN_UPDATE_LOG"
-		update_modules
-		
-		# 执行模块
-		su-exec ${USER_CONFIG[user]}:${USER_CONFIG[group]} bash -c "
-			source \"$WORK_DIR/scripts/common.sh\"
-			run_modules
-		" &
-		
-		wait $!
-	fi
+	print_section "更新服务 (${USER_CONFIG[user]})" "${SYSTEM_CONFIG[update_log]}"
+	
+	# 更新业务模块
+	update_modules
+	
+	# 执行业务模块
+	exec_as_user ${USER_CONFIG[user]} "
+		run_modules
+	" &
+	
+	wait $!
 fi
