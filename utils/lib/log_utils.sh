@@ -16,6 +16,9 @@ declare -A LOG_LEVEL_VALUES=(
 	["NONE"]=99		# 不记录任何日志
 )
 
+# 特殊日志级别
+export SPECIAL_LEVELS="TITLE|SECTION|HEADER|SUBTITLE|DIVIDER|BLANK|TEXT"
+
 # 日志级别比较
 diff_log_level()
 {
@@ -26,7 +29,7 @@ diff_log_level()
 	configured_level="${configured_level^^}"
 	
 	# 特殊格式日志总是输出
-	[[ "$current_level" == @(SECTION|HEADER|DIVIDER) ]] && return 0
+	[[ "$current_level" =~ ^($SPECIAL_LEVELS)$ ]] && return 0
 	
 	local current_value="${LOG_LEVEL_VALUES[$current_level]:-2}"
 	local configured_value="${LOG_LEVEL_VALUES[$configured_level]:-2}"
@@ -99,21 +102,37 @@ _format_log()
 	local log_entry=""
 	
 	case "$log_level" in
-		"SECTION")
+		"TITLE")	# 程序/模块边界
+			log_entry="******************************************"
+			;;
+		"SECTION")	# 主要章节模块开始
 			log_entry="===== $message ====="
 			;;
-		"HEADER")
+		"HEADER")	# 重要标题/功能模块
 			log_entry="================= $message ================="
 			;;
-		"DIVIDER")
+		"SUBTITLE")	# 子标题/次级功能
+			log_entry="---------- $message ----------"
+			;;
+		"DIVIDER")	# 内容分隔线
 			log_entry="------------------------------------------------------------"
 			;;
+		"BLANK")	# 空白行
+			log_entry=""
+			;;
+		"TEXT")
+			log_entry="$message"
+			;;
+		*)
+			log_entry="$message"
+			;;
+		
 	esac
 	
 	if [[ -z "$log_file" ]]; then
-		echo "$log_entry"
+		echo -e "$log_entry"
 	else
-		echo "$log_entry" | tee -a "$log_file" 2>/dev/null || true
+		echo -e "$log_entry" | tee -a "$log_file" 2>/dev/null || true
 	fi
 }
 
@@ -122,7 +141,7 @@ print_log()
 {
 	# 参数验证
 	if [ "$#" -lt 2 ] || [ -z "$1" ]; then
-		echo "Usage: print_log <log_level> <message> [output_type] [func_type] [log_file]"
+		echo "Usage: print_log <log_level> <message> [func_type] [log_file]"
 		return 1
 	fi
 	
@@ -132,7 +151,7 @@ print_log()
 	local log_file="${4:-}"
 	
 	# 输入参数验证
-	if [ -z "$log_level" ] || [ -z "$message" ]; then
+	if [ -z "$log_level" ]; then
 		return 1
 	fi
 	
@@ -141,14 +160,19 @@ print_log()
 		return 0
 	fi
 	
-	local timestamp="$(date +"%Y-%m-%d %H:%M:%S")"
-	
 	# 判断是否为特殊格式
-	if [[ "$log_level" =~ ^(SECTION|HEADER|DIVIDER)$ ]]; then
+	if [[ "$log_level" =~ ^($SPECIAL_LEVELS)$ ]]; then
 		_format_log "$log_level" "$message" "$log_file"
 	else
+		local timestamp="$(date +"%Y-%m-%d %H:%M:%S")"
 		_write_log "$log_level" "$message" "$func_type" "$timestamp" "$log_file"
 	fi
+}
+
+print_title()
+{
+	local log_file="${1:-}"
+	print_log "TITLE" "" "" "$log_file"
 }
 
 print_section()
@@ -161,6 +185,12 @@ print_header()
 {
 	local message="$1" log_file="${2:-}"
 	print_log "HEADER" "$message" "" "$log_file"
+}
+
+print_subtitle()
+{
+	local message="$1" log_file="${2:-}"
+	print_log "SUBTITLE" "$message" "" "$log_file"
 }
 
 print_divider() 

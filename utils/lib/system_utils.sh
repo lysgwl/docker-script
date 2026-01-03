@@ -223,6 +223,36 @@ set_ssh_service()
 	return 0
 }
 
+# 时间管理
+time_manager() 
+{
+	local action="$1"
+	local value="${2:-}"
+	
+	case "$action" in
+		"start")
+			# 返回当前Unix时间戳
+			echo $(date +%s)
+			;;
+		"calculate")
+			[[ -z "$value" ]] && return 1
+			
+			local start_time=$value
+			local end_time=$(date +%s)
+			local duration=$((end_time - start_time))
+			
+			local minutes=$((duration / 60))
+			local seconds=$((duration % 60))
+			
+			if [[ $minutes -gt 0 ]]; then
+				echo "${minutes}分${seconds}秒"
+			else
+				echo "${duration}秒"
+			fi
+			;;
+	esac
+}
+
 # 等待进程 id
 wait_for_pid()
 {
@@ -299,4 +329,58 @@ wait_for_pid()
 	fi
 	
 	return $result
+}
+
+# 锁文件管理
+lock_manager() 
+{
+	local action="$1"
+	local lock_file="$2"
+	
+	case "$action" in
+		"check")
+			# 检查锁是否存在
+			if [ -f "$lock_file" ]; then
+				print_log "WARNING" "锁文件已存在: $lock_file，进程可能正在运行中"
+				return 1
+			fi
+			
+			return 0
+			;;
+		"create")
+			# 先检查锁是否已存在
+			if [ -f "$lock_file" ]; then
+				print_log "ERROR" "无法创建锁文件，锁已存在: $lock_file"
+				return 1
+			fi
+			
+			# 创建锁文件
+			if ! touch "$lock_file" 2>/dev/null; then
+				print_log "ERROR" "无法创建锁文件: $lock_file"
+				return 1
+			fi
+			
+			echo "PID: $$" > "$lock_file"
+			echo "Timestamp: $(date '+%Y-%m-%d %H:%M:%S')" >> "$lock_file"
+			echo "Command: $0" >> "$lock_file"
+			
+			print_log "INFO" "锁文件创建成功: $lock_file"
+			return 0
+			;;
+		"remove")
+			# 移除锁文件
+			if [ ! -f "$lock_file" ]; then
+				print_log "WARNING" "锁文件不存在: $lock_file"
+				return 0
+			fi
+			
+			if ! rm -f "$lock_file"; then
+				print_log "ERROR" "无法移除锁文件: $lock_file"
+				return 1
+			fi
+			
+			print_log "INFO" "锁文件已移除: $lock_file"
+			return 0
+			;;
+	esac
 }
