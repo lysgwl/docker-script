@@ -1,62 +1,158 @@
 #!/bin/bash
-set -eo pipefail
 
 # 加载 common 脚本
 source $WORK_DIR/scripts/common.sh || exit 1
 
-# 执行服务更新
-_execute_update()
+# 更新日志
+update_log()
 {
-	local -n status_array_var=$1
+	local level="$1"
+	local message="${2:-}"
+	local log_file="${3:-${SYSTEM_CONFIG[update_log]}}"
 	
-	local updated_count=0
-	local total_count=${#status_array[@]}
+	if [[ "$level" == "START_TITLE" || "$level" == "END_TITLE" ]]; then
+		print_title "$log_file"
+		print_log "TEXT" "$message" "" "$log_file"
+		print_title "$log_file"
+	else
+		print_log "$level" "$message" "" "$log_file"
+	fi
+}
+
+# 展示更新状态汇总
+_show_status_summary()
+{
+	update_log "SUBTITLE" "服务更新状态汇总"
 	
-	local overall_success=true
-	for service in "${!SERVICE_ENABLED[@]}"; do
-		[[ -z "${status_array_var[$service]:-}" ]] && continue
+	# 按服务名称排序
+	local sorted_services=$(echo "${!SERVICE_STATES[@]}" | tr ' ' '\n' | sort)
+	
+	for service in $sorted_services; do
+		# 获取服务状态
+		local status=$(get_service_status "$service")
+		local reason=$(get_service_reason "$service")
 		
-		# 设置运行状态
-		status_array_var["$service"]="进行中"
+		local status_display=""
+		case "$status" in
+			"${SERVICE_STATUS[SUCCESS]}")
+				status_display="✅ $reason" ;;
+			"${SERVICE_STATUS[FAILURE]}")
+				status_display="❌ $reason" ;;
+			"${SERVICE_STATUS[EXECUTING]}")
+				status_display="🔄 $reason" ;;
+			"${SERVICE_STATUS[DISABLED]}")
+				status_display="⚪ $reason" ;;
+			*)
+				status_display="⚪ $status ($reason)" ;;
+		esac
 		
-		((updated_count++))
+		update_log "TEXT" "  $(printf "%-15s" "$service") : $status_display"
+	done
+}
+
+# 展示更新统计
+_show_update_reporter()
+{
+	local duration="$1"
+	update_log "SUBTITLE" "更新统计"
+	
+	local total_count=0
+	local success_count=0
+	local failure_count=0
+	
+	for service in "${!SERVICE_STATES[@]}"; do
+		! check_service_enabled "$service" && continue
 		
-		# 显示当前进度
-		print_log "INFO" "正在更新服务 $service: [$updated_count/$total_count]" "${SYSTEM_CONFIG[update_log]}"
+		((total_count++))
 		
-		# 执行服务更新
-		if execute_service_function "$service" "update"; then
-			status_array_var["$service"]="✅ 成功"
-			print_log "INFO" "$service 更新成功" "${SYSTEM_CONFIG[update_log]}"
-		else
-			status_array_var["$service"]="❌ 失败"
-			
-			overall_success=false
-			print_log "INFO" "$service 更新失败" "${SYSTEM_CONFIG[update_log]}"
-		fi
+		local status=$(get_service_status "$service")
+		case "$status" in
+			"${SERVICE_STATUS[SUCCESS]}")
+				((success_count++)) ;;
+			"${SERVICE_STATUS[FAILURE]}")
+				((failure_count++)) ;;
+		esac
 	done
 	
-	[[ "$overall_success" == "true" ]] && return 0 || return 1
+	update_log "TEXT" "  服务总数: ${#SERVICE_STATES[@]}"
+	update_log "TEXT" "  成功数量: $success_count"
+	update_log "TEXT" "  失败数量: $failure_count"
+	update_log "TEXT" "  执行耗时: $duration"
 }
 
 # 更新执行器
 _update_executor()
 {
-	local -n status_array_ref=$1
-	
-	print_section "执行服务更新" "${SYSTEM_CONFIG[update_log]}"
-	print_log "INFO" "开始执行服务更新..."
-
-	# 初始化服务状态
-	init_service_status status_array_ref
-	
-	# 执行服务更新
-	if ! _execute_update status_array_ref; then
-		print_log "WARNING" "部分服务更新操作失败, 请检查!" "${SYSTEM_CONFIG[update_log]}"
+	local total_count=${#SERVICE_STATES[@]}
+	if [[ $total_count -eq 0 ]]; then
+		update_log "WARNING" "未检测到服务配置, 请检查!"
 		return 1
 	fi
 	
-	print_log "INFO" "所有服务更新操作完成!" "${SYSTEM_CONFIG[update_log]}"
+	update_log "SECTION" "执行服务更新" >&2
+	
+	# 先统计启用的服务数量
+	local enabled_count=0
+	for service in "${!SERVICE_STATES[@]}"; do
+		check_service_enabled "$service" && ((enabled_count++))
+	done
+	
+	if [[ $enabled_count -eq 0 ]]; then
+		update_log "INFO" "ℹ️ 服务总数：${total_count}, 无启用服务需要更新!" >&2
+		return 2
+	fi
+	
+	local overall_success=true
+	
+	local service_index=0
+	local updated_count=0
+	
+	for service in "${!SERVICE_STATES[@]}"; do
+		((service_index++))
+		
+		if ! check_service_enabled "$service"; then
+			update_service_status "$service" "${SERVICE_STATUS[DISABLED]}" "未启用"
+			update_log "INFO" "[$service_index/$total_count] 服务 $service 未启用, 跳过更新检查" >&2
+		else
+			((updated_count++))
+			
+			update_service_status "$service" "${SERVICE_STATUS[EXECUTING]}" "处理更新"
+			update_log "INFO" "正在更新服务 [$updated_count/$total_count]: $service" >&2
+			
+			# 执行服务更新
+			if execute_service_func "$service" "update"; then
+				update_service_status "$service" "${SERVICE_STATUS[SUCCESS]}" "更新成功"
+				update_log "INFO" "服务 $service 更新成功" >&2
+				
+				
+			else
+				update_service_status "$service" "${SERVICE_STATUS[FAILURE]}" "更新失败"
+				update_log "INFO" "服务 $service 更新失败" >&2
+				overall_success=false
+			fi
+		fi
+	done
+	
+	# 显示汇总信息
+	#update_log "SUBTITLE" "更新检查结果" >&2
+	#update_log "INFO" "总服务数: $total_count" >&2
+	#update_log "INFO" "已启用: $enabled_count" >&2
+	#update_log "INFO" "未启用: $((total_count - enabled_count))" >&2
+	#update_log "INFO" "实际处理: $updated_count" >&2
+	
+	if [[ "$overall_success" == "false" ]]; then
+		update_log "WARNING" "⚠️ 部分服务更新失败" >&2
+		return 3
+	fi
+	
+	if [[ $updated_count -eq $total_count ]]; then
+		update_log "INFO" "✅ 所有服务更新完成" >&2
+	else
+		update_log "INFO" \
+			"ℹ️ 服务总数 ${total_count}:已更新 ${updated_count},未处理 $((total_count - updated_count))(未启用或被跳过)" >&2
+	fi
+	
+	return 0
 }
 
 # 结果报告器
@@ -64,34 +160,18 @@ _result_reporter()
 {
 	local duration="$1"
 	local overall_success="$2"
-	local -n status_array_ref="$3"
 	
-	# 显示状态汇总
-	print_section "业务更新状态汇总:" "${SYSTEM_CONFIG[update_log]}"
-	show_service_status status_array
-	return
+	# 展示更新状态
+	_show_status_summary
 	
-	# 显示统计信息
-	update_log "DIVIDER" ""
-	update_log "SECTION" "更新统计"
-	
-	local summary=$(get_service_status status_array)
-	local total_count=$(echo "$summary" | cut -d: -f1)
-	local success_count=$(echo "$summary" | cut -d: -f2)
-	local failure_count=$(echo "$summary" | cut -d: -f3)
-	
-	echo "  服务总数: $total_count" >> "$RUN_UPDATE_LOG"
-	echo "  成功数量: $success_count" >> "$RUN_UPDATE_LOG"
-	echo "  失败数量: $failure_count" >> "$RUN_UPDATE_LOG"
-	echo "  执行耗时: $duration" >> "$RUN_UPDATE_LOG"
-	
-	update_log "DIVIDER" ""
+	# 展示更新统计
+	_show_update_reporter "$duration"
 	
 	# 显示总体结果
 	if [[ "$overall_success" == "true" ]]; then
 		update_log "INFO" "🎉 所有服务更新成功"
 	else
-		update_log "WARNING" "⚠️  部分服务更新失败 (失败: $failure_count/$total_count)"
+		update_log "WARNING" "⚠️ 部分服务更新失败"
 	fi
 }
 
@@ -99,32 +179,42 @@ _result_reporter()
 update_modules()
 {
 	# 检查更新锁
-	[[ ! lock_manager "check" "$UPDATE_LOCK" ]] && return 0
+	! lock_manager "check" "$UPDATE_LOCK" && return 0 
 	
 	# 创建更新锁
-	[[ ! lock_manager "create" "$UPDATE_LOCK" ]] && return 1
+	! lock_manager "create" "$UPDATE_LOCK" && return 1
 	
 	# 清除更新锁
 	trap 'lock_manager "remove" "$UPDATE_LOCK"' EXIT
 	
-	declare -gA service_status=()
-	print_header "开始自动更新" "${SYSTEM_CONFIG[update_log]}"
+	# 初始化状态
+	init_service_status
 	
 	# 记录开始
 	local start_time=$(time_manager "start")
 	
+	update_log "BLANK"
+	update_log "START_TITLE" "# 服务更新开始 $(date +"%Y-%m-%d %H:%M:%S") (用户: ${USER_CONFIG[user]}) #"
+	
 	# 执行更新
-	local overall_success=$(_update_executor service_status && echo "true" || echo "false")
+	_update_executor
 	
-	# 计算耗时
-	local duration=$(time_manager "calculate" "$start_time")
+	local result=$?
+	if [[ $result =~ ^[03]$ ]]; then
+		local overall_success=$([[ $result -eq 0 ]] && echo true || echo false)
+		
+		# 计算耗时
+		local duration=$(time_manager "calculate" "$start_time")
+		
+		# 报告结果
+		_result_reporter "$duration" "$overall_success"
+	fi
 	
-	# 报告结果
-	_result_reporter "$duration" "$overall_success" service_status
-	print_header "完成业务更新"$'\n' "${SYSTEM_CONFIG[update_log]}"
-	
+	update_log "END_TITLE" "# 服务更新结束 $(date +"%Y-%m-%d %H:%M:%S") #"
+	update_log "BLANK"
+
 	# 返回结果
-	[[ "$overall_success" == "true" ]] && return 0 || return 1
+	[[ $result =~ ^[01]$ ]]
 }
 
 # 设置定时更新任务
@@ -165,8 +255,6 @@ schedule_updates()
 }
 
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
-	print_section "更新服务 (${USER_CONFIG[user]})" "${SYSTEM_CONFIG[update_log]}"
-	
 	# 更新业务模块
 	update_modules
 	

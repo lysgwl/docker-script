@@ -5,11 +5,6 @@
 [[ "${_COMMON_SH_LOADED}" == "$$:${BASH_SOURCE[0]}" ]] && return 0
 _COMMON_SH_LOADED="$$:${BASH_SOURCE[0]}"
 
-export ENABLE_FILEBROWSER=false
-export ENABLE_OPENLIST=true
-export ENABLE_SYNCTHING=false
-export ENABLE_VERYSYNC=false
-
 # root 用户密码
 readonly ROOT_PASSWORD="123456"
 
@@ -59,19 +54,13 @@ declare -A SYSTEM_CONFIG=(
 )
 readonly -A SYSTEM_CONFIG
 
-# 定义服务状态数组
-declare -A SERVICE_ENABLED=(
-	["filebrowser"]=${ENABLE_FILEBROWSER:-false}
-	["openlist"]=${ENABLE_OPENLIST:-false}
-	["syncthing"]=${ENABLE_SYNCTHING:-false}
-	["verysync"]=${ENABLE_VERYSYNC:-false}
-)
-readonly -A SERVICE_ENABLED
-
 umask ${UMASK:-022}
 
 # 加载服务脚本
 source $WORK_DIR/scripts/set_service.sh
+
+# 加载服务状态脚本
+source $WORK_DIR/scripts/service_state.sh
 
 # 加载 openlist 脚本
 source $WORK_DIR/scripts/set_openlist.sh
@@ -87,90 +76,6 @@ source $WORK_DIR/scripts/set_filebrowser.sh
 
 # ============================================================================
 # 工具函数
-
-# 锁文件管理
-lock_manager() 
-{
-	local action="$1"
-	local lock_file="$2"
-	
-	case "$action" in
-		"check")
-			# 检查锁是否存在
-			if [ -f "$lock_file" ]; then
-				print_log "WARNING" "锁文件已存在: $lock_file，进程可能正在运行中"
-				return 1
-			fi
-			
-			return 0
-			;;
-		"create")
-			# 先检查锁是否已存在
-			if [ -f "$lock_file" ]; then
-				print_log "ERROR" "无法创建锁文件，锁已存在: $lock_file"
-				return 1
-			fi
-			
-			# 创建锁文件
-			if ! touch "$lock_file" 2>/dev/null; then
-				print_log "ERROR" "无法创建锁文件: $lock_file"
-				return 1
-			fi
-			
-			echo "PID: $$" > "$lock_file"
-			echo "Timestamp: $(date '+%Y-%m-%d %H:%M:%S')" >> "$lock_file"
-			echo "Command: $0" >> "$lock_file"
-			
-			print_log "INFO" "锁文件创建成功: $lock_file"
-			return 0
-			;;
-		"remove")
-			# 移除锁文件
-			if [ ! -f "$lock_file" ]; then
-				print_log "WARNING" "锁文件不存在: $lock_file"
-				return 0
-			fi
-			
-			if ! rm -f "$lock_file"; then
-				print_log "ERROR" "无法移除锁文件: $lock_file"
-				return 1
-			fi
-			
-			print_log "INFO" "锁文件已移除: $lock_file"
-			return 0
-			;;
-	esac
-}
-
-# 时间管理
-time_manager() 
-{
-	local action="$1"
-	local value="${2:-}"
-	
-	case "$action" in
-		"start")
-			# 返回当前Unix时间戳
-			echo $(date +%s)
-			;;
-		"calculate")
-			[[ -z "$value" ]] || return 1
-			
-			local start_time=$value
-			local end_time=$(date +%s)
-			local duration=$((end_time - start_time))
-			
-			local minutes=$((duration / 60))
-			local seconds=$((duration % 60))
-			
-			if [[ $minutes -gt 0 ]]; then
-				echo "${minutes}分${seconds}秒"
-			else
-				echo "${duration}秒"
-			fi
-			;;
-	esac
-}
 
 # 获取安装包
 get_service_archive()
@@ -289,87 +194,6 @@ exec_as_user()
 }
 
 # ============================================================================
-# 服务管理相关函数
-
-# 检查服务是否启用
-check_service_enabled()
-{
-	local service="$1"
-	[[ "${SERVICE_ENABLED[$service]:-false}" == "true" ]]
-}
-
-# 动态构建执行函数
-execute_service_function()
-{
-	local service="$1"
-	local operation="$2"
-	local param="${3:-}"
-	
-	if check_service_enabled "$service"; then
-		# 动态构建函数名
-		local function_name="${operation}_${service}_service"
-		
-		if type -t "$function_name" &>/dev/null; then
-			if [[ -n "$param" ]]; then
-				$function_name "$param"
-			else
-				$function_name
-			fi
-			
-			return $?
-		fi
-	fi
-	
-	return 0
-}
-
-# 初始化服务状态
-init_service_status()
-{
-	local -n status_ref=$1
-	
-	# 清空数组
-	status_ref=()
-	
-	for service in "${!SERVICE_ENABLED[@]}"; do
-		if check_service_enabled "$service"; then
-			status_ref["$service"]="未执行"
-		fi
-	done
-}
-
-# 获取服务状态
-get_service_status()
-{
-	local -n status_ref=$1
-	
-	local success_count=0
-	local failure_count=0
-	local total_count=0
-	
-	for service in "${!status_ref[@]}"; do
-		((total_count++))
-		case "${status_ref[$service]}" in
-			*成功*) ((success_count++)) ;;
-			*失败*) ((failure_count++)) ;;
-		esac
-	done
-	
-	echo "$total_count:$success_count:$failure_count"
-}
-
-# 显示服务状态
-show_service_status()
-{
-	local -n status_ref=$1
-	local log_file="${2:-}"
-
-	for service in "${!status_ref[@]}"; do
-		printf "  %-15s: %s\n" "$service" "${status_ref[$service]}" >> "$RUN_UPDATE_LOG"
-	done
-}
-
-# ============================================================================
 # 模块周期函数
 
 # 初始化业务模块
@@ -388,17 +212,27 @@ init_modules()
 		return 1
 	fi
 	
+	# 初始化状态
+	init_service_status
+	
 	# 执行操作
-	for service in "${!SERVICE_ENABLED[@]}"; do
+	for service in "${!SERVICE_STATES[@]}"; do
 		if ! check_service_enabled "$service"; then
 			continue
 		fi
+		
+		# 更新状态 - 初始化
+		update_service_status "$service" "${SERVICE_STATUS[INIT]}"
 
 		# 执行函数
-		if ! execute_service_function "$service" "init" "$param"; then
-			 print_log "ERROR" "初始化 $service 失败!"
-			 return 1
+		if ! execute_service_func "$service" "init" "$param"; then
+			update_service_status "$service" "${SERVICE_STATUS[FAILURE]}"
+			
+			print_log "ERROR" "初始化 $service 失败!"
+			return 1
 		fi
+		
+		update_service_status "$service" "${SERVICE_STATUS[SUCCESS]}"
 	done
 }
 
@@ -406,13 +240,19 @@ init_modules()
 run_modules()
 {
 	# 执行操作
-	for service in "${!SERVICE_ENABLED[@]}"; do
+	for service in "${!SERVICE_STATES[@]}"; do
 		if ! check_service_enabled "$service"; then
 			continue
 		fi
+		
+		# 更新状态
+		update_service_status "$service" "${SERVICE_STATUS[EXECUTING]}"
 
 		# 执行函数
-		if ! execute_service_function "$service" "run"; then
+		if execute_service_func "$service" "run"; then
+			update_service_status "$service" "${SERVICE_STATUS[RUNNING]}"
+		else
+			update_service_status "$service" "${SERVICE_STATUS[FAILURE]}"
 			print_log "ERROR" "启动 $service 失败!"
 		fi
 	done
@@ -422,13 +262,22 @@ run_modules()
 close_modules()
 {
 	# 执行操作
-	for service in "${!SERVICE_ENABLED[@]}"; do
+	for service in "${!SERVICE_STATES[@]}"; do
 		if ! check_service_enabled "$service"; then
 			continue
 		fi
 		
+		# 检查是否在运行
+		[[ $(get_service_status "$service") != "${SERVICE_STATUS[RUNNING]}" ]] && continue
+		
+		# 更新状态
+		update_service_status "$service" "${SERVICE_STATUS[EXECUTING]}"
+		
 		# 执行函数
-		if ! execute_service_function "$service" "close"; then
+		if execute_service_func "$service" "close"; then
+			update_service_status "$service" "${SERVICE_STATUS[STOPPED]}"
+		else
+			update_service_status "$service" "${SERVICE_STATUS[FAILURE]}"
 			print_log "ERROR" "关闭 $service 失败!"
 		fi
 	done

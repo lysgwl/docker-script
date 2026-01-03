@@ -22,7 +22,7 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
 		schedule_updates
 		
 		# 创建初始锁
-		lock_manager "create" "INIT_LOCK"
+		lock_manager "create" "$INIT_LOCK"
 	fi
 	
 	if [ "$1" = "run" ]; then
