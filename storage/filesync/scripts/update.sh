@@ -187,8 +187,8 @@ update_modules()
 	# 清除更新锁
 	trap 'lock_manager "remove" "$UPDATE_LOCK"' EXIT
 	
-	# 初始化状态
-	init_service_status
+	# 加载服务状态
+	load_service_states
 	
 	# 记录开始
 	local start_time=$(time_manager "start")

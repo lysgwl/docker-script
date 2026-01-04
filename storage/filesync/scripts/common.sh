@@ -17,6 +17,12 @@ readonly INIT_LOCK="/var/run/init.lock"
 # 更新锁
 readonly UPDATE_LOCK="/var/run/update.lock"
 
+# 状态文件
+readonly SERVICE_STATES_FILE="/var/run/service_states.json"
+
+# 状态变量
+: "${SERVICE_STATES_ENV:=_SERVICE_STATES_JSON}"
+
 # utils模块目录
 : ${UTILS_DIR:=${WORK_DIR:-/app}/utils}
 
@@ -172,6 +178,9 @@ exec_as_user()
 		return 1
 	fi
 	
+	# 导出状态
+	export_service_states
+	
 	su-exec "$user" bash -c "
 		#echo '[DEBUG] su-exec: ID($$)=' \$\$ >&2
 		#echo '[DEBUG] su-exec: BASHPID=' \$BASHPID >&2
@@ -185,6 +194,9 @@ exec_as_user()
 			echo '[ERROR] 加载脚本 common.sh 失败!' >&2
 			exit 1
 		fi
+		
+		# 加载服务状态
+		load_service_states
 		
 		# 执行命令
 		$cmd
@@ -211,10 +223,7 @@ init_modules()
 	if ! init_service "$param"; then
 		return 1
 	fi
-	
-	# 初始化状态
-	init_service_status
-	
+
 	# 执行操作
 	for service in "${!SERVICE_STATES[@]}"; do
 		if ! check_service_enabled "$service"; then
@@ -249,11 +258,11 @@ run_modules()
 		update_service_status "$service" "${SERVICE_STATUS[EXECUTING]}"
 
 		# 执行函数
-		if execute_service_func "$service" "run"; then
-			update_service_status "$service" "${SERVICE_STATUS[RUNNING]}"
-		else
-			update_service_status "$service" "${SERVICE_STATUS[FAILURE]}"
+		if ! execute_service_func "$service" "run"; then
 			print_log "ERROR" "启动 $service 失败!"
+			update_service_status "$service" "${SERVICE_STATUS[FAILURE]}"
+		else
+			update_service_status "$service" "${SERVICE_STATUS[RUNNING]}"
 		fi
 	done
 }

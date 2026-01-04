@@ -9,6 +9,10 @@ export WORK_DIR="${WORK_DIR:-$(pwd)}"
 source $WORK_DIR/scripts/update.sh || exit 1
 
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+	# 加载服务状态
+	print_section "加载服务状态"
+	load_service_states "${USER_CONFIG[user]}" "${USER_CONFIG[group]}"
+	
 	# 检查初始锁
 	if lock_manager "check" "$INIT_LOCK"; then
 		print_section "初始化 ($1)"

@@ -2,8 +2,8 @@
 # service_state.sh - 服务状态管理模块
 
 export ENABLE_FILEBROWSER=false
-export ENABLE_OPENLIST=true
-export ENABLE_SYNCTHING=true
+export ENABLE_OPENLIST=false
+export ENABLE_SYNCTHING=false
 export ENABLE_VERYSYNC=true
 
 # 服务状态枚举
@@ -20,12 +20,12 @@ declare -A SERVICE_STATUS=(
 )
 readonly -A SERVICE_STATUS
 
-# 服务列表
+# 服务列表 (服务名称:启用状态:更新支持)
 SERVICE_LIST_ARRAY=(
-	"filebrowser:${ENABLE_FILEBROWSER:-false}"
-	"openlist:${ENABLE_OPENLIST:-false}"
-	"syncthing:${ENABLE_SYNCTHING:-false}"
-	"verysync:${ENABLE_VERYSYNC:-false}"
+	"filebrowser:${ENABLE_FILEBROWSER:-false}:false"
+	"openlist:${ENABLE_OPENLIST:-false}:true"
+	"syncthing:${ENABLE_SYNCTHING:-false}:true"
+	"verysync:${ENABLE_VERYSYNC:-false}:true"
 )
 
 # 服务实例
@@ -34,14 +34,89 @@ declare -A SERVICE_STATES=()
 # ============================================================================
 # 服务管理相关函数
 
+# 导出状态
+export_service_states()
+{
+	local states_array=()
+	for service in "${!SERVICE_STATES[@]}"; do
+		states_array+=("${SERVICE_STATES[$service]}")
+	done
+	
+	local json_array='[]'
+	if [[ ${#states_array[@]} -gt 0 ]]; then
+		json_array=$(printf '%s\n' "${states_array[@]}" | jq -sc '.')
+	fi
+	
+	#export "$SERVICE_STATES_ENV"="$json_array"
+	
+	# 尝试写入文件
+	if ! echo "$json_array" > "$SERVICE_STATES_FILE" 2>/dev/null; then
+		print_log "WARNING" "无法写入状态文件: $SERVICE_STATES_FILE" >&2
+	fi
+}
+
+# 导入状态
+import_service_states()
+{
+	# 检查文件是否存在
+	[[ ! -f "$SERVICE_STATES_FILE" ]] && return
+	
+	# 读取数据
+	#local json_data="${!SERVICE_STATES_ENV:-}"
+	local json_data=$(cat "$SERVICE_STATES_FILE" 2>/dev/null)
+	
+	# 检查是否为空
+	[[ -z "$json_data" ]] && return
+	
+	# 清空当前状态
+	unset SERVICE_STATES 2>/dev/null || true
+	declare -gA SERVICE_STATES
+	
+	while IFS= read -r line; do
+		[[ -z "$line" ]] && continue
+		
+		local service=$(echo "$line" | jq -r '.service // ""')
+		[[ -z "$service" ]] && continue
+		
+		local value=$(echo "$line" | tr -d '\n')
+		SERVICE_STATES["$service"]="$value"
+		
+	done < <(echo "$json_data" | jq -c '.[]' 2>/dev/null)
+}
+
 # 初始化服务状态
 init_service_status()
 {
+	local user="${1:-}"
+	local group="${2:-}"
+	
 	# 检查是否被初始化
 	if [[ ${#SERVICE_STATES[@]} -gt 0 ]]; then
 		return 0
 	fi
+
+	# 只有root权限才能设置文件权限
+	if [[ "$(id -u)" -eq 0 ]]; then
+		# 确保状态文件存在
+		if [[ ! -f "$SERVICE_STATES_FILE" ]]; then
+			echo '[]' > "$SERVICE_STATES_FILE" 2>/dev/null || {
+				print_log "WARNING" "无法创建状态文件: $SERVICE_STATES_FILE"
+				return 1
+			}
+		fi
+		
+		# 设置文件所有权
+		if ! chown "$user:$group" "$SERVICE_STATES_FILE" 2>/dev/null; then
+			print_log "WARNING" "无法设置状态文件所有权"
+		fi
+		
+		# 设置文件权限(644 666)
+		if ! chmod 666 "$SERVICE_STATES_FILE" 2>/dev/null; then
+			print_log "WARNING" "无法设置状态文件权限"
+		fi
+	fi
 	
+	# 初始化服务状态
 	for item in "${SERVICE_LIST_ARRAY[@]}"; do
 		[[ -z "$item" ]] && continue
 		
@@ -58,6 +133,24 @@ init_service_status()
 
 		SERVICE_STATES["$service"]="$state_json"
 	done
+	
+	# 导出状态
+	export_service_states || true 
+}
+
+# 加载服务状态
+load_service_states()
+{
+	local user="${1:-}"
+	local group="${2:-}"
+	
+	# 尝试导入已有状态
+	import_service_states 2>/dev/null || true
+	
+	# 如果状态为空，初始化
+	if [[ ${#SERVICE_STATES[@]} -eq 0 ]]; then
+		init_service_status "$user" "$group"
+	fi
 }
 
 # 获取服务状态字段
@@ -126,6 +219,9 @@ set_service_state()
 	
 	# 保存并记录
 	SERVICE_STATES["$service"]="$update_json"
+	
+	# 导出状态
+	export_service_states
 }
 
 # 检查服务是否启用
