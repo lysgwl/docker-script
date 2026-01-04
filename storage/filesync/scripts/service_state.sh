@@ -17,14 +17,15 @@ declare -A SERVICE_STATUS=(
 	["SUCCESS"]="success"			# 成功
 	["FAILURE"]="failure"			# 失败
 	["EXECUTING"]="executing"		# 执行中（进行中）
+	["SKIPPED"]="skipped"			# 跳过
 )
 readonly -A SERVICE_STATUS
 
 # 服务列表 (服务名称:启用状态:更新支持)
 SERVICE_LIST_ARRAY=(
 	"filebrowser:${ENABLE_FILEBROWSER:-false}:false"
-	"openlist:${ENABLE_OPENLIST:-false}:true"
-	"syncthing:${ENABLE_SYNCTHING:-false}:true"
+	"openlist:${ENABLE_OPENLIST:-false}:false"
+	"syncthing:${ENABLE_SYNCTHING:-false}:false"
 	"verysync:${ENABLE_VERYSYNC:-false}:true"
 )
 
@@ -120,12 +121,13 @@ init_service_status()
 	for item in "${SERVICE_LIST_ARRAY[@]}"; do
 		[[ -z "$item" ]] && continue
 		
-		IFS=':' read -r service enabled <<< "$item"
+		IFS=':' read -r service enabled updated <<< "$item"
 		
 		# 创建JSON对象
 		local state_json='{
 			"service": "'$service'",
 			"enabled": '$enabled',
+			"updated": '$updated',
 			"status": "'${SERVICE_STATUS[INIT]}'",
 			"timestamp": "'$(date '+%Y-%m-%d %H:%M:%S')'",
 			"extra": {}
@@ -171,6 +173,7 @@ get_service_field()
 	case "$field" in
 		"service")		echo "$json" | jq -r '.service' ;;
 		"enabled")		echo "$json" | jq -r '.enabled' ;;
+		"updated")		echo "$json" | jq -r '.updated' ;;
 		"status")		echo "$json" | jq -r '.status' ;;
 		"timestamp")	echo "$json" | jq -r '.timestamp' ;;
 		"extra")		echo "$json" | jq -r '.extra' ;;	# 返回纯文本 JSON
@@ -185,9 +188,10 @@ set_service_state()
 {
 	local service="$1"
 	local enabled="${2:-}"
-	local status="${3:-}"
-	local timestamp="${4:-}"
-	local extra="${5:-}"
+	local updated="${3:-}"
+	local status="${4:-}"
+	local timestamp="${5:-}"
+	local extra="${6:-}"
 	
 	# 获取当前状态
 	local current_json="${SERVICE_STATES[$service]}"
@@ -203,6 +207,7 @@ set_service_state()
 	local cmd=".timestamp = \"$timestamp\""
 	
 	[[ -n "$enabled" ]] && cmd=".enabled = $enabled | $cmd"
+	[[ -n "$updated" ]] && cmd=".updated = $updated | $cmd"
 	[[ -n "$status" ]] && cmd=".status = \"$status\" | $cmd"
 
 	if [[ -n "$extra" ]]; then
@@ -229,9 +234,19 @@ check_service_enabled()
 {
 	local service="$1"
 	
-	local enabled=$(get_service_field "$service" enabled 2>/dev/null) || return 1
+	local enabled=$(get_service_field "$service" "enabled" 2>/dev/null) || return 1
 	
 	[[ "$enabled" == "true" ]]
+}
+
+# 检查服务是否更新
+check_service_updated()
+{
+	local service="$1"
+	
+	local updated=$(get_service_field "$service" "updated" 2>/dev/null) || return 1
+	
+	[[ "$updated" == "true" ]]
 }
 
 # 获取服务当前状态
@@ -273,6 +288,7 @@ update_service_status()
 	[[ "$current_status" == "$status" ]] && return 0
 	
 	local enabled=$(get_service_field "$service" "enabled")
+	local updated=$(get_service_field "$service" "updated")
 	local extra=$(get_service_field "$service" "extra_json")
 	
 	if [[ -n "$reason" ]]; then
@@ -281,7 +297,7 @@ update_service_status()
 	fi
 	
 	# 设置新状态
-	set_service_state "$service" "$enabled" "$status" "" "$extra"
+	set_service_state "$service" "$enabled" "$updated" "$status" "" "$extra"
 }
 
 # 动态构建执行函数

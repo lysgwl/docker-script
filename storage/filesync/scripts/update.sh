@@ -106,30 +106,41 @@ _update_executor()
 	
 	local service_index=0
 	local updated_count=0
+	local skipped_count=0
 	
 	for service in "${!SERVICE_STATES[@]}"; do
 		((service_index++))
 		
+		# 未启用直接跳过
 		if ! check_service_enabled "$service"; then
 			update_service_status "$service" "${SERVICE_STATUS[DISABLED]}" "未启用"
 			update_log "INFO" "[$service_index/$total_count] 服务 $service 未启用, 跳过更新检查" >&2
+			continue
+		fi
+		
+		# 跳过更新检查
+		if ! check_service_updated "$service"; then
+			update_service_status "$service" "${SERVICE_STATUS[SKIPPED]}" "跳过更新"
+			update_log "INFO" "[$service_index/$total_count] 服务 $service 更新未开启, 跳过更新检查" >&2
+			
+			((skipped_count++))
+			continue
+		fi
+		
+		# 需要更新的服务
+		((updated_count++))
+		
+		update_service_status "$service" "${SERVICE_STATUS[EXECUTING]}" "处理更新"
+		update_log "INFO" "正在更新服务 [$updated_count/$total_count]: $service" >&2
+		
+		# 执行服务更新
+		if execute_service_func "$service" "update"; then
+			update_service_status "$service" "${SERVICE_STATUS[SUCCESS]}" "更新成功"
+			update_log "INFO" "服务 $service 更新成功" >&2
 		else
-			((updated_count++))
-			
-			update_service_status "$service" "${SERVICE_STATUS[EXECUTING]}" "处理更新"
-			update_log "INFO" "正在更新服务 [$updated_count/$total_count]: $service" >&2
-			
-			# 执行服务更新
-			if execute_service_func "$service" "update"; then
-				update_service_status "$service" "${SERVICE_STATUS[SUCCESS]}" "更新成功"
-				update_log "INFO" "服务 $service 更新成功" >&2
-				
-				
-			else
-				update_service_status "$service" "${SERVICE_STATUS[FAILURE]}" "更新失败"
-				update_log "INFO" "服务 $service 更新失败" >&2
-				overall_success=false
-			fi
+			update_service_status "$service" "${SERVICE_STATUS[FAILURE]}" "更新失败"
+			update_log "INFO" "服务 $service 更新失败" >&2
+			overall_success=false
 		fi
 	done
 	
@@ -145,11 +156,11 @@ _update_executor()
 		return 3
 	fi
 	
-	if [[ $updated_count -eq $total_count ]]; then
-		update_log "INFO" "✅ 所有服务更新完成" >&2
+	local processed_count=$((updated_count + skipped_count))
+	if [[ $processed_count -eq $enabled_count ]]; then
+		update_log "INFO" "✅ 完成处理${processed_count}/${enabled_count}服务" >&2
 	else
-		update_log "INFO" \
-			"ℹ️ 服务总数 ${total_count}:已更新 ${updated_count},未处理 $((total_count - updated_count))(未启用或被跳过)" >&2
+		update_log "INFO" "ℹ️ 服务总数 ${total_count}:已更新 ${updated_count},未处理 $((enabled_count - processed_count ))" >&2
 	fi
 	
 	return 0
