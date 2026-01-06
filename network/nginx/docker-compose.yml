@@ -4,11 +4,12 @@ name: nginx
 services:
   nginx-server:
     container_name: nginx
-    image: nginx-image
+    image: nginx-image:latest
     environment:
       - PUID=${PUID}
       - PGID=${PGID}
       - TZ=${TZ}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
     volumes:
       - ${NGINX_PATH}/config:/config
       - ${NGINX_PATH}/data:/data

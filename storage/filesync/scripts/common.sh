@@ -26,7 +26,7 @@ readonly SERVICE_STATES_FILE="/var/run/service_states.json"
 # utils模块目录
 : ${UTILS_DIR:=${WORK_DIR:-/app}/utils}
 
-# 定义用户配置数组
+# 用户配置
 declare -A USER_CONFIG=(
 	["uid"]="${PUID:-0}"
 	["gid"]="${PGID:-0}"
@@ -35,7 +35,7 @@ declare -A USER_CONFIG=(
 )
 readonly -A USER_CONFIG
 
-# 定义 SSHD 配置数组
+# SSHD 配置
 declare -A SSHD_CONFIG=(
 	["port"]="${SSHD_PORT:-22}"
 	["listen"]="0.0.0.0"
@@ -45,7 +45,7 @@ declare -A SSHD_CONFIG=(
 )
 readonly -A SSHD_CONFIG
 
-# 定义系统配置数组
+# 系统配置
 declare -A SYSTEM_CONFIG=(
 	["downloads_dir"]="${WORK_DIR}/downloads"		# 下载目录
 	["install_dir"]="${WORK_DIR}/install"			# 安装目录
@@ -83,7 +83,7 @@ source $WORK_DIR/scripts/set_filebrowser.sh
 # ============================================================================
 # 工具函数
 
-# 获取安装包
+# 获取服务安装包
 get_service_archive()
 {
 	local name="$1"
@@ -98,18 +98,18 @@ get_service_archive()
 	
 	# 尝试查找现有归档文件
 	if ! findpath=$(find_latest_archive "$downloads_dir" ".*${name}.*"); then
-		print_log "WARNING" "未匹配到$name软件包..." >&2
+		print_log "WARNING" "未匹配到 $name 软件包..." >&2
 		
 		# 回调函数下载文件
 		local download_file
 		download_file=$($download_callback "$downloads_dir") && [ -n "$download_file" ] || {
-			print_log "ERROR" "下载$name软件包失败,请检查!" >&2
+			print_log "ERROR" "下载 $name 软件包失败, 请检查!" >&2
 			return 2
 		}
 		
 		# 提取并验证下载的文件
 		archive_path=$(extract_and_validate "$download_file" "$output_dir" ".*${name}.*") || {
-			print_log "ERROR" "解压 $name 文件失败,请检查!" >&2
+			print_log "ERROR" "解压 $name 文件失败, 请检查!" >&2
 			return 3
 		}
 		
@@ -122,13 +122,13 @@ get_service_archive()
 		
 		# 验证文件类型
 		if [[ -z "$archive_type" ]] || ! [[ "$archive_type" =~ ^(file|directory)$ ]]; then
-			print_log "ERROR" "解析 $name 文件失败,请检查!" >&2
+			print_log "ERROR" "解析 $name 文件失败, 请检查!" >&2
 			return 1
 		fi
 		
 		if [ "$archive_type" = "file" ]; then
 			archive_path=$(extract_and_validate "$archive_path" "$output_dir" ".*${name}.*") || {
-				print_log "ERROR" "解压 $name 文件失败,请检查!" >&2
+				print_log "ERROR" "解压 $name 文件失败, 请检查!" >&2
 				return 3
 			}
 		fi
@@ -156,7 +156,7 @@ get_service_archive()
 		fi
 		
 		if [[ -z "$latest_path" ]] || [[ ! -f "$latest_path" ]]; then
-			print_log "ERROR" "可执行文件 $name 不存在,请检查!" >&2
+			print_log "ERROR" "可执行文件 $name 不存在, 请检查!" >&2
 			return 1
 		fi
 	fi
@@ -174,7 +174,7 @@ exec_as_user()
 	
 	# 验证用户存在
 	if ! id "$user" &>/dev/null; then
-		print_log "ERROR" "用户 '$user' 不存在!"
+		print_log "ERROR" "用户 '$user' 不存在, 请检查!"
 		return 1
 	fi
 	
@@ -310,17 +310,20 @@ auto_load_utils()
 	
 	if [[ ! -f "${feature_file}" ]]; then
 		echo "[ERROR] feature.sh文件不存在: ${feature_file}"
-		return 1
+		return 2
 	fi
 	
 	# 加载feature.sh
 	echo "[INFO] 加载utils模块: ${feature_file}"
-	source "${feature_file}"
+	if ! source "${feature_file}"; then
+		echo "[ERROR] 加载feature.sh失败: ${feature_file}" >&2
+		return 3
+	fi
 	
 	# 检查load_feature函数是否存在
 	if ! declare -f load_feature >/dev/null; then
 		echo "[ERROR] load_feature函数未定义!"
-		return 1
+		return 4
 	fi
 	
 	# 执行加载
@@ -328,8 +331,7 @@ auto_load_utils()
 	
 	# 设置加载标记
 	export UTILS_MODULE_LOADED="utils_$(date +%s)_${BASHPID:-$$}"
-	return 0
 }
 
 # 自动加载utils模块
-auto_load_utils
+auto_load_utils || return 1

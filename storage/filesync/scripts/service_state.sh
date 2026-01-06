@@ -2,8 +2,8 @@
 # service_state.sh - 服务状态管理模块
 
 export ENABLE_FILEBROWSER=false
-export ENABLE_OPENLIST=false
-export ENABLE_SYNCTHING=false
+export ENABLE_OPENLIST=true
+export ENABLE_SYNCTHING=true
 export ENABLE_VERYSYNC=true
 
 # 服务状态枚举
@@ -24,9 +24,9 @@ readonly -A SERVICE_STATUS
 # 服务列表 (服务名称:启用状态:更新支持)
 SERVICE_LIST_ARRAY=(
 	"filebrowser:${ENABLE_FILEBROWSER:-false}:false"
-	"openlist:${ENABLE_OPENLIST:-false}:false"
-	"syncthing:${ENABLE_SYNCTHING:-false}:false"
-	"verysync:${ENABLE_VERYSYNC:-false}:true"
+	"openlist:${ENABLE_OPENLIST:-false}:true"
+	"syncthing:${ENABLE_SYNCTHING:-false}:true"
+	"verysync:${ENABLE_VERYSYNC:-false}:false"
 )
 
 # 服务实例

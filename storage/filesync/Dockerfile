@@ -2,17 +2,20 @@
 # 全局参数
 # ========================
 ARG WORK_DIR=/app
+ARG BASE_IMAGE=alpine:latest
+ARG BUILD_VERSION=1.0
+ARG UTILS_IMAGE_NAME=docker-utils
 ARG UTILS_VERSION=latest
 
 # ========================
 # 阶段1: 定义utils镜像源
 # ========================
-FROM docker-utils:${UTILS_VERSION} AS utils-source
+FROM ${UTILS_IMAGE_NAME}:${UTILS_VERSION} AS utils-source
 
 # ========================
 # 阶段2: 编译构建阶段
 # ========================
-FROM alpine:latest AS builder
+FROM ${BASE_IMAGE} AS builder
 LABEL stage=builder
 
 # 定义工作目录
@@ -48,11 +51,7 @@ RUN $WORK_DIR/scripts/entrypoint.sh init
 # ========================
 # 阶段3: 主构建阶段
 # ========================
-FROM alpine:latest AS master
-
-LABEL version="1.0"
-LABEL author="wanglei<lysgwl@163.com>"
-LABEL description="FileSync For Debian"
+FROM ${BASE_IMAGE} AS master
 
 # 定义工作目录
 ARG WORK_DIR
@@ -70,6 +69,13 @@ ARG VERYSYNC_HTTP_PORT=8886
 ARG SYNCTHING_HTTP_PORT=8384
 ARG SYNCTHING_TRANS_PORT=22000
 ARG SYNCTHING_DISCOVERY_PORT=21027
+
+# 定义版本号
+ARG BUILD_VERSION
+
+LABEL version="$BUILD_VERSION"
+LABEL author="wanglei<lysgwl@163.com>"
+LABEL description="FileSync For Alpine"
 
 # 系统环境变量
 ENV LANG=C.UTF-8 \
