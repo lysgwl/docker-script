@@ -26,7 +26,7 @@ readonly -A USER_CONFIG
 declare -A SSHD_CONFIG=(
 	["port"]="${SSHD_PORT:-22}"
 	["listen"]="0.0.0.0"
-	["confile"]="/etc/ssh/SSHD_CONFIG"
+	["confile"]="/etc/ssh/sshd_config"
 	["hostkey"]="/etc/ssh/ssh_host_rsa_key"
 	["logfile"]="/var/log/sshd.log"
 )

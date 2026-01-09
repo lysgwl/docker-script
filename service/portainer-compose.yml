@@ -4,7 +4,7 @@ name: portainer
 services:
   portainer-server:
     container_name: portainer
-    image: 6053537/portainer-ce     # 6053537
+    image: portainer/portainer-ce:latest     # 6053537
     command: -H unix:///var/run/docker.sock
     environment:
       - TZ=Asia/Shanghai

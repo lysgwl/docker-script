@@ -38,6 +38,7 @@ set_service_env()
 : <<'COMMENT_BLOCK'	
 		# 设置SSH服务
 		local params=("${SSHD_CONFIG[port]}" "${SSHD_CONFIG[listen]}" "${SSHD_CONFIG[confile]}" "${SSHD_CONFIG[hostkey]}")
+		
 		if ! set_ssh_service "${params[@]}"; then
 			print_log "ERROR" "设置 SSHD 服务失败, 请检查!"
 			return 1

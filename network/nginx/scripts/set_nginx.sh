@@ -12,6 +12,7 @@ declare -A NGINX_CONFIG=(
 	["error_file"]="${SYSTEM_CONFIG[data_dir]}/logs/error.log"			# 错误日志
 	["access_file"]="${SYSTEM_CONFIG[data_dir]}/logs/access.log"		# 运行日志
 )
+readonly -A NGINX_CONFIG
 
 # nginx 源码数组
 declare -A NGINX_SOURCES=(
@@ -19,8 +20,6 @@ declare -A NGINX_SOURCES=(
 	["nginx"]='{"repo":"nginx/nginx", "version":"latest"}'
 	["upstream-check"]='{"repo":"", "version":""}'
 )
-
-readonly -A NGINX_CONFIG
 
 # 获取 nginx 源码版本
 fetch_nginx_source()

@@ -19,7 +19,7 @@ services:
       - '80:80'
     hostname: nginx
     networks:
-      local_network: {}
+      - local_network
     restart: unless-stopped  
       
 networks:

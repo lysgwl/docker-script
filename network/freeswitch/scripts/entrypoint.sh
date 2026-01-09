@@ -6,29 +6,31 @@ set -eo pipefail
 export WORK_DIR="${WORK_DIR:-$(pwd)}"
 
 # 加载 common 脚本
-source $WORK_DIR/scripts/common.sh
+source $WORK_DIR/scripts/common.sh || exit 1
 
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
 
-	if [[ ! -f "${RUN_FIRST_LOCK}" ]]; then
-		echo "===== 初始化阶段（$1）====="
+	# 检查初始锁
+	if lock_manager "check" "$INIT_LOCK"; then
+		print_section "初始化 ($1)"
 		
+		# 初始化业务模块
 		if ! init_modules "$1"; then
 			exit 1
 		fi
 		
-		touch "${RUN_FIRST_LOCK}"
+		# 创建初始锁
+		lock_manager "create" "$INIT_LOCK"
 	fi
 	
 	if [ "$1" = "run" ]; then
-		echo "===== 启动服务阶段 ====="
+		print_section "启动服务 ($1)"
 		
 		# 捕获 SIGTERM 信号
 		trap close_modules SIGTERM
 		
-		# 执行模块
-		gosu ${user_config[user]}:${user_config[group]} bash -c "
-			source \"$WORK_DIR/scripts/common.sh\"
+		# 执行业务模块
+		exec_as_user ${USER_CONFIG[user]} "
 			run_modules
 		" &
 		
@@ -40,8 +42,4 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
 		# 保持容器运行
 		tail -f /dev/null
 	fi
-	
-	#if [ "$1" = "test" ]; then
-	#	init_freeswitch_service "init"
-	#fi
 fi

@@ -1,16 +1,15 @@
 #!/bin/bash
-# /app/bin/docker/storage/filesync/build.sh
+#/app/bin/docker/network/freeswitch/build.sh
+#
 
 set -e
 
 # ==================== 项目配置 ====================
-
-# 项目名称
-PROJECT_NAME="filesync"
+PROJECT_NAME="freeswitch"
 
 # 默认镜像配置
 DEFAULT_IMAGE="${PROJECT_NAME}-image"
-BASE_IMAGE="${BASE_IMAGE:-alpine:latest}"
+BASE_IMAGE="${BASE_IMAGE:-debian:bookworm-slim}"
 
 # 文件路径配置
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -35,7 +34,7 @@ fi
 # ==================== 项目函数 ====================
 
 # 构建项目
-build_filesync()
+build_freeswitch()
 {
 	echo "========== 构建项目: $PROJECT_NAME =========="
 	
@@ -57,7 +56,6 @@ build_filesync()
 	local version="$(get_param version $(date +%Y%m%d_%H%M%S))"
 	
 	echo "构建项目镜像: $image_name:$version"
-	
 	if check_image "$image_name" "latest"; then
 		echo "✅ 镜像已存在, 跳过构建: $image_name:$version"
 		exit 1
@@ -75,7 +73,7 @@ build_filesync()
 }
 
 # 启动项目
-start_filesync()
+start_freeswitch()
 {
 	echo "========== 启动项目: $PROJECT_NAME =========="
 
@@ -92,7 +90,7 @@ start_filesync()
 }
 
 # 停止项目
-stop_filesync()
+stop_freeswitch()
 {
 	echo "========== 停止项目: $PROJECT_NAME =========="
 	
@@ -103,26 +101,26 @@ stop_filesync()
 }
 
 # 重启项目
-restart_filesync()
+restart_freeswitch()
 {
 	echo "========== 重启项目: $PROJECT_NAME =========="
 	
 	# 停止容器
-	stop_filesync
+	stop_freeswitch
 	
 	sleep 2
 	
 	# 启动容器
-	start_filesync
+	start_freeswitch
 }
 
 # 清理项目
-clean_filesync()
+clean_freeswitch()
 {
 	echo "========== 清理项目: $PROJECT_NAME =========="
 	
 	# 停止容器
-	stop_filesync || true
+	stop_freeswitch || true
 	
 	# 清理镜像
 	local image_name="$(get_param image_name $DEFAULT_IMAGE)"
@@ -137,7 +135,7 @@ clean_filesync()
 }
 
 # 状态检查
-status_filesync()
+status_freeswitch()
 {
 	echo "========== 项目状态: $PROJECT_NAME =========="
 	
@@ -148,7 +146,7 @@ status_filesync()
 }
 
 # 查看日志
-logs_filesync()
+logs_freeswitch()
 {
 	echo "========== 项目日志: $PROJECT_NAME =========="
 	
@@ -161,18 +159,18 @@ logs_filesync()
 show_usage() 
 {
 	echo "========================================"
-	echo "filesync 管理脚本"
+	echo "freeswitch 管理脚本"
 	echo "========================================"
 	echo "用法: $0 <动作> [选项]"
 	echo ""
 	echo "可用动作:"
-	echo "  build    构建 filesync 镜像"
-	echo "  start    启动 filesync 服务"
-	echo "  stop     停止 filesync 服务"
-	echo "  restart  重启 filesync 服务"
-	echo "  clean    清理 filesync 资源"
-	echo "  status   查看 filesync 状态"
-	echo "  logs     查看 filesync 日志"
+	echo "  build    构建 freeswitch 镜像"
+	echo "  start    启动 freeswitch 服务"
+	echo "  stop     停止 freeswitch 服务"
+	echo "  restart  重启 freeswitch 服务"
+	echo "  clean    清理 freeswitch 资源"
+	echo "  status   查看 freeswitch 状态"
+	echo "  logs     查看 freeswitch 日志"
 	echo ""
 	echo "示例:"
 	echo "  $0 build"
@@ -189,16 +187,16 @@ main()
 
 	local action="$(get_param action)"
 	case "$action" in
-		build)	build_filesync ;;
-		start)	start_filesync ;;
-		stop)	stop_filesync ;;
-		restart) restart_filesync ;;
-		clean)	clean_filesync ;;
-		status)	status_filesync ;;
-		logs)	logs_filesync ;;
+		build)	build_freeswitch ;;
+		start)	start_freeswitch ;;
+		stop)	stop_freeswitch ;;
+		restart) restart_freeswitch ;;
+		clean)	clean_freeswitch ;;
+		status)	status_freeswitch ;;
+		logs)	logs_freeswitch ;;
 		*)		show_usage ;;
 	esac
 }
 
 # 运行主函数
-main "$@" || true
+main "$@"
