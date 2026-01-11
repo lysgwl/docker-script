@@ -168,25 +168,66 @@ show_usage()
 # 主函数
 main()
 {
-	if [[ "$1" =~ ^(alpine|ubuntu|debian|all)$ ]]; then
-		build_utils "$1" "${2:-latest}" "${3:-$UTILS_IMAGE_NAME}"
-		return 0
+	local build_utils=false
+	local clean_build=false
+	
+	local version="latest"
+	local image_name="$UTILS_IMAGE_NAME"
+	
+	local args=()
+	while [[ $# -gt 0 ]]; do
+		case "$1" in
+			--build-utils)
+				build_utils=true
+				shift
+				;;
+			--clean-build)
+				clean_build=true
+				shift
+				;;
+			--version)
+				version="$2"
+				shift 2
+				;;
+			--image-name)
+				image_name="$2"
+				shift 2
+				;;
+			*)
+				args+=("$1")
+				shift
+				;;
+		esac
+	done
+	
+	[[ "$build_utils" == "true" ]] && export BUILD_UTILS=true
+	[[ "$clean_build" == "true" ]] && export CLEAN_BUILD=true
+	
+	if [[ ${#args[@]} -eq 0 ]]; then
+		show_usage
+		exit 0
+	fi
+	
+	if [[ "${args[0]}" =~ ^(alpine|ubuntu|debian|all)$ ]]; then
+		set -- build "${args[@]}"
+		args=("$@")
 	fi
 	
 	# 解析参数
-	parse_args "$@"
+	parse_args "${args[@]}"
 	local action="$(get_param action)"
+	
 	if [[ "$action" == "build" ]]; then
-		local platform="${2:-${UTILS_PLATFORM:-all}}"
+		local platform="${args[1]:-${UTILS_PLATFORM:-all}}"
 		if ! [[ "$platform" =~ ^(alpine|ubuntu|debian|all)$ ]]; then
 			echo "❌ [ERROR] 无效的平台参数: $platform"
 			exit 1
 		fi
 		
-		local version="${3:-${BUILD_VERSION:-latest}}"
-		local image_name="${4:-$UTILS_IMAGE_NAME}"
+		local build_version="${args[2]:-${UTILS_TAG:-$version}}"
+		local img_name="${args[3]:-${UTILS_IMAGE_NAME:-$image_name}}"
 		
-		build_utils "$platform" "$version" "$image_name"
+		build_utils "$platform" "$build_version" "$img_name"
 	elif [[ "$action" == "clean" ]]; then
 		clean_utils
 	else
