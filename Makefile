@@ -14,6 +14,10 @@ EXTRA	:= $(word 3,$(TARGETS))
 $(eval $(ACTION):;@:)
 $(eval $(EXTRA):;@:)
 
+BUILD_UTILS ?= $(call get_make_param,BUILD_UTILS,false)
+CLEAN_BUILD ?= $(call get_make_param,CLEAN_BUILD,false)
+#$(info BUILD_UTILS = $(BUILD_UTILS))
+
 # ==================== 全局配置 ====================
 REGISTRY ?=
 
@@ -50,13 +54,13 @@ FREESWITCH_SCRIPT := build.sh
 .PHONY: all
 all:
 	@# 验证项目是否支持
-	$(if $(filter $(PROJECT),utils nginx filesync freeswitch),,\
-		$(error 不支持的项目: $(PROJECT)。支持的项目: utils nginx filesync freeswitch))
-	
+	$(if $(filter $(PROJECT),$(SUPPORTED_PROJECTS)),,\
+		$(error 不支持的项目: $(PROJECT)。支持的项目: $(SUPPORTED_PROJECTS)))
+		
 	@# 验证动作是否支持
 	$(if $(filter $(ACTION),$(SUPPORTED_ACTIONS)),,\
 		$(error 不支持的动作: $(ACTION)。支持的动作: $(SUPPORTED_ACTIONS)))
-	
+		
 	@# 执行对应操作
 	$(MAKE) $(PROJECT) ACTION=$(ACTION) EXTRA=$(EXTRA)
 	
@@ -77,6 +81,29 @@ filesync:
 freeswitch:
 	@echo "✅ 执行 FreeSwitch 项目..."
 	$(call run_project_action,freeswitch,$(FREESWITCH_DIR),$(FREESWITCH_SCRIPT),$(ACTION),$(EXTRA))
+	
+#参数提取
+define get_param
+$(strip \
+  $(let prefix,$(1)=,\
+	$(or \
+	  $(patsubst $(prefix)%,%,$(filter $(prefix)%,$(MAKECMDGOALS))),\
+	  $(patsubst $(prefix)%,%,$(filter $(prefix)%,$(MAKEFLAGS))),\
+	  $(2)\
+	)\
+  )\
+)
+endef
+
+# 构建脚本参数
+define build_script_args
+	$(strip \
+		$(1) \
+		$(if $(2),$(2)) \
+		$(if $(filter true,$(BUILD_UTILS)),--build-utils) \
+		$(if $(filter true,$(CLEAN_BUILD)),--clean-build) \
+	)
+endef
 
 # 检查项目目录是否存在
 define check_project_dir
@@ -85,40 +112,58 @@ define check_project_dir
 		exit 1; \
 	fi; \
 	\
-	if [ ! -f "$1/build.sh" ]; then \
-		echo "❌ 管理脚本不存在: $1/build.sh"; \
+	if [ ! -f "$1/$2" ]; then \
+		echo "❌ 管理脚本不存在: $1/$2"; \
 		exit 1; \
 	fi
 endef
 
-# 执行脚本函数
-# 用法: $(call execute_script,脚本名$1,动作$2,额外参数$3,utils镜像名$4)
+# 执行脚本
 define execute_script
 	script_name="$(1)"; \
-	action="$(2)"; \
-	extra="$(3)"; \
+	args="$(2)"; \
 	\
-	if [ -n "$$extra" ]; then \
-		echo "执行: ./$$script_name $$action $$extra"; \
-		./$$script_name $$action $$extra; \
+	if [ ! -f "./$$script_name" ]; then \
+		echo "❌ [ERROR] 运行脚本不存在: $$script_name"; \
+		exit 1; \
+	fi; \
+	\
+	[ -x "./$$script_name" ] || chmod +x "./$$script_name"; \
+	\
+	echo "目录: $$(pwd), 执行: ./$$script_name $$args"; \
+	\
+	if ! ./$$script_name $$args; then \
+		exit_code=$$?; \
+		echo "❌ [ERROR] 执行失败:$$script_name (退出码: $$exit_code)"; \
+		exit $$exit_code; \
 	else \
-		echo "执行: ./$$script_name $$action"; \
-		./$$script_name $$action; \
+		echo "✅ [INFO] 执行成功: $$script_name"; \
 	fi
 endef
 
 # 执行项目操作
 # 用法: $(call run_project_action,项目名$1,项目目录$2,脚本名$3,动作$4,额外参数$5)
 define run_project_action
-	$(call check_project_dir,$(2))
+	$(eval project_name := $(1))
+	$(eval project_dir := $(2))
+	$(eval script_name := $(3))
+	$(eval action := $(4))
+	$(eval extra := $(5))
+	
+	$(eval SCRIPT_ARGS := $(call build_script_args,$(action),$(extra)))
+	
 	@echo "========================================"
-	@echo "🚀 执行项目操作: 项目=$(1), 动作=$(4), 目录=$(2)"
+	@echo "🚀 执行项目操作: 项目=$(project_name), 动作=$(action), 目录=$(project_dir)"
 	@echo "========================================"
-	@cd $(2) && \
+	
+	$(call check_project_dir,$(project_dir),$(script_name))
+	
+	@cd $(project_dir) && \
 	UTILS_PLATFORM=$(UTILS_PLATFORM) \
 	UTILS_TAG=$(UTILS_TAG) \
 	UTILS_IMAGE_NAME=$(UTILS_IMAGE_NAME) \
 	BUILD_VERSION=$(VERSION) \
-	CLEAN_BUILD=$(CLEAN_BUILD) \
-	$(call execute_script,$3,$4,$5)
+	$(if $(BUILD_UTILS),BUILD_UTILS=$(BUILD_UTILS) \) \
+	$(if $(CLEAN_BUILD),CLEAN_BUILD=$(CLEAN_BUILD) \) \
+	$(call execute_script,$(script_name),"$(SCRIPT_ARGS)")
 endef
