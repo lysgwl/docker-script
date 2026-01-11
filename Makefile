@@ -4,15 +4,29 @@ SUPPORTED_PROJECTS := utils nginx filesync freeswitch
 SUPPORTED_ACTIONS := build start stop restart clean status logs
 
 # 获取命令行中的所有目标
-TARGETS := $(MAKECMDGOALS)
+ifeq ($(firstword $(MAKECMDGOALS)),all)
+    TARGETS := $(wordlist 2,999,$(MAKECMDGOALS))
+else
+    TARGETS := $(MAKECMDGOALS)
+endif
 
 # 解析项目名和动作
 PROJECT := $(firstword $(TARGETS))
 ACTION  := $(word 2,$(TARGETS))
 EXTRA	:= $(word 3,$(TARGETS))
 
-$(eval $(ACTION):;@:)
-$(eval $(EXTRA):;@:)
+# 创建假目标
+ifneq ($(PROJECT),all)
+    $(eval $(PROJECT):;@:)
+endif
+
+ifneq ($(ACTION),all)
+    $(eval $(ACTION):;@:)
+endif
+
+ifneq ($(EXTRA),all)
+    $(eval $(EXTRA):;@:)
+endif
 
 BUILD_UTILS ?= $(call get_make_param,BUILD_UTILS,false)
 CLEAN_BUILD ?= $(call get_make_param,CLEAN_BUILD,false)

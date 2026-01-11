@@ -39,7 +39,7 @@ build_freeswitch()
 	echo "========== 构建项目: $PROJECT_NAME =========="
 	
 	# 清理缓存
-	if [[ "$(get_param clean_build)" == "true" ]]; then
+	if [[ "$(get_param clean_build $CLEAN_BUILD)" == "true" ]]; then
 		clean_build
 	fi 
 	
@@ -127,7 +127,7 @@ clean_freeswitch()
 	clean_image "$image_name"
 	
 	# 清理构建缓存
-	if [[ "$(get_param clean_build)" == "true" ]]; then
+	if [[ "$(get_param clean_build $CLEAN_BUILD)" == "true" ]]; then
 		clean_build
 	fi
 	

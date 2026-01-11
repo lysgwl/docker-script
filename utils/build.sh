@@ -83,7 +83,6 @@ build_utils()
 	local platform="${1:-$UTILS_PLATFORM}"
 	local version="${2:-$UTILS_TAG}"
 	local image_name="${3:-$UTILS_IMAGE_NAME}"
-	local clean_build="${CLEAN_BUILD:-false}"
 	
 	echo "平台: $platform, 版本: $version, 镜像名: $image_name"
 	if ! [[ "$platform" =~ ^(alpine|ubuntu|debian|all)$ ]]; then
@@ -96,7 +95,7 @@ build_utils()
 	if ! check_image "$image_name" "$version"; then	
 		echo "[INFO] 镜像不存在，开始构建..."
 	else
-		if [[ "$clean_build" == "false" ]]; then
+		if [[ "$(get_param clean_build $CLEAN_BUILD)" == "false" ]]; then
 			echo "✅ 镜像已存在, 跳过构建: $image_name:$version"
 			return 0
 		fi
@@ -132,7 +131,7 @@ clean_utils()
 	clean_image "$image_name"
 	
 	# 清理构建缓存
-	if [[ "$(get_param clean_build)" == "true" ]]; then
+	if [[ "$(get_param clean_build $CLEAN_BUILD)" == "true" ]]; then
 		clean_build
 	fi
 	
