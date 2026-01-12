@@ -3,34 +3,34 @@
 SUPPORTED_PROJECTS := utils nginx filesync freeswitch
 SUPPORTED_ACTIONS := build start stop restart clean status logs
 
-# 获取命令行中的所有目标
-ifeq ($(firstword $(MAKECMDGOALS)),all)
-    TARGETS := $(wordlist 2,999,$(MAKECMDGOALS))
-else
-    TARGETS := $(MAKECMDGOALS)
+PROJECT ?=
+ACTION ?=
+EXTRA ?=
+
+ifeq ($(PROJECT),)
+    PROJECT := $(word 1,$(filter $(SUPPORTED_PROJECTS),$(MAKECMDGOALS)))
 endif
 
-# 解析项目名和动作
-PROJECT := $(firstword $(TARGETS))
-ACTION  := $(word 2,$(TARGETS))
-EXTRA	:= $(word 3,$(TARGETS))
-
-# 创建假目标
-ifneq ($(PROJECT),all)
-    $(eval $(PROJECT):;@:)
+ifeq ($(ACTION),)
+    ACTION := $(word 1,$(filter $(SUPPORTED_ACTIONS),$(MAKECMDGOALS)))
 endif
 
-ifneq ($(ACTION),all)
+ifeq ($(EXTRA),)
+    EXTRA := $(word 1,$(filter-out help $(SUPPORTED_PROJECTS) $(SUPPORTED_ACTIONS),$(MAKECMDGOALS)))
+endif
+
+ifneq ($(ACTION),)
     $(eval $(ACTION):;@:)
 endif
 
-ifneq ($(EXTRA),all)
+ifneq ($(EXTRA),)
     $(eval $(EXTRA):;@:)
 endif
 
-BUILD_UTILS ?= $(call get_make_param,BUILD_UTILS,false)
-CLEAN_BUILD ?= $(call get_make_param,CLEAN_BUILD,false)
+BUILD_UTILS ?= $(call get_param,BUILD_UTILS,false)
+CLEAN_BUILD ?= $(call get_param,CLEAN_BUILD,false)
 #$(info BUILD_UTILS = $(BUILD_UTILS))
+#$(info CLEAN_BUILD = $(CLEAN_BUILD))
 
 # ==================== 全局配置 ====================
 REGISTRY ?=
@@ -65,35 +65,29 @@ FREESWITCH_IMAGE_NAME := freeswitch-image
 FREESWITCH_DIR := $(PROJECT_ROOT)/network/freeswitch
 FREESWITCH_SCRIPT := build.sh
 
-.PHONY: all
-all:
-	@# 验证项目是否支持
-	$(if $(filter $(PROJECT),$(SUPPORTED_PROJECTS)),,\
-		$(error 不支持的项目: $(PROJECT)。支持的项目: $(SUPPORTED_PROJECTS)))
-		
-	@# 验证动作是否支持
-	$(if $(filter $(ACTION),$(SUPPORTED_ACTIONS)),,\
-		$(error 不支持的动作: $(ACTION)。支持的动作: $(SUPPORTED_ACTIONS)))
-		
-	@# 执行对应操作
-	$(MAKE) $(PROJECT) ACTION=$(ACTION) EXTRA=$(EXTRA)
+.PHONY: help
+help:
+	@echo "Usage: make [project] [action] [extra]"
+	@echo "Supported projects: $(SUPPORTED_PROJECTS)"
+	@echo "Supported actions: $(SUPPORTED_ACTIONS)"
+	@echo ""
+	@echo "Examples:"
+	@echo "  make utils build          # 构建utils项目"
+	@echo "  make utils build alpine   # 构建utils项目，使用alpine平台"
+	@echo "  make nginx start          # 启动nginx"
+	@echo "  make all                  # 显示帮助信息"
 	
-.PHONY: utils
+.PHONY: utils nginx filesync freeswitch
 utils:
-	@echo "✅ 执行 Utils 项目..."
 	$(call run_project_action,utils,$(UTILS_DIR),$(UTILS_SCRIPT),$(ACTION),$(EXTRA))
 	
-.PHONY: nginx
 nginx:
-	@echo "✅ 执行 Nginx 项目..."
 	$(call run_project_action,nginx,$(NGINX_DIR),$(NGINX_SCRIPT),$(ACTION),$(EXTRA))
 	
 filesync:
-	@echo "✅ 执行 FileSync 项目..."
 	$(call run_project_action,filesync,$(FILESYNC_DIR),$(FILESYNC_SCRIPT),$(ACTION),$(EXTRA))
 	
 freeswitch:
-	@echo "✅ 执行 FreeSwitch 项目..."
 	$(call run_project_action,freeswitch,$(FREESWITCH_DIR),$(FREESWITCH_SCRIPT),$(ACTION),$(EXTRA))
 	
 #参数提取
@@ -177,7 +171,7 @@ define run_project_action
 	UTILS_TAG=$(UTILS_TAG) \
 	UTILS_IMAGE_NAME=$(UTILS_IMAGE_NAME) \
 	BUILD_VERSION=$(VERSION) \
-	$(if $(BUILD_UTILS),BUILD_UTILS=$(BUILD_UTILS) \) \
-	$(if $(CLEAN_BUILD),CLEAN_BUILD=$(CLEAN_BUILD) \) \
-	$(call execute_script,$(script_name),"$(SCRIPT_ARGS)")
+	$(if $(BUILD_UTILS),BUILD_UTILS=$(BUILD_UTILS)) \
+	$(if $(CLEAN_BUILD),CLEAN_BUILD=$(CLEAN_BUILD)) \
+	$(call execute_script,$(script_name),$(SCRIPT_ARGS))
 endef
