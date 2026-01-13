@@ -47,47 +47,44 @@ _write_log()
 	local timestamp="$4"
 	local log_file="$5"
 	
-	# 构建基本日志信息
-	local log_entry="[$log_level]"
-	[[ -n "$timestamp" ]] && log_entry="$log_entry $timestamp"
-	[[ -n "$func_type" ]] && log_entry="$log_entry ($func_type)"
-	log_entry="$log_entry ${message:-No message}"
+	# 默认时间
+	[[ -z "$timestamp" ]] && timestamp="$(date '+%Y-%m-%d %H:%M:%S')"
 	
+	# 文本日志
+	local log_entry="[$timestamp] [$log_level]"
+	[[ -n "$func_type" ]] && log_entry+=" ($func_type)"
+	log_entry+="${message:-No message}"
+	
+	# 颜色定义
+	local reset="\x1b[0m"
+	local time_color="\x1b[38;5;208m"
+	local func_color="\x1b[38;5;210m"
+	local msg_color="\x1b[38;5;87m"
+	
+	local level_color
+	case "$log_level" in
+		"TRACE"|"INFO")   level_color="\x1b[38;5;76m" ;;
+		"DEBUG")          level_color="\x1b[38;5;208m" ;;
+		"WARNING")        level_color="\033[1;43;31m" ;;
+		"ERROR")          level_color="\x1b[38;5;196m" ;;
+		"SECTION")        level_color="\x1b[38;5;51m" ;;
+		"HEADER")         level_color="\x1b[38;5;213m" ;;
+		"DIVIDER")        level_color="\x1b[38;5;245m" ;;
+		*)                level_color="\x1b[38;5;87m" ;;
+	esac
+	
+	# 终端输出
+	local output
+	[[ -n "$timestamp" ]] && output="${time_color}[$timestamp]$reset"
+	output+="${level_color}[$log_level]$reset"
+	[[ -n "$func_type" ]] && output+=" ${func_color}($func_type)$reset"
+	output+="${msg_color}${message:-No message}$reset"
+	
+	printf '%b\n' "$output"
+	
+	# 文件输出
 	if [[ -n "$log_file" ]]; then
-		echo "$log_entry" | tee -a "$log_file" 2>/dev/null || true
-	else
-		local time_color="\x1b[38;5;208m"
-		local func_color="\x1b[38;5;210m"
-		local msg_color="\x1b[38;5;87m"
-		local reset="\x1b[0m"
-		
-		# 日志级别颜色
-		local level_color
-		case "$log_level" in
-			"TRACE"|"INFO")   level_color="\x1b[38;5;76m" ;;
-			"DEBUG")          level_color="\x1b[38;5;208m" ;;
-			"WARNING")        level_color="\033[1;43;31m" ;;
-			"ERROR")          level_color="\x1b[38;5;196m" ;;
-			"SECTION")        level_color="\x1b[38;5;51m" ;;
-			"HEADER")         level_color="\x1b[38;5;213m" ;;
-			"DIVIDER")        level_color="\x1b[38;5;245m" ;;
-			*)                level_color="\x1b[38;5;87m" ;;
-		esac
-		
-		# 构建彩色输出
-		local output
-		if [[ -n "$timestamp" ]]; then
-			output="${time_color}[$timestamp]$reset"
-		fi
-		
-		output="${output}${level_color}[$log_level]:$reset"
-		
-		if [[ -n "$func_type" ]]; then
-			output="${output} ${func_color}($func_type)$reset"
-		fi
-		
-		output="${output} ${msg_color}${message:-No message}$reset"
-		printf "${output}\n"
+		printf '%s\n' "$log_entry" >> "$log_file" 2>/dev/null || true
 	fi
 }
 
@@ -126,13 +123,14 @@ _format_log()
 		*)
 			log_entry="$message"
 			;;
-		
 	esac
 	
-	if [[ -z "$log_file" ]]; then
-		echo -e "$log_entry"
-	else
-		echo -e "$log_entry" | tee -a "$log_file" 2>/dev/null || true
+	# 终端输出
+	printf '%s\n' "$log_entry"
+	
+	# 文件输出
+	if [[ -n "$log_file" ]]; then
+		printf '%s\n' "$log_entry" >> "$log_file" 2>/dev/null || true
 	fi
 }
 

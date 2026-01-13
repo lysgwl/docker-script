@@ -384,3 +384,353 @@ lock_manager()
 			;;
 	esac
 }
+
+# 获取脚本路径
+get_script_path()
+{
+	local script_path="${1:-}"
+	
+	# 优先使用外部路径
+	if [[ -n "$script_path" && -f "$script_path" ]]; then
+		echo "$(realpath "$script_path")"
+		return 0
+	fi
+	
+	# 获取调用者脚本路径
+	if [ ${#BASH_SOURCE[@]} -gt 1 ]; then
+		# BASH_SOURCE[1] 是调用者的源文件
+		script_path="$(realpath "${BASH_SOURCE[1]}")"
+	elif [ -n "${BASH_SOURCE[0]}" ]; then
+		# 如果没有调用者，用当前源文件
+		script_path="$(realpath "${BASH_SOURCE[0]}")"
+	elif [ -n "$0" ] && [ "$0" != "bash" ]; then
+		script_path="$(realpath "$0")"
+	fi
+	
+	echo "$script_path"
+}
+
+# 检测进程运行
+check_process()
+{
+	local operation="$1"
+	local target_pid="${2:-}"
+	local script_path="${3:-}"
+	local timeout="${4:-10}"
+	
+	case "$operation" in
+		check)
+			if [[ -n "$target_pid" && -f "$target_pid" ]]; then
+				local pids=$(< "$target_pid") 2>/dev/null || return 1
+
+				# 检查PID是否有效
+				if kill -0 "$pids" 2>/dev/null 2>&1; then
+					local state=$(ps -o state= -p "$pids" 2>/dev/null | tr -d ' ')
+					[[ "$state" != "Z" ]] && echo "$pids" && return 0
+				fi
+				
+				# 清理无效PID文件
+				rm -f "$target_pid"
+				return 1
+			fi
+			
+			if [[ -n "$script_path" && -f "$script_path" ]]; then
+				local script_name=$(basename "$script_path")
+
+				# 定义匹配模式-$script_name.*start.*--daemon
+				local pattern="start --daemon|start --monitor|monitor_loop"
+				
+				# 使用pattern查找进程
+				local pids=$(pgrep -f "$pattern" 2>/dev/null || true)
+				
+				# 获取当前进程
+				local current_pid=$$
+				
+				# 获取父进程
+				local parent_pid=$PPID
+				
+				echo "$pids-$current_pid-$parent_pid" >&2
+				
+
+				for pid in $pids; do
+					# 排除当前进程
+					[[ "$pid" == "$current_pid" ]] && continue
+					
+					# 排除父进程
+					[[ "$pid" == "$parent_pid" ]] && continue
+					
+					# 检查进程目录是否存在
+					[[ -d "/proc/$pid" ]] || continue
+					
+					# 排除僵尸进程
+					local state=$(ps -o state= -p "$pid" 2>/dev/null | tr -d ' ' || true)
+					[[ -z "$state" || "$state" == "Z" ]] && continue
+					
+					# 获取命令行
+					local cmdline=$(ps -p "$pid" -o command= 2>/dev/null || true)
+					[[ -z "$cmdline" ]] && continue
+					
+					echo "$cmdline" | grep -q "$script_name" || continue
+					echo "$cmdline" | grep -qE "$pattern" || continue
+
+					echo "$cmdline" | grep -qE "(pgrep|grep.*$pattern)" && continue
+					echo "$cmdline" | grep -qE "^/(usr/)?bin/(bash|sh)" || continue
+					
+					echo "$pid"
+					return 0
+				done
+			fi
+			
+			return 1
+			;;
+		verify)
+			# 验证进程启动
+			[[ -z "$target_pid" ]] && return 1
+			
+			# 等待进程启动并验证
+			local wait_for_time=0
+			while ! kill -0 "$target_pid" 2>/dev/null; do
+				sleep 1
+				
+				((wait_for_time++))
+				[[ $wait_for_time -ge $timeout ]] && return 1
+			done
+			
+			# 额外检查进程状态
+			local state=$(ps -o state= -p "$target_pid" 2>/dev/null | tr -d ' ' || true)
+			[[ "$state" = "Z" ]] && return 1
+			
+			return 0
+			;;
+		*)
+			return 2
+			;;
+	esac
+}
+
+# 检查挂载状态
+check_mount()
+{
+	local mount_point="$1"
+	
+	# 验证路径
+	[[ -z "$mount_point" || "$mount_point" != /* ]] && return 1
+	
+	# 规范化路径
+	mount_point="${mount_point%/}"
+	
+	# 挂载状态
+	local is_mounted=0
+	
+	# 检查是否挂载
+	# awk -v dir="$mount_point" '$2 == dir {exit 0} END {exit 1}' /proc/mounts
+	
+	if grep -q " $mount_point " /proc/mounts 2>/dev/null; then
+		is_mounted=1
+	else
+		if command -v mountpoint &>/dev/null; then
+			if timeout 1 mountpoint -q "$mount_point" 2>/dev/null; then
+				is_mounted=1
+			fi
+		fi
+	fi
+	
+	if [[ $is_mounted -eq 0 ]]; then
+		return 1
+	fi
+	
+	# 检查可访问性
+	timeout 2 ls "$mount_point" &>/dev/null || return 2
+	return 0
+}
+
+# 脚本方式挂载
+mount_with_script()
+{
+	local name_ref="$1"
+	local type_ref="$2"
+	local server_ref="$3"
+	local remote_ref="$4"
+	local local_ref="$5"
+	local options_ref="$6"
+	
+	print_log "INFO" "执行脚本挂载: $name_ref"
+	print_log "DEBUG" "本地路径: $local_ref"
+	print_log "DEBUG" "远程路径: $server_ref:$remote_ref"
+	print_log "DEBUG" "协议类型: $type_ref"
+	
+	# 检查是否已挂载
+	if check_mount "$local_ref"; then
+		print_log "WARNING" "挂载点已存在: $local_ref, 请检查!"
+		return 0
+	fi
+	
+	print_log "DEBUG" "创建本地目录: $local_ref"
+	
+	# 创建本地目录
+	if ! mkdir -p "$local_ref" 2>/dev/null; then
+		print_log "ERROR" "创建本地目录失败: $local_ref, 请检查!"
+		return 1
+	fi
+	
+	# 设置默认选项
+	case "$type_ref" in
+		nfs)
+			local default_options="rw,hard,intr,vers=3,timeo=100,retrans=2"
+			[ -z "$options_ref" ] && options_ref="$default_options"
+			
+			# nolock 逻辑检测
+			if { [[ -f /etc/alpine-release ]] || [[ -f /.dockerenv ]] || ! command -v rpc.statd >/dev/null 2>&1; } && [[ "$options_ref" != *"nolock"* ]]; then
+				options_ref="${options_ref},nolock"
+				print_log "DEBUG" "添加 nolock 选项"
+			fi
+			
+			print_log "DEBUG" "NFS挂载选项: $options_ref"
+			
+			# 尝试挂载
+			if ! mount -t nfs -o "$options_ref" "$server_ref:$remote_ref" "$local_ref" 2>/dev/null; then
+				print_log "WARNING" "直接挂载失败, 尝试挂载父目录"
+				
+				# 尝试挂载父目录
+				local remote_parent_path=$(dirname "$remote_ref")
+				local local_parent_path="/tmp/nfs_parent_${name_ref}_$(date +%s)"
+				
+				# 创建临时目录
+				mkdir -p "$local_parent_path" 2>/dev/null || {
+					print_log "ERROR" "创建临时目录失败, 请检查!"
+					return 2
+				}
+				
+				print_log "DEBUG" "尝试挂载父目录: $server_ref:$remote_parent_path"
+					
+				# 挂载父目录
+				if ! mount -t nfs -o "$options_ref" "$server_ref:$remote_parent_path" "$local_parent_path" 2>/dev/null; then
+					print_log "ERROR" "父目录挂载失败, 请检查!"
+					
+					rm -rf "$local_parent_path" 2>/dev/null
+					return 2
+				fi
+				
+				# 检查子目录
+				local subdir_name=$(basename "$remote_ref")
+				if [[ -d "$local_parent_path/$subdir_name" ]]; then
+					print_log "DEBUG" "绑定挂载子目录: $subdir_name"
+					
+					# 绑定挂载将子目录映射到目标位置
+					if ! mount --bind "$local_parent_path/$subdir_name" "$local_ref" 2>/dev/null; then
+						print_log "ERROR" "绑定挂载失败, 请检查!"
+						
+						umount "$local_parent_path" 2>/dev/null
+						rmdir "$local_parent_path" 2>/dev/null
+						return 3
+					fi
+				fi
+				
+				umount "$local_parent_path" 2>/dev/null
+				rmdir "$local_parent_path" 2>/dev/null
+				
+				print_log "INFO" "通过父目录方式挂载成功"
+			else
+				print_log "INFO" "直接挂载成功"
+			fi
+			;;
+		smb)
+			local default_options="vers=3.0,guest,uid=0,gid=0,file_mode=0644,dir_mode=0755"
+			[ -z "$options_ref" ] && options_ref="$default_options"
+			
+			# 处理凭证
+			local credentials=$(echo "$config" | jq -r '.credentials // ""')
+			if [ -n "$credentials" ] && [ -f "$credentials" ]; then
+				options_ref="${options_ref},credentials=$credentials"
+				print_log "DEBUG" "使用凭证文件: $credentials"
+			else
+				print_log "DEBUG" "使用匿名访问"
+			fi
+			
+			print_log "DEBUG" "SMB挂载选项: $options_ref"
+			
+			local mount_output
+			mount_output=$(mount -t cifs -o "$options_ref" "//$server_ref/$remote_ref" "$local_ref" 2>&1)
+			
+			local exit_code=$?
+			if [ $exit_code -ne 0 ]; then
+				print_log "ERROR" "SMB挂载失败, 错误码: $exit_code"
+				
+				if [ -n "$output" ]; then
+					print_log "ERROR" "挂载错误输出: $output"
+				fi
+				
+				return 1
+			fi
+			
+			print_log "INFO" "SMB挂载成功"
+			;;
+		*)
+			print_log "ERROR" "不支持的挂载类型: $type_ref"
+			return 1
+			;;
+	esac
+	
+	print_log "TRACE" "挂载完成: $local_ref"
+	return 0
+}
+
+# Docker方式挂载
+mount_with_docker()
+{
+	print_log "TRACE" "尝试Docker方式挂载"
+	
+	local name_ref="$1"
+	local volume_ref="$2"
+	local driver_ref="$3"
+	local options_ref="$4"
+
+	# 检查Docker环境
+	if ! command -v docker >/dev/null 2>&1; then
+		print_log "WARNING" "Docker命令不存在, 请检查!"
+		return 1
+	fi
+	
+	if ! docker info >/dev/null 2>&1; then
+		print_log "WARNING" "Docker服务不可用, 请检查!"
+		return 1
+	fi
+	
+	print_log "DEBUG" "Docker卷名称: $volume_ref"
+	print_log "DEBUG" "驱动类型: $driver_ref"
+	
+	# 验证必要参数
+	[[ -z "$volume_ref" ]] && {
+		print_log "ERROR" "Docker卷名称未配置, 请检查!"
+		return 1
+	}
+	
+	# 创建或检查Docker卷
+	if docker volume inspect "$volume_ref" >/dev/null 2>&1; then
+		print_log "WARNING" "Docker卷已存在: $volume_ref"
+	else
+		print_log "INFO" "创建Docker卷: $volume_ref"
+		local create_cmd="docker volume create --driver_ref $driver_ref --name_ref $volume_ref"
+		
+		# 添加驱动选项
+		if [ "$options_ref" != "{}" ]; then
+			for key in $(echo "$options_ref" | jq -r 'keys[]'); do
+				local value=$(echo "$options_ref" | jq -r --arg key "$key" '.[$key]')
+				
+				[[ -n "$value" ]] && create_cmd="$create_cmd --opt $key=$value"
+			done
+		fi
+		
+		print_log "DEBUG" "执行命令: $create_cmd"
+		
+		# 执行创建命令
+		if ! eval "$create_cmd" >/dev/null 2>&1; then
+			print_log "ERROR" "Docker卷创建失败: $volume_ref"
+			return 1
+		fi
+		
+		print_log "INFO" "Docker卷创建成功: $volume_ref"
+	fi
+	
+	return  0
+}
