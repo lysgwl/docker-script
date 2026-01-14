@@ -121,20 +121,20 @@ check_storage()
 	
 	case "$protocol_ref" in
 		nfs)
-			print_log "DEBUG" "检查NFS服务: $server_ref:$remote_ref"
+			utils_log "DEBUG" "检查NFS服务: $server_ref:$remote_ref"
 			
 			# 检查NFS服务是否可用
 			{ timeout "$timeout" nc -z -w 1 "$server_ref" 2049 || \
 			  timeout "$timeout" rpcinfo -t "$server_ref" 100003 || \
 			  timeout "$timeout" rpcinfo -t "$server_ref" nfs; } >/dev/null 2>&1 || {
-				print_log "ERROR" "NFS服务不可达: $server_ref, 请检查!"
+				utils_log "ERROR" "NFS服务不可达: $server_ref, 请检查!"
 				return 2
 			}
 			
 			# 验证导出路径
 			local export_list found=0
 			if ! export_list=$(timeout "$timeout" showmount --no-headers -e "$server_ref" 2>/dev/null); then
-				print_log "ERROR" "无法获取NFS导出列表: $server_ref"
+				utils_log "ERROR" "无法获取NFS导出列表: $server_ref"
 				return 3
 			fi
 			
@@ -149,17 +149,17 @@ check_storage()
 			done <<< "$export_list"
 			
 			[[ $found -eq 0 ]] && {
-				print_log "ERROR" "NFS导出路径不存在: $remote_ref, 请检查!"
+				utils_log "ERROR" "NFS导出路径不存在: $remote_ref, 请检查!"
 				return 4
 			}
 			;;
 		smb)
-			print_log "DEBUG" "检查SMB服务: //$server_ref/$remote_ref"
+			utils_log "DEBUG" "检查SMB服务: //$server_ref/$remote_ref"
 			
 			# 检测SMB服务是否可用
 			{ timeout "$timeout" ping -c 1 -W 1 "$server_ref" || \
 			  timeout "$timeout" nc -z -w 1 "$server_ref" 445; } >/dev/null 2>&1 || {
-				print_log "ERROR" "SMB服务不可达: $server_ref, 请检查!"
+				utils_log "ERROR" "SMB服务不可达: $server_ref, 请检查!"
 				return 2
 			}
 			
@@ -176,26 +176,26 @@ check_storage()
 				local smb_cmd="smbclient $auth_params -L '$server_ref'"
 				
 				if ! eval "timeout '$timeout' $smb_cmd 2>/dev/null" | grep -q "$remote_ref"; then
-					print_log "ERROR" "SMB共享路径不存在: $remote_ref, 请检查!"
+					utils_log "ERROR" "SMB共享路径不存在: $remote_ref, 请检查!"
 					return 3
 				fi
 			fi
 			;;
 		local)
-			print_log "DEBUG" "检查本地存储: $remote_ref"
+			utils_log "DEBUG" "检查本地存储: $remote_ref"
 			
 			# 对本地存储的检查
 			if [[ ! -e "$remote_ref" ]]; then
-				print_log "ERROR" "本地存储路径不存在: $remote_ref, 请检查!"
+				utils_log "ERROR" "本地存储路径不存在: $remote_ref, 请检查!"
 				return 3
 			fi
 			;;
 		*)
-			print_log "ERROR" "不支持的协议: $protocol_ref"
+			utils_log "ERROR" "不支持的协议: $protocol_ref"
 			return 1
 			;;
 	esac
 	
-	print_log "DEBUG" "存储检查通过: $server_ref ($protocol_ref)"
+	utils_log "DEBUG" "存储检查通过: $server_ref ($protocol_ref)"
 	return 0
 }

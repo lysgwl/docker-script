@@ -16,8 +16,21 @@ declare -A LOG_LEVEL_VALUES=(
 	["NONE"]=99		# 不记录任何日志
 )
 
+# 日志函数配置
+: "${UTILS_LOG_FUNC:=print_log}"
+
 # 特殊日志级别
 export SPECIAL_LEVELS="TITLE|SECTION|HEADER|SUBTITLE|DIVIDER|BLANK|TEXT"
+
+# 日志调用接口
+utils_log() 
+{
+	if declare -f "$UTILS_LOG_FUNC" >/dev/null; then
+		"$UTILS_LOG_FUNC" "$@"
+	else
+		print_log "$@"
+	fi
+}
 
 # 日志级别比较
 diff_log_level()

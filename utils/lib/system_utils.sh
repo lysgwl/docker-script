@@ -341,7 +341,7 @@ lock_manager()
 		"check")
 			# 检查锁是否存在
 			if [ -f "$lock_file" ]; then
-				print_log "WARNING" "锁文件已存在: $lock_file，进程可能正在运行中"
+				utils_log "WARNING" "锁文件已存在: $lock_file，进程可能正在运行中"
 				return 1
 			fi
 			
@@ -350,13 +350,13 @@ lock_manager()
 		"create")
 			# 先检查锁是否已存在
 			if [ -f "$lock_file" ]; then
-				print_log "ERROR" "无法创建锁文件，锁已存在: $lock_file"
+				utils_log "ERROR" "无法创建锁文件，锁已存在: $lock_file"
 				return 1
 			fi
 			
 			# 创建锁文件
 			if ! touch "$lock_file" 2>/dev/null; then
-				print_log "ERROR" "无法创建锁文件: $lock_file"
+				utils_log "ERROR" "无法创建锁文件: $lock_file"
 				return 1
 			fi
 			
@@ -364,22 +364,22 @@ lock_manager()
 			echo "Timestamp: $(date '+%Y-%m-%d %H:%M:%S')" >> "$lock_file"
 			echo "Command: $0" >> "$lock_file"
 			
-			print_log "INFO" "锁文件创建成功: $lock_file"
+			utils_log "INFO" "锁文件创建成功: $lock_file"
 			return 0
 			;;
 		"remove")
 			# 移除锁文件
 			if [ ! -f "$lock_file" ]; then
-				print_log "WARNING" "锁文件不存在: $lock_file"
+				utils_log "WARNING" "锁文件不存在: $lock_file"
 				return 0
 			fi
 			
 			if ! rm -f "$lock_file"; then
-				print_log "ERROR" "无法移除锁文件: $lock_file"
+				utils_log "ERROR" "无法移除锁文件: $lock_file"
 				return 1
 			fi
 			
-			print_log "INFO" "锁文件已移除: $lock_file"
+			utils_log "INFO" "锁文件已移除: $lock_file"
 			return 0
 			;;
 	esac
@@ -554,22 +554,22 @@ mount_with_script()
 	local local_ref="$5"
 	local options_ref="$6"
 	
-	print_log "INFO" "执行脚本挂载: $name_ref"
-	print_log "DEBUG" "本地路径: $local_ref"
-	print_log "DEBUG" "远程路径: $server_ref:$remote_ref"
-	print_log "DEBUG" "协议类型: $type_ref"
+	utils_log "INFO" "执行脚本挂载: $name_ref"
+	utils_log "DEBUG" "本地路径: $local_ref"
+	utils_log "DEBUG" "远程路径: $server_ref:$remote_ref"
+	utils_log "DEBUG" "协议类型: $type_ref"
 	
 	# 检查是否已挂载
 	if check_mount "$local_ref"; then
-		print_log "WARNING" "挂载点已存在: $local_ref, 请检查!"
+		utils_log "WARNING" "挂载点已存在: $local_ref, 请检查!"
 		return 0
 	fi
 	
-	print_log "DEBUG" "创建本地目录: $local_ref"
+	utils_log "DEBUG" "创建本地目录: $local_ref"
 	
 	# 创建本地目录
 	if ! mkdir -p "$local_ref" 2>/dev/null; then
-		print_log "ERROR" "创建本地目录失败: $local_ref, 请检查!"
+		utils_log "ERROR" "创建本地目录失败: $local_ref, 请检查!"
 		return 1
 	fi
 	
@@ -582,14 +582,14 @@ mount_with_script()
 			# nolock 逻辑检测
 			if { [[ -f /etc/alpine-release ]] || [[ -f /.dockerenv ]] || ! command -v rpc.statd >/dev/null 2>&1; } && [[ "$options_ref" != *"nolock"* ]]; then
 				options_ref="${options_ref},nolock"
-				print_log "DEBUG" "添加 nolock 选项"
+				utils_log "DEBUG" "添加 nolock 选项"
 			fi
 			
-			print_log "DEBUG" "NFS挂载选项: $options_ref"
+			utils_log "DEBUG" "NFS挂载选项: $options_ref"
 			
 			# 尝试挂载
 			if ! mount -t nfs -o "$options_ref" "$server_ref:$remote_ref" "$local_ref" 2>/dev/null; then
-				print_log "WARNING" "直接挂载失败, 尝试挂载父目录"
+				utils_log "WARNING" "直接挂载失败, 尝试挂载父目录"
 				
 				# 尝试挂载父目录
 				local remote_parent_path=$(dirname "$remote_ref")
@@ -597,15 +597,15 @@ mount_with_script()
 				
 				# 创建临时目录
 				mkdir -p "$local_parent_path" 2>/dev/null || {
-					print_log "ERROR" "创建临时目录失败, 请检查!"
+					utils_log "ERROR" "创建临时目录失败, 请检查!"
 					return 2
 				}
 				
-				print_log "DEBUG" "尝试挂载父目录: $server_ref:$remote_parent_path"
+				utils_log "DEBUG" "尝试挂载父目录: $server_ref:$remote_parent_path"
 					
 				# 挂载父目录
 				if ! mount -t nfs -o "$options_ref" "$server_ref:$remote_parent_path" "$local_parent_path" 2>/dev/null; then
-					print_log "ERROR" "父目录挂载失败, 请检查!"
+					utils_log "ERROR" "父目录挂载失败, 请检查!"
 					
 					rm -rf "$local_parent_path" 2>/dev/null
 					return 2
@@ -614,11 +614,11 @@ mount_with_script()
 				# 检查子目录
 				local subdir_name=$(basename "$remote_ref")
 				if [[ -d "$local_parent_path/$subdir_name" ]]; then
-					print_log "DEBUG" "绑定挂载子目录: $subdir_name"
+					utils_log "DEBUG" "绑定挂载子目录: $subdir_name"
 					
 					# 绑定挂载将子目录映射到目标位置
 					if ! mount --bind "$local_parent_path/$subdir_name" "$local_ref" 2>/dev/null; then
-						print_log "ERROR" "绑定挂载失败, 请检查!"
+						utils_log "ERROR" "绑定挂载失败, 请检查!"
 						
 						umount "$local_parent_path" 2>/dev/null
 						rmdir "$local_parent_path" 2>/dev/null
@@ -629,9 +629,9 @@ mount_with_script()
 				umount "$local_parent_path" 2>/dev/null
 				rmdir "$local_parent_path" 2>/dev/null
 				
-				print_log "INFO" "通过父目录方式挂载成功"
+				utils_log "INFO" "通过父目录方式挂载成功"
 			else
-				print_log "INFO" "直接挂载成功"
+				utils_log "INFO" "直接挂载成功"
 			fi
 			;;
 		smb)
@@ -642,43 +642,43 @@ mount_with_script()
 			local credentials=$(echo "$config" | jq -r '.credentials // ""')
 			if [ -n "$credentials" ] && [ -f "$credentials" ]; then
 				options_ref="${options_ref},credentials=$credentials"
-				print_log "DEBUG" "使用凭证文件: $credentials"
+				utils_log "DEBUG" "使用凭证文件: $credentials"
 			else
-				print_log "DEBUG" "使用匿名访问"
+				utils_log "DEBUG" "使用匿名访问"
 			fi
 			
-			print_log "DEBUG" "SMB挂载选项: $options_ref"
+			utils_log "DEBUG" "SMB挂载选项: $options_ref"
 			
 			local mount_output
 			mount_output=$(mount -t cifs -o "$options_ref" "//$server_ref/$remote_ref" "$local_ref" 2>&1)
 			
 			local exit_code=$?
 			if [ $exit_code -ne 0 ]; then
-				print_log "ERROR" "SMB挂载失败, 错误码: $exit_code"
+				utils_log "ERROR" "SMB挂载失败, 错误码: $exit_code"
 				
 				if [ -n "$output" ]; then
-					print_log "ERROR" "挂载错误输出: $output"
+					utils_log "ERROR" "挂载错误输出: $output"
 				fi
 				
 				return 1
 			fi
 			
-			print_log "INFO" "SMB挂载成功"
+			utils_log "INFO" "SMB挂载成功"
 			;;
 		*)
-			print_log "ERROR" "不支持的挂载类型: $type_ref"
+			utils_log "ERROR" "不支持的挂载类型: $type_ref"
 			return 1
 			;;
 	esac
 	
-	print_log "TRACE" "挂载完成: $local_ref"
+	utils_log "TRACE" "挂载完成: $local_ref"
 	return 0
 }
 
 # Docker方式挂载
 mount_with_docker()
 {
-	print_log "TRACE" "尝试Docker方式挂载"
+	utils_log "TRACE" "尝试Docker方式挂载"
 	
 	local name_ref="$1"
 	local volume_ref="$2"
@@ -687,29 +687,29 @@ mount_with_docker()
 
 	# 检查Docker环境
 	if ! command -v docker >/dev/null 2>&1; then
-		print_log "WARNING" "Docker命令不存在, 请检查!"
+		utils_log "WARNING" "Docker命令不存在, 请检查!"
 		return 1
 	fi
 	
 	if ! docker info >/dev/null 2>&1; then
-		print_log "WARNING" "Docker服务不可用, 请检查!"
+		utils_log "WARNING" "Docker服务不可用, 请检查!"
 		return 1
 	fi
 	
-	print_log "DEBUG" "Docker卷名称: $volume_ref"
-	print_log "DEBUG" "驱动类型: $driver_ref"
+	utils_log "DEBUG" "Docker卷名称: $volume_ref"
+	utils_log "DEBUG" "驱动类型: $driver_ref"
 	
 	# 验证必要参数
 	[[ -z "$volume_ref" ]] && {
-		print_log "ERROR" "Docker卷名称未配置, 请检查!"
+		utils_log "ERROR" "Docker卷名称未配置, 请检查!"
 		return 1
 	}
 	
 	# 创建或检查Docker卷
 	if docker volume inspect "$volume_ref" >/dev/null 2>&1; then
-		print_log "WARNING" "Docker卷已存在: $volume_ref"
+		utils_log "WARNING" "Docker卷已存在: $volume_ref"
 	else
-		print_log "INFO" "创建Docker卷: $volume_ref"
+		utils_log "INFO" "创建Docker卷: $volume_ref"
 		local create_cmd="docker volume create --driver_ref $driver_ref --name_ref $volume_ref"
 		
 		# 添加驱动选项
@@ -721,15 +721,15 @@ mount_with_docker()
 			done
 		fi
 		
-		print_log "DEBUG" "执行命令: $create_cmd"
+		utils_log "DEBUG" "执行命令: $create_cmd"
 		
 		# 执行创建命令
 		if ! eval "$create_cmd" >/dev/null 2>&1; then
-			print_log "ERROR" "Docker卷创建失败: $volume_ref"
+			utils_log "ERROR" "Docker卷创建失败: $volume_ref"
 			return 1
 		fi
 		
-		print_log "INFO" "Docker卷创建成功: $volume_ref"
+		utils_log "INFO" "Docker卷创建成功: $volume_ref"
 	fi
 	
 	return  0
