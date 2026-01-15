@@ -6,18 +6,21 @@ if [[ -n "${LOG_UTILS_LOADED:-}" ]]; then
 fi
 export LOG_UTILS_LOADED=1
 
-# 日志级别定义
-declare -A LOG_LEVEL_VALUES=(
+# 日志级别定义(全局数组)
+declare -gA LOG_LEVEL_VALUES=(
 	["TRACE"]=0		# 最详细的调试信息
 	["DEBUG"]=1		# 调试信息
 	["INFO"]=2		# 常规操作信息
-	["WARNING"]=3	# 警告信息
-	["ERROR"]=4		# 错误信息
+	["NOTICE"]=3	# 重要通知信息
+	["WARNING"]=4	# 警告信息
+	["ERROR"]=5		# 错误信息
+	["FATAL"]=6		# 致命错误
 	["NONE"]=99		# 不记录任何日志
 )
 
 # 日志函数配置
 : "${UTILS_LOG_FUNC:=print_log}"
+: "${LOG_LEVEL:=INFO}"
 
 # 特殊日志级别
 export SPECIAL_LEVELS="TITLE|SECTION|HEADER|SUBTITLE|DIVIDER|BLANK|TEXT"
@@ -44,8 +47,11 @@ diff_log_level()
 	# 特殊格式日志总是输出
 	[[ "$current_level" =~ ^($SPECIAL_LEVELS)$ ]] && return 0
 	
-	local current_value="${LOG_LEVEL_VALUES[$current_level]:-2}"
-	local configured_value="${LOG_LEVEL_VALUES[$configured_level]:-2}"
+	local current_value="${LOG_LEVEL_VALUES[$current_level]}"
+	local configured_value="${LOG_LEVEL_VALUES[$configured_level]}"
+
+	#$echo "test1 $current_level - $configured_level"
+	#$echo "test2 $current_value - $configured_value"
 	
 	# 当前级别数值 >= 配置级别数值时记录
 	[[ $current_value -ge $configured_value ]]
@@ -70,20 +76,20 @@ _write_log()
 	
 	# 颜色定义
 	local reset="\x1b[0m"
-	local time_color="\x1b[38;5;208m"
-	local func_color="\x1b[38;5;210m"
-	local msg_color="\x1b[38;5;87m"
+	local time_color="\x1b[38;5;208m"		# 橙色
+	local func_color="\x1b[38;5;210m"		# 浅橙色
+	local msg_color="\x1b[38;5;87m"			# 青色
 	
 	local level_color
 	case "$log_level" in
-		"TRACE"|"INFO")   level_color="\x1b[38;5;76m" ;;
-		"DEBUG")          level_color="\x1b[38;5;208m" ;;
-		"WARNING")        level_color="\033[1;43;31m" ;;
-		"ERROR")          level_color="\x1b[38;5;196m" ;;
-		"SECTION")        level_color="\x1b[38;5;51m" ;;
-		"HEADER")         level_color="\x1b[38;5;213m" ;;
-		"DIVIDER")        level_color="\x1b[38;5;245m" ;;
-		*)                level_color="\x1b[38;5;87m" ;;
+		"TRACE")			level_color="\x1b[38;5;246m" ;;		# 灰色
+		"DEBUG")			level_color="\x1b[38;5;208m" ;;		# 橙色
+		"INFO")				level_color="\x1b[38;5;76m"  ;;		# 绿色
+		"NOTICE")			level_color="\x1b[38;5;39m"  ;;		# 蓝色
+		"WARNING")			level_color="\033[1;43;31m" ;;		# 黄色加粗
+		"ERROR")			level_color="\x1b[38;5;196m" ;;		# 红色
+		"FATAL")			level_color="\x1b[1;37;41m"  ;;		# 白字红底加粗
+		*)					level_color="\x1b[38;5;87m" ;;		# 青色
 	esac
 	
 	# 终端输出
@@ -93,7 +99,11 @@ _write_log()
 	[[ -n "$func_type" ]] && output+=" ${func_color}($func_type)$reset"
 	output+="${msg_color}${message:-No message}$reset"
 	
-	printf '%b\n' "$output"
+	# 根据级别选择输出流
+	case "$log_level" in
+		"ERROR"|"FATAL"|"WARNING")	printf '%b\n' "$output" >&2 ;;	# 错误类输出到stderr
+		*)	printf '%b\n' "$output" ;; 		# 其他输出到stdout
+	esac
 	
 	# 文件输出
 	if [[ -n "$log_file" ]]; then
