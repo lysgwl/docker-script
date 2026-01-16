@@ -449,9 +449,6 @@ check_process()
 				# 获取父进程
 				local parent_pid=$PPID
 				
-				echo "$pids-$current_pid-$parent_pid" >&2
-				
-
 				for pid in $pids; do
 					# 排除当前进程
 					[[ "$pid" == "$current_pid" ]] && continue
