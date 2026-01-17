@@ -38,8 +38,6 @@ _export_functions()
 	while IFS= read -r func_name; do
 		[[ -z "$func_name" ]] && continue
 		
-		#echo "[DEBUG] _export_functions: 函数名称=$func_name" >&2
-		
 		if ! declare -f "$func_name" >/dev/null 2>&1; then
 			echo "[WARNING] _export_functions: 函数 $func_name 未定义!" >&2
 		else
@@ -54,12 +52,7 @@ _load_module()
 	local module_name="$1"
 	local export="${2:-1}"
 	
-	# echo "[DEBUG] _load_module: name=$module_name, ${LOADED_MODULES[$module_name]:-未加载}" >&2
-	
-	[[ ${LOADED_MODULES[$module_name]+_} ]] && {
-		# echo "[DEBUG] _load_module(skip): name=$module_name, 已加载" >&2
-		return 0
-	}
+	[[ ${LOADED_MODULES[$module_name]+_} ]] && return 0
 	
 	# 加载依赖
 	local deps="${MODULE_DEPEND[$module_name]:-}"
@@ -98,8 +91,6 @@ load_feature()
 {
 	local export="${1:-1}"	# (1=导出, 0=不导出)
 	shift
-	
-	#echo "[DEBUG] load_feature: export=$export, 参数=$@, 进程=$$" >&2
 	
 	if [[ $# -eq 0 ]]; then
 		for module in "${LIB_DIR}"/*.sh; do

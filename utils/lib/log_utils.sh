@@ -8,7 +8,7 @@ export LOG_UTILS_LOADED=1
 
 # 日志函数配置
 : "${UTILS_LOG_FUNC:=print_log}"
-: "${LOG_LEVEL:=INFO}"
+: "${LOG_LEVEL:=DEBUG}"
 
 # 特殊日志级别
 export SPECIAL_LEVELS="TITLE|SECTION|HEADER|SUBTITLE|DIVIDER|BLANK|TEXT"
