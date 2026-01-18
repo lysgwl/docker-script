@@ -115,7 +115,7 @@ check_storage()
 	local protocol_ref="$2"
 	local remote_ref="$3"
 	local credentials_ref="$4"
-	local timeout="$5"
+	local timeout="${5:-2}"
 	
 	[[ -z "$server_ref" || -z "$protocol_ref" || -z "$remote_ref" ]] && return 1
 	
