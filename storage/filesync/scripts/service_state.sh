@@ -1,14 +1,7 @@
 #!/bin/bash
-# service_state.sh - 服务状态管理模块
-
-export ENABLE_FILEBROWSER=false
-export ENABLE_OPENLIST=true
-export ENABLE_SYNCTHING=true
-export ENABLE_VERYSYNC=true
 
 # 服务状态枚举
 declare -A SERVICE_STATUS=(
-	["UNKNOWN"]="unknown"			# 未知/未初始化
 	["INIT"]="init"					# 初始化
 	["ENABLED"]="enabled"			# 已启用
 	["DISABLED"]="disabled"			# 已禁用
@@ -16,129 +9,164 @@ declare -A SERVICE_STATUS=(
 	["STOPPED"]="stopped"			# 已停止
 	["SUCCESS"]="success"			# 成功
 	["FAILURE"]="failure"			# 失败
-	["EXECUTING"]="executing"		# 执行中（进行中）
+	["EXECUTING"]="executing"		# 执行中
 	["SKIPPED"]="skipped"			# 跳过
+	["UPDATING"]="updating"			# 更新中
+	["UNKNOWN"]="unknown"			# 未初始化
 )
 readonly -A SERVICE_STATUS
 
-# 服务列表 (服务名称:启用状态:更新支持)
-SERVICE_LIST_ARRAY=(
-	"filebrowser:${ENABLE_FILEBROWSER:-false}:false"
-	"openlist:${ENABLE_OPENLIST:-false}:true"
-	"syncthing:${ENABLE_SYNCTHING:-false}:true"
-	"verysync:${ENABLE_VERYSYNC:-false}:false"
+# 服务列表模板
+SERVICE_TEMPLATES=(
+	"filebrowser:${ENABLE_FILEBROWSER:-false}:false:文件浏览器"
+	"openlist:${ENABLE_OPENLIST:-true}:true:文件管理器"
+	"syncthing:${ENABLE_SYNCTHING:-false}:true:文件同步工具"
+	"verysync:${ENABLE_VERYSYNC:-false}:false:微力同步工具"
 )
 
-# 服务实例
-declare -A SERVICE_STATES=()
+# 服务实例注册表
+declare -A SERVICE_REGISTRY=()
 
 # ============================================================================
-# 服务管理相关函数
+# 服务注册接口
 
-# 导出状态
-export_service_states()
+# 注册服务
+register_service()
 {
-	local states_array=()
-	for service in "${!SERVICE_STATES[@]}"; do
-		states_array+=("${SERVICE_STATES[$service]}")
-	done
+	local service="$1"
+	local opts="$2"
 	
-	local json_array='[]'
-	if [[ ${#states_array[@]} -gt 0 ]]; then
-		json_array=$(printf '%s\n' "${states_array[@]}" | jq -sc '.')
+	if [[ -z "$service" ]]; then
+		logger "ERROR" "注册服务名称不能为空!"
+		return 1
 	fi
 	
-	#export "$SERVICE_STATES_ENV"="$json_array"
+	[[ -z "$opts" ]] && opts='{}'
 	
-	# 尝试写入文件
-	if ! echo "$json_array" > "$SERVICE_STATES_FILE" 2>/dev/null; then
-		print_log "WARNING" "无法写入状态文件: $SERVICE_STATES_FILE" >&2
-	fi
-}
-
-# 导入状态
-import_service_states()
-{
-	# 检查文件是否存在
-	[[ ! -f "$SERVICE_STATES_FILE" ]] && return
+	# 校验 JSON 格式
+	echo "$opts" | jq empty >/dev/null 2>&1 || {
+		logger "ERROR" "注册服务$service配置JSON格式不正确!"
+		return 1
+	}
 	
-	# 读取数据
-	#local json_data="${!SERVICE_STATES_ENV:-}"
-	local json_data=$(cat "$SERVICE_STATES_FILE" 2>/dev/null)
-	
-	# 检查是否为空
-	[[ -z "$json_data" ]] && return
-	
-	# 清空当前状态
-	unset SERVICE_STATES 2>/dev/null || true
-	declare -gA SERVICE_STATES
-	
-	while IFS= read -r line; do
-		[[ -z "$line" ]] && continue
-		
-		local service=$(echo "$line" | jq -r '.service // ""')
-		[[ -z "$service" ]] && continue
-		
-		local value=$(echo "$line" | tr -d '\n')
-		SERVICE_STATES["$service"]="$value"
-		
-	done < <(echo "$json_data" | jq -c '.[]' 2>/dev/null)
-}
-
-# 初始化服务状态
-init_service_status()
-{
-	local user="${1:-}"
-	local group="${2:-}"
-	
-	# 检查是否被初始化
-	if [[ ${#SERVICE_STATES[@]} -gt 0 ]]; then
+	# 检查是否已注册
+	if [[ -n "${SERVICE_REGISTRY[$service]:-}" ]]; then
+		logger "DEBUG" "'$service'服务已注册"
 		return 0
 	fi
-
-	# 只有root权限才能设置文件权限
-	if [[ "$(id -u)" -eq 0 ]]; then
-		# 确保状态文件存在
-		if [[ ! -f "$SERVICE_STATES_FILE" ]]; then
-			echo '[]' > "$SERVICE_STATES_FILE" 2>/dev/null || {
-				print_log "WARNING" "无法创建状态文件: $SERVICE_STATES_FILE"
-				return 1
-			}
-		fi
-		
-		# 设置文件所有权
-		if ! chown "$user:$group" "$SERVICE_STATES_FILE" 2>/dev/null; then
-			print_log "WARNING" "无法设置状态文件所有权"
-		fi
-		
-		# 设置文件权限(644 666)
-		if ! chmod 666 "$SERVICE_STATES_FILE" 2>/dev/null; then
-			print_log "WARNING" "无法设置状态文件权限"
-		fi
-	fi
 	
-	# 初始化服务状态
-	for item in "${SERVICE_LIST_ARRAY[@]}"; do
-		[[ -z "$item" ]] && continue
+	# 解析字段
+	local enabled=$(jq -r '.enabled // false' <<<"$opts")
+	local updated=$(jq -r '.updated // false' <<<"$opts")
+	local description=$(jq -r '.description // empty' <<<"$opts")
+	local user=$(jq -r '.user // empty' <<<"$opts")
+	local group=$(jq -r '.group // empty' <<<"$opts")
+	local pid_file=$(jq -r '.pid_file // empty' <<<"$opts")
+	local log_file=$(jq -r '.log_file // empty' <<<"$opts")
+	local config=$(jq -c '.config // {}' <<<"$opts")
+	
+	local register_time=$(date '+%Y-%m-%d %H:%M:%S')
+	
+	local register_json=$(jq -n \
+		--arg service "$service" \
+		--argjson enabled "$enabled" \
+		--argjson updated "$updated" \
+		--arg description "$description" \
+		--arg user "$user" \
+		--arg group "$group" \
+		--arg pid_file "$pid_file" \
+		--arg log_file "$log_file" \
+		--arg time "$register_time" \
+		--argjson config "$config" \
+		'{
+			service: $service,
+			enabled: $enabled,
+			updated: $updated,
+			description: $description,
+			user: $user,
+			group: $group,
+			pid_file: $pid_file,
+			log_file: $log_file,
+			register_time: $time,
+			timestamp: $time,
+			state: {
+				status: "unknown",
+				pid: null,
+				health: "unknown",
+				last_start: null,
+				last_stop: null,
+				reason: null
+			},
+			config: $config
+		}')
 		
-		IFS=':' read -r service enabled updated <<< "$item"
-		
-		# 创建JSON对象
-		local state_json='{
-			"service": "'$service'",
-			"enabled": '$enabled',
-			"updated": '$updated',
-			"status": "'${SERVICE_STATUS[INIT]}'",
-			"timestamp": "'$(date '+%Y-%m-%d %H:%M:%S')'",
-			"extra": {}
-		}'
+	# 注册到服务
+	SERVICE_REGISTRY["$service"]="$register_json"
+	logger "INFO" "注册服务: $service (enabled: $enabled, updated: $updated)"
+}
 
-		SERVICE_STATES["$service"]="$state_json"
+# 导入模板
+import_service_templates()
+{
+	logger "INFO" "开始导入服务模板"
+	
+	for template in "${SERVICE_TEMPLATES[@]}"; do
+		[[ -z "$template" ]] && continue
+		
+		IFS=':' read -r service enabled updated description <<< "$template"
+		
+		# 构建注册选项
+		local opts_json=$(jq -n \
+			--argjson enabled "$([[ "$enabled" == "true" ]] && echo true || echo false)" \
+			--argjson updated "$([[ "$updated" == "true" ]] && echo true || echo false)" \
+			--arg description "$description" \
+			--arg user "${USER_CONFIG[user]}" \
+			--arg group "${USER_CONFIG[group]}" \
+			'{
+				enabled: $enabled,
+				updated: $updated,
+				description: $description,
+				user: $user,
+				group: $group
+			}')
+		
+		# 注册服务
+		register_service "$service" "$opts_json"
 	done
 	
-	# 导出状态
-	export_service_states || true 
+	logger "INFO" "服务模板导入完成"
 }
+
+# 导入配置
+import_service_config()
+{
+	local service="$1"
+	local pid_file="$2"
+	local log_file="$3"
+	local config_json="$4"
+	
+	# 校验 JSON
+	echo "$config_json" | jq empty >/dev/null 2>&1 || {
+		logger "ERROR" "$service 配置不是规范的JSON格式"
+		return 1
+	}
+	
+	if [[ -n "$pid_file" ]]; then
+		set_service_field "$service" "pid_file" "$pid_file"
+	fi
+	
+	if [[ -n "$log_file" ]]; then
+		set_service_field "$service" "log_file" "$log_file"
+	fi
+	
+	local current=$(get_service_field "$service" "config")
+	if [[ -z "$current" || "$current" == "{}" ]]; then
+		set_service_field  "$service" "config" "$config_json" "json"
+	fi
+}
+
+# ============================================================================
+# 服务状态管理
 
 # 加载服务状态
 load_service_states()
@@ -146,115 +174,441 @@ load_service_states()
 	local user="${1:-}"
 	local group="${2:-}"
 	
-	# 尝试导入已有状态
-	import_service_states 2>/dev/null || true
+	logger "INFO" "开始加载服务状态"
 	
-	# 如果状态为空，初始化
-	if [[ ${#SERVICE_STATES[@]} -eq 0 ]]; then
-		init_service_status "$user" "$group"
+	# 导入状态
+	import_service_states
+	
+	# 如果注册为空,初始化
+	if [[ ${#SERVICE_REGISTRY[@]} -eq 0 ]]; then
+		init_service_states "$user" "$group"
+	else
+		sync_service_states
+	fi
+	
+	logger "INFO" "服务状态加载完成"
+}
+
+# 初始化服务状态
+init_service_states()
+{
+	local user="${1:-}"
+	local group="${2:-}"
+	
+	# 如果注册表为空, 从模板注册
+	if [[ ${#SERVICE_REGISTRY[@]} -eq 0 ]]; then
+		import_service_templates
+	fi
+	
+	# 确保状态文件存在
+	if [[ "$(id -u)" -eq 0 ]]; then
+		if [[ ! -f "$SERVICE_STATES_FILE" ]]; then
+			echo '{}' > "$SERVICE_STATES_FILE" 2>/dev/null || {
+				logger "WARNING" "无法创建状态文件: $SERVICE_STATES_FILE"
+				return 1
+			}
+		fi
+		
+		# 设置文件权限
+		if [[ -n "$user" ]] && [[ -n "$group" ]]; then
+			chown "$user:$group" "$SERVICE_STATES_FILE" 2>/dev/null || true
+		fi
+		
+		chmod 666 "$SERVICE_STATES_FILE" 2>/dev/null || true
+	fi
+	
+	# 导出状态
+	export_service_states || true 
+}
+
+# 导入服务状态
+import_service_states()
+{
+	# 检查文件是否存在
+	[[ ! -f "$SERVICE_STATES_FILE" ]] && return
+	
+	logger "DEBUG" "从文件导入服务状态: $SERVICE_STATES_FILE"
+	
+	# 读取数据
+	local json_data=$(cat "$SERVICE_STATES_FILE" 2>/dev/null)
+	
+	# 检查是否为空
+	[[ -z "$json_data" ]] && return
+	
+	# 清空当前注册表
+	unset SERVICE_REGISTRY 2>/dev/null || true
+	declare -gA SERVICE_REGISTRY
+	
+	# 导入服务
+	while IFS= read -r line; do
+		[[ -z "$line" ]] && continue
+		
+		local service=$(echo "$line" | jq -r '.service // ""')
+		[[ -z "$service" ]] && continue
+		
+		# 规范化JSON
+		local value=$(echo "$line" | jq -c '.')
+		SERVICE_REGISTRY["$service"]="$value"
+		
+	done < <(echo "$json_data" | jq -c '.[]' 2>/dev/null)
+}
+
+# 同步服务状态
+sync_service_states()
+{
+	# 布尔值转换
+	_to_bool() {
+		case "${1,,}" in
+			true|1|yes|on|enabled)  echo "true";  return 0 ;;
+			false|0|no|off|disabled) echo "false"; return 0 ;;
+			*) return 1 ;;
+		esac
+	}
+	
+	# 同步字段
+	_sync_field() {
+		local service="$1" field="$2" template_value="$3"
+		
+		# 转换为布尔值
+		local template_bool=$(_to_bool "$template_value")
+		
+		# 获取当前值
+		local current
+		current=$(get_service_field "$service" "$field" 2>/dev/null || echo "")
+		
+		# 转换为布尔值比较
+		local current_bool=$(_to_bool "$current_value")
+		
+		# 比较值
+		[[ "$current_bool" == "$template_bool" ]] && return 1
+		
+		# 更新字段
+		set_service_field "$service" "$field" "$template_bool"
+	}
+	
+	for template in "${SERVICE_TEMPLATES[@]}"; do
+		[[ -z "$template" ]] && continue
+		
+		IFS=':' read -r service enable update _ <<< "$template"
+		[[ -z "${SERVICE_REGISTRY[$service]:-}" ]] && continue
+		
+		# 同步 enabled 字段
+		_sync_field "$service" "enabled" "$enable"
+		
+		# 同步 updated 字段
+		_sync_field "$service" "updated" "$update"
+	done
+	
+	# 导出状态
+	export_service_states || true 
+}
+
+# 导出服务状态
+export_service_states()
+{
+	local states_array=()
+	
+	# 收集所有服务状态
+	for service in "${!SERVICE_REGISTRY[@]}"; do
+		local service_json="${SERVICE_REGISTRY[$service]}"
+		
+		# 更新时间戳
+		service_json=$(echo "$service_json" | jq -c \
+			--arg timestamp "$(date '+%Y-%m-%d %H:%M:%S')" \
+			'.timestamp = $timestamp')
+			
+		states_array+=("$service_json")
+	done
+	
+	# 构建JSON数组
+	local json_array='[]'
+	if [[ ${#states_array[@]} -gt 0 ]]; then
+		json_array=$(printf '%s\n' "${states_array[@]}" | jq -sc '.')
+	fi
+	
+	# 写入文件
+	if ! echo "$json_array" > "$SERVICE_STATES_FILE" 2>/dev/null; then
+		logger "WARNING" "无法写入状态文件: $SERVICE_STATES_FILE" >&2
+		return 1
 	fi
 }
 
-# 获取服务状态字段
+# ============================================================================
+# 服务状态操作函数
+
+# 获取服务字段
 get_service_field()
 {
 	local service="$1"
 	local field="${2:-all}"
 	
-	local json="${SERVICE_STATES[$service]}"
-	if [[ -z "$json" ]]; then
+	# 验证服务注册
+	local current_json="${SERVICE_REGISTRY[$service]}"
+	[[ -z "$current_json" ]] && {
+		logger "ERROR" "服务未注册: $service" >&2
 		return 1
-	fi
+	}
 	
-	if ! echo "$json" | jq empty >/dev/null 2>&1; then
+	# 检查JSON格式
+	if ! echo "$current_json" | jq empty >/dev/null 2>&1; then
+		logger "ERROR" "服务$service注册数据JSON格式错误" >&2
 		return 1
 	fi
 	
 	case "$field" in
-		"service")		echo "$json" | jq -r '.service' ;;
-		"enabled")		echo "$json" | jq -r '.enabled' ;;
-		"updated")		echo "$json" | jq -r '.updated' ;;
-		"status")		echo "$json" | jq -r '.status' ;;
-		"timestamp")	echo "$json" | jq -r '.timestamp' ;;
-		"extra")		echo "$json" | jq -r '.extra' ;;	# 返回纯文本 JSON
-		"extra_json")	echo "$json" | jq -c '.extra' ;;	# 返回紧凑 JSON
-		"all")			echo "$json" ;;
-		*)				echo "$json" | jq -r '.enabled' ;;
+		"service")		echo "$current_json" | jq -r '.service' ;;
+		"enabled")		echo "$current_json" | jq -r '.enabled' ;;
+		"updated")		echo "$current_json" | jq -r '.updated' ;;
+		"state")		echo "$current_json" | jq -c '.state // {}' ;;
+		"config")		echo "$current_json" | jq -c '.config // {}' ;;
+		"all")			echo "$current_json" ;;
+		*)				echo "$current_json" | jq -r ".$field" ;;
 	esac
 }
 
-# 设置服务状态
-set_service_state()
+# 设置服务字段
+set_service_field()
 {
 	local service="$1"
-	local enabled="${2:-}"
-	local updated="${3:-}"
-	local status="${4:-}"
-	local timestamp="${5:-}"
-	local extra="${6:-}"
+	local field="$2"
+	local value="$3"
+	local type="${4:-string}"
 	
-	# 获取当前状态
-	local current_json="${SERVICE_STATES[$service]}"
-	[[ -z "$current_json" ]] && return 1
+	# 验证服务注册
+	local current_json="${SERVICE_REGISTRY[$service]}"
+	[[ -z "$current_json" ]] && {
+		logger "ERROR" "服务未注册: $service"
+		return 1
+	}
 	
-	# 验证JSON格式
+	# 检查JSON格式
 	if ! echo "$current_json" | jq empty >/dev/null 2>&1; then
+		logger "ERROR" "服务$service注册数据JSON格式错误"
 		return 1
 	fi
 	
-	# 构建更新命令
-	timestamp="${timestamp:-$(date '+%Y-%m-%d %H:%M:%S')}"
-	local cmd=".timestamp = \"$timestamp\""
+	case "$type" in
+		json)
+			echo "$value" | jq empty >/dev/null 2>&1 || {
+				logger "ERROR" "服务$service配置数据JSON格式错误"
+				return 1
+			}
+			
+			SERVICE_REGISTRY["$service"]=$(
+				echo "$current_json" | jq --arg path "$field" \
+					--argjson val "$value" \
+					'setpath(($path | split(".")); $val)'
+			)
+			;;
+		string|*)
+			SERVICE_REGISTRY["$service"]=$(
+				echo "$current_json" | jq --arg path "$field" \
+					--arg val "$value" \
+					'setpath(($path | split(".")); $val)'
+			)
+			;;
+	esac
 	
-	[[ -n "$enabled" ]] && cmd=".enabled = $enabled | $cmd"
-	[[ -n "$updated" ]] && cmd=".updated = $updated | $cmd"
-	[[ -n "$status" ]] && cmd=".status = \"$status\" | $cmd"
+	# 导出状态
+	export_service_states || true 
+}
 
-	if [[ -n "$extra" ]]; then
-		if echo "$extra" | jq empty >/dev/null 2>&1; then
-			cmd=".extra = $extra | $cmd"
-		else
-			cmd=".extra.reason = \"$extra\" | $cmd"
+# 更新服务PID
+update_service_pid()
+{
+	local service="$1"
+	local pid="${2:-null}"
+	
+	set_service_field "$service" "state.pid" "$pid"
+}
+
+# 获取服务PID
+get_service_pid()
+{
+	local service="$1"
+	
+	local pid
+	pid=$(get_service_field "$service" "state.pid" 2>/dev/null) || return 1
+	
+	[[ -z "$pid" || "$pid" == "null" ]] && return 1
+	echo "$pid"
+}
+
+# 更新服务健康状态
+update_service_health()
+{
+	local service="$1"
+	local health="${2:-unknown}"
+	
+	set_service_field "$service" "state.health" "$health"
+}
+
+# 检查服务是否存活
+check_service_alive()
+{
+	local service="$1"
+	local pid="${2:-}"
+	
+	if [[ -z "$pid" ]]; then
+		# 读取 PID
+		pid=$(get_service_field "$service" "state.pid" 2>/dev/null) || return 1
+	fi
+	
+	# 未记录
+	[[ -z "$pid" || "$pid" == "null" ]] && return 1
+	
+	# 进程是否存在
+	if ! kill -0 "$pid" 2>/dev/null; then
+		return 1
+	fi
+	
+	# 验证进程是否真的是该服务
+	if [[ -f "/proc/$pid/cmdline" ]]; then
+		local cmdline=$(cat "/proc/$pid/cmdline" 2>/dev/null | tr '\0' ' ')
+		if [[ ! "$cmdline" =~ $service ]]; then
+			return 1
+		fi
+	else
+		if ! ps -p "$pid" -o cmd= 2>/dev/null | grep -q "$service"; then
+			return 1
 		fi
 	fi
 	
-	# 执行更新
-	local update_json
-	update_json=$(echo "$current_json" | jq -c "$cmd") || return 1
-	
-	# 保存并记录
-	SERVICE_STATES["$service"]="$update_json"
-	
-	# 导出状态
-	export_service_states
+	return 0
 }
+
+# 获取服务详细信息
+get_service_info()
+{
+	local service="$1"
+	
+	# 验证服务注册
+	local current_json="${SERVICE_REGISTRY[$service]}"
+	[[ -z "$current_json" ]] && {
+		logger "ERROR" "服务未注册: $service"
+		return 1
+	}
+	
+	# 检查JSON格式
+	if ! echo "$current_json" | jq empty >/dev/null 2>&1; then
+		logger "ERROR" "服务$service注册数据JSON格式错误"
+		return 1
+	fi
+	
+	local alive=false
+	if check_service_alive "$service"; then
+		alive=true
+	fi
+	
+	# 构造增强 JSON（不写回 registry）
+	echo "$current_json" | jq --argjson alive "$alive" '
+		.state.alive = $alive
+	'
+}
+
+# ============================================================================
+# 服务管理函数
 
 # 检查服务是否启用
 check_service_enabled()
 {
 	local service="$1"
 	
-	local enabled=$(get_service_field "$service" "enabled" 2>/dev/null) || return 1
-	
+	local enabled
+	enabled=$(get_service_field "$service" "enabled" 2>/dev/null) || return 1
 	[[ "$enabled" == "true" ]]
 }
 
-# 检查服务是否更新
+# 检查服务是否支持更新
 check_service_updated()
 {
 	local service="$1"
 	
-	local updated=$(get_service_field "$service" "updated" 2>/dev/null) || return 1
-	
+	local updated
+	updated=$(get_service_field "$service" "updated" 2>/dev/null) || return 1
 	[[ "$updated" == "true" ]]
 }
 
-# 获取服务当前状态
-get_service_status()
+# 获取服务 pid 文件路径
+get_service_pid_file()
 {
 	local service="$1"
 	
-	get_service_field "$service" "status"
+	local pid_file
+	pid_file=$(get_service_field "$service" "pid_file" 2>/dev/null) || return 1
+	
+	if [[ -z "$pid_file" ]] || [[ "$pid_file" == "null" ]]; then
+		# 返回默认路径
+		echo "/var/run/${service}.pid"
+	else
+		echo "$pid_file"
+	fi
+}
+
+# 获取服务日志文件路径
+get_service_log_file()
+{
+	local service="$1"
+	
+	local log_file
+	log_file=$(get_service_field "$service" "log_file" 2>/dev/null) || return 1
+	
+	if [[ -z "$log_file" ]] || [[ "$log_file" == "null" ]]; then
+		# 返回默认路径
+		echo "/var/log/${service}.log"
+	else
+		echo "$log_file"
+	fi
+}
+
+# 更新服务状态
+update_service_states()
+{
+	local service="$1"
+	local status="$2"
+	local reason="${3:-}"
+	
+	[[ -z "$service" || -z "$status" ]] && return 1
+	
+	local current_status
+	current_status=$(get_service_states "$service")
+	
+	# 状态未变化
+	[[ "$current_status" == "$status" ]] && return 0
+	
+	# 更新状态
+	set_service_field "$service" "state.status" "$status"
+	
+	# 写入原因
+	[[ -n "$reason" ]] && set_service_field "$service" "state.reason" "$reason"
+	
+	# 更新额外依赖字段
+	case "$status" in
+		"${SERVICE_STATUS[RUNNING]}")
+			set_service_field "$service" "state.last_start" "$(date '+%Y-%m-%d %H:%M:%S')"
+			set_service_field "$service" "state.health" "healthy"
+			;;
+		"${SERVICE_STATUS[STOPPED]}")
+			set_service_field "$service" "state.last_stop" "$(date '+%Y-%m-%d %H:%M:%S')"
+			set_service_field "$service" "state.pid" "null"
+			;;
+		"${SERVICE_STATUS[FAILURE]}")
+			set_service_field "$service" "state.health" "unhealthy"
+			;;
+	esac
+	
+	logger "INFO" "状态更新: $service ($current_status -> $status)"
+}
+
+# 获取服务状态
+get_service_states()
+{
+	local service="$1"
+	
+	local status
+	status=$(get_service_field "$service" "state.status" 2>/dev/null)
+	
+	echo "${status:-${SERVICE_STATUS[UNKNOWN]}}"
 }
 
 # 获取服务状态变更原因
@@ -262,42 +616,10 @@ get_service_reason()
 {
 	local service="$1"
 	
-	# bash 正则解析JSON 
-	# local extra=$(get_service_field "$service" "extra") || return 1
-	# [[ "$extra" =~ reason=([^:]*) ]] && reason="${BASH_REMATCH[1]}"
-	
-	# 获取JSON格式
-	local extra_json=$(get_service_field "$service" "extra_json")
-	[[ -z "$extra_json" || "$extra_json" == "null" ]] && return 1
-	
-	# 提取 reason 字段
-	local reason=$(echo "$extra_json" | jq -r '.reason // ""')
+	local reason
+	reason=$(get_service_field "$service" "state.reason" 2>/dev/null)
 	
 	echo "${reason:-}"
-	[[ -n "$reason" ]] && return 0 || return 1
-}
-
-# 更新服务状态
-update_service_status()
-{
-	local service="$1"
-	local status="$2"
-	local reason="${3:-}"
-	
-	local current_status=$(get_service_field "$service" "status")
-	[[ "$current_status" == "$status" ]] && return 0
-	
-	local enabled=$(get_service_field "$service" "enabled")
-	local updated=$(get_service_field "$service" "updated")
-	local extra=$(get_service_field "$service" "extra_json")
-	
-	if [[ -n "$reason" ]]; then
-		echo "$extra" | jq empty >/dev/null 2>&1 || extra="{}"
-		extra=$(echo "$extra" | jq --arg reason "$reason" '.reason = $reason')
-	fi
-	
-	# 设置新状态
-	set_service_state "$service" "$enabled" "$updated" "$status" "" "$extra"
 }
 
 # 动态构建执行函数
@@ -307,20 +629,54 @@ execute_service_func()
 	local operation="$2"
 	local param="${3:-}"
 	
-	if check_service_enabled "$service"; then
-		# 动态构建函数名
-		local function_name="${operation}_${service}_service"
-		
-		if type -t "$function_name" &>/dev/null; then
-			if [[ -n "$param" ]]; then
-				$function_name "$param"
-			else
-				$function_name
-			fi
-			
-			return $?
-		fi
+	# 验证服务注册
+	[[ -z "${SERVICE_REGISTRY[$service]:-}" ]] && {
+		logger "ERROR" "服务未注册: $service"
+		return 1
+	}
+	
+	# 检查服务是否启用
+	check_service_enabled "$service" || {
+		logger "DEBUG" "服务 $service 未启用, 跳过 $operation 操作"
+		return 0
+	}
+	
+	# 动态构建函数名
+	local function_name="${operation}_${service}_service"
+	
+	# 检查函数是否存在
+	if ! type -t "$function_name" &>/dev/null; then
+		logger "WARNING" "函数 '$function_name' 未定义"
+		[[ "$operation" =~ ^(init|run|close)$ ]] && {
+			update_service_states "$service" "${SERVICE_STATUS[FAILURE]}" "函数不存在"
+		}
+		return 1
 	fi
+	
+	[[ "$(get_service_states "$service")" == "${SERVICE_STATUS[EXECUTING]}" ]] && {
+		logger "WARNING" "服务 $service 正在执行中, 跳过 $operation 操作"
+		return 0
+	}
+	
+	# 标记执行中
+	update_service_states "$service" "${SERVICE_STATUS[EXECUTING]}"
+	
+	# 执行函数
+	[[ -n "$param" ]] && $function_name "$param" || $function_name
+	local result=$?
+	
+	# 结果处理
+	if [[ $result -ne 0 ]]; then
+		update_service_states "$service" "${SERVICE_STATUS[FAILURE]}" "执行失败: $function_name"
+		return 1
+	fi
+	
+	case "$operation" in
+		init) update_service_states "$service" "${SERVICE_STATUS[SUCCESS]}" ;;
+		run) update_service_states "$service" "${SERVICE_STATUS[RUNNING]}" ;;
+		close) update_service_states "$service" "${SERVICE_STATUS[STOPPED]}" ;;
+		*) update_service_states "$service" "${SERVICE_STATUS[SUCCESS]}" ;;
+	esac
 	
 	return 0
 }

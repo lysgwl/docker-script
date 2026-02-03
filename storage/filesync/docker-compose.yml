@@ -4,11 +4,15 @@ name: filesync
 services:
   filesync-server:
     container_name: filesync
-    image: filesync-image
+    image: filesync-image:latest
     environment:
       - PUID=${PUID}
       - PGID=${PGID}
       - TZ=${TZ}
+      - MOUNT_NAMES=${MOUNT_NAMES}
+      - MOUNT_CHECK_INTERVAL=10
+      - MOUNT_MAX_FAILURES=1
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
     volumes:
       - ${FILESYNC_DIR}/data:/data
       - ${FILESYNC_DIR}/config:/config
@@ -29,25 +33,77 @@ services:
       - '21027:21027/udp'   # 设备发现端口映射（UDP）
     entrypoint: |
       sh -c "
-      wait-for-mount.sh \"${MOUNT_NAMES}\" /var/run/mount-probes || {
-          echo '等待挂载超时...'
+      echo \"[INFO] 启动阶段：等待挂载点就绪...\"
+      
+      # 启动时等待挂载点
+      wait-for-mount.sh \"${MOUNT_NAMES}\" --probe-dir /var/run/mount-probes || {
+          echo \"[ERROR] 启动等待挂载超时...\"
           exit 1
       }
       
-      echo '挂载点等待成功'
+      echo \"[INFO] 挂载点就绪，启动filesync服务\"
       
-      # 启动服务
-      exec /app/scripts/entrypoint.sh run
+      /app/scripts/entrypoint.sh run &
+      MAIN_PID=$!
+      
+      echo \"[INFO] 应用进程的PID: $${MAIN_PID}\"
+      
+      # 退出信号处理
+      shutdown() {
+          echo \"[INFO] 收到退出信号, 退出应用服务\"
+          
+          if kill -0 "$${MAIN_PID}" 2>/dev/null; then
+              kill -TERM "$${MAIN_PID}"
+              wait "$${MAIN_PID}" 2>/dev/null
+          fi
+          
+          exit 1
+      }
+      
+      # 捕获退出信号
+      trap shutdown TERM INT
+      
+      # 后台监控挂载
+      monitor_mounts() {
+          # 失败计数
+          failures=0
+          
+          while true; do
+              sleep $${MOUNT_CHECK_INTERVAL:-10}
+              
+              if wait-for-mount.sh --quick \"$${MOUNT_NAMES}\" --probe-dir /var/run/mount-probes; then
+                  # 检查成功, 重置失败计数
+                  if [ "$${failures}" -ne 0 ]; then
+                      echo \"[INFO] 挂载点恢复，重置失败计数\"
+                  fi
+                  
+                  failures=0
+              else
+                  echo \"[WARNING] 挂载点检查失败\"
+                  
+                  # 累计失败次数
+                  failures=$$((failures + 1))
+                  echo \"[WARNING] 挂载点失败次数: $${failures}/$${MOUNT_MAX_FAILURES:-3}\"
+                  
+                  if [ $${failures} -ge $${MOUNT_MAX_FAILURES:-3} ]; then
+                      echo \"[ERROR] 挂载点持续失败, 重启容器\"
+                      
+                      kill -TERM 1
+                      break
+                  fi
+              fi
+          done
+      }
+      
+      monitor_mounts &
+      
+      # 等待应用进程
+      wait "$${MAIN_PID}"
+      EXIT_CODE=$?
+      
+      echo \"[INFO] 应用进程退出, 退出码: $${EXIT_CODE}\"
+      exit ${EXIT_CODE:-0}
       "
-    healthcheck:
-      test: |
-        sh -c "
-        wait-for-mount.sh --quick \"${MOUNT_NAMES}\" /var/run/mount-probes
-        "
-      interval: 30s         # 每30秒检查一次
-      timeout: 10s          # 每次检查10秒
-      retries: 3        
-      start_period: 60s
     hostname: filesync
     networks:
       - local_network

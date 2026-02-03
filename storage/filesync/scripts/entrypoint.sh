@@ -8,7 +8,7 @@ export WORK_DIR="${WORK_DIR:-$(pwd)}"
 # 加载 update 脚本
 source $WORK_DIR/scripts/update.sh || exit 1
 
-if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+if [[ "${BASH_SOURCE[0]}" = "$0" ]]; then
 	# 加载服务状态
 	print_section "加载服务状态"
 	load_service_states "${USER_CONFIG[user]}" "${USER_CONFIG[group]}"
@@ -22,18 +22,16 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
 			exit 1
 		fi
 		
-		# 设置定时更新任务
-		schedule_updates
-		
 		# 创建初始锁
 		lock_manager "create" "$INIT_LOCK"
 	fi
 	
-	if [ "$1" = "run" ]; then
+	if [[ "$1" = "run" ]]; then
 		print_section "启动服务 ($1)"
-
+		
 		# 捕获 SIGTERM 信号
-		trap close_modules SIGTERM
+		#trap close_modules SIGTERM
+		trap 'close_modules; exit 143' SIGTERM
 		
 		# 重新加载cron配置
 		crond -l 2 -L /dev/stdout &
@@ -43,9 +41,13 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
 			run_modules
 		" &
 		
-		wait $!
+		CHILD_PID=$!
+		logger "INFO" "业务进程启动 (PID: $CHILD_PID)"
 		
-		# 保持容器运行
-		tail -f /dev/null
+		# 等待业务进程退出
+		wait $CHILD_PID
+		
+		local EXIT_CODE=$?
+		logger "INFO" "业务进程退出, 退出码: $EXIT_CODE"
 	fi
 fi

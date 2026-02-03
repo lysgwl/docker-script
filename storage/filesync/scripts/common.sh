@@ -5,6 +5,11 @@
 [[ "${_COMMON_SH_LOADED}" == "$$:${BASH_SOURCE[0]}" ]] && return 0
 _COMMON_SH_LOADED="$$:${BASH_SOURCE[0]}"
 
+export ENABLE_FILEBROWSER=false
+export ENABLE_OPENLIST=true
+export ENABLE_SYNCTHING=true
+export ENABLE_VERYSYNC=true
+
 # root 用户密码
 readonly ROOT_PASSWORD="123456"
 
@@ -47,26 +52,26 @@ readonly -A SSHD_CONFIG
 
 # 系统配置
 declare -A SYSTEM_CONFIG=(
-	["downloads_dir"]="${WORK_DIR}/downloads"		# 下载目录
-	["install_dir"]="${WORK_DIR}/install"			# 安装目录
-	["update_dir"]="/mnt/usr/downloads"				# 更新目录
-	["conf_dir"]="${WORK_DIR}/config"				# 预配置目录
-	["config_dir"]="/config"						# 配置目录
-	["data_dir"]="/data"							# 数据目录
-	["usr_dir"]="/mnt/usr"							# 用户目录
-	["arch"]="$(uname -m)"							# 系统架构
-	["type"]="$(uname | tr '[A-Z]' '[a-z]')"		# 系统类型
-	["update_log"]="/var/log/update.log"			# 更新日志
+	["downloads_dir"]="${WORK_DIR}/downloads"			# 下载目录
+	["install_dir"]="${WORK_DIR}/install"				# 安装目录
+	["update_dir"]="/mnt/usr/downloads"					# 更新目录
+	["conf_dir"]="${WORK_DIR}/config"					# 预配置目录
+	["config_dir"]="/config"							# 配置目录
+	["data_dir"]="/data"								# 数据目录
+	["usr_dir"]="/mnt/usr"								# 用户目录
+	["arch"]="$(uname -m)"								# 系统架构
+	["type"]="$(uname | tr '[A-Z]' '[a-z]')"			# 系统类型
+	["log_file"]="${LOG_FILE:-/var/log/filesync.log}"	# 日志文件
 )
 readonly -A SYSTEM_CONFIG
 
 umask ${UMASK:-022}
 
-# 加载服务脚本
-source $WORK_DIR/scripts/set_service.sh
-
 # 加载服务状态脚本
 source $WORK_DIR/scripts/service_state.sh
+
+# 加载服务脚本
+source $WORK_DIR/scripts/set_service.sh
 
 # 加载 openlist 脚本
 source $WORK_DIR/scripts/set_openlist.sh
@@ -83,6 +88,28 @@ source $WORK_DIR/scripts/set_filebrowser.sh
 # ============================================================================
 # 工具函数
 
+# 打印日志
+logger()
+{
+	local log_level="$1"
+	local message="$2"
+	local func_type="${3:-}"
+	local output_type="${4:-console}"
+	
+	local log_file
+	[[ "$output_type" = "file" ]] && {
+		log_file="${SYSTEM_CONFIG[log_file]}"
+	}
+	
+	if [[ "$log_level" == "START_TITLE" || "$log_level" == "END_TITLE" ]]; then
+		print_title "$log_file"
+		print_log "TEXT" "$message" "" "$log_file"
+		print_title "$log_file"
+	else
+		print_log "$log_level" "$message" "$func_type" "$log_file"
+	fi
+}
+
 # 获取服务安装包
 get_service_archive()
 {
@@ -98,18 +125,18 @@ get_service_archive()
 	
 	# 尝试查找现有归档文件
 	if ! findpath=$(find_latest_archive "$downloads_dir" ".*${name}.*"); then
-		print_log "WARNING" "未匹配到 $name 软件包..." >&2
+		logger "WARNING" "未匹配到 $name 软件包..." >&2
 		
 		# 回调函数下载文件
 		local download_file
 		download_file=$($download_callback "$downloads_dir") && [ -n "$download_file" ] || {
-			print_log "ERROR" "下载 $name 软件包失败, 请检查!" >&2
+			logger "ERROR" "下载 $name 软件包失败, 请检查!" >&2
 			return 2
 		}
 		
 		# 提取并验证下载的文件
 		archive_path=$(extract_and_validate "$download_file" "$output_dir" ".*${name}.*") || {
-			print_log "ERROR" "解压 $name 文件失败, 请检查!" >&2
+			logger "ERROR" "解压 $name 文件失败, 请检查!" >&2
 			return 3
 		}
 		
@@ -122,13 +149,13 @@ get_service_archive()
 		
 		# 验证文件类型
 		if [[ -z "$archive_type" ]] || ! [[ "$archive_type" =~ ^(file|directory)$ ]]; then
-			print_log "ERROR" "解析 $name 文件失败, 请检查!" >&2
+			logger "ERROR" "解析 $name 文件失败, 请检查!" >&2
 			return 1
 		fi
 		
 		if [ "$archive_type" = "file" ]; then
 			archive_path=$(extract_and_validate "$archive_path" "$output_dir" ".*${name}.*") || {
-				print_log "ERROR" "解压 $name 文件失败, 请检查!" >&2
+				logger "ERROR" "解压 $name 文件失败, 请检查!" >&2
 				return 3
 			}
 		fi
@@ -156,7 +183,7 @@ get_service_archive()
 		fi
 		
 		if [[ -z "$latest_path" ]] || [[ ! -f "$latest_path" ]]; then
-			print_log "ERROR" "可执行文件 $name 不存在, 请检查!" >&2
+			logger "ERROR" "可执行文件 $name 不存在, 请检查!" >&2
 			return 1
 		fi
 	fi
@@ -174,7 +201,7 @@ exec_as_user()
 	
 	# 验证用户存在
 	if ! id "$user" &>/dev/null; then
-		print_log "ERROR" "用户 '$user' 不存在, 请检查!"
+		logger "ERROR" "用户 '$user' 不存在, 请检查!"
 		return 1
 	fi
 	
@@ -211,85 +238,49 @@ exec_as_user()
 # 初始化业务模块
 init_modules()
 {
-	if [ "$(id -u)" -ne 0 ]; then
-		print_log "ERROR" "非root用户权限无法初始环境, 请检查!"
+	if [[ "$(id -u)" -ne 0 ]]; then
+		logger "ERROR" "非root用户权限无法初始环境"
 		return 1
 	fi
 	
 	local param=$1
-	[ "$param" = "run" ] && param="config"
+	[[ "$param" = "run" ]] && param="config"
 	
 	# 初始服务环境
 	if ! init_service "$param"; then
 		return 1
 	fi
 
-	# 执行操作
-	for service in "${!SERVICE_STATES[@]}"; do
-		if ! check_service_enabled "$service"; then
-			continue
-		fi
-		
-		# 更新状态 - 初始化
-		update_service_status "$service" "${SERVICE_STATUS[INIT]}"
-
-		# 执行函数
-		if ! execute_service_func "$service" "init" "$param"; then
-			update_service_status "$service" "${SERVICE_STATUS[FAILURE]}"
-			
-			print_log "ERROR" "初始化 $service 失败!"
-			return 1
-		fi
-		
-		update_service_status "$service" "${SERVICE_STATUS[SUCCESS]}"
-	done
+	# 执行初始化
+	if ! service_loop "init" "$param"; then
+		return 1
+	fi
+	
+	logger "INFO" "业务模块初始化完成"
+	return 0
 }
 
 # 运行业务模块
 run_modules()
 {
-	# 执行操作
-	for service in "${!SERVICE_STATES[@]}"; do
-		if ! check_service_enabled "$service"; then
-			continue
-		fi
-		
-		# 更新状态
-		update_service_status "$service" "${SERVICE_STATUS[EXECUTING]}"
-
-		# 执行函数
-		if ! execute_service_func "$service" "run"; then
-			print_log "ERROR" "启动 $service 失败!"
-			update_service_status "$service" "${SERVICE_STATUS[FAILURE]}"
-		else
-			update_service_status "$service" "${SERVICE_STATUS[RUNNING]}"
-		fi
-	done
+	# 启动服务
+	service_loop "run"
+	
+	# 等待所有服务进程退出
+	wait_for_services 0
+	local exit_code=$?
+	
+	if [[ $exit_code -ne 0 ]]; then
+		logger "ERROR" "服务进程异常退出，退出码: $exit_code"
+		return $exit_code
+	fi
 }
 
 # 关闭业务模块
 close_modules()
 {
-	# 执行操作
-	for service in "${!SERVICE_STATES[@]}"; do
-		if ! check_service_enabled "$service"; then
-			continue
-		fi
-		
-		# 检查是否在运行
-		[[ $(get_service_status "$service") != "${SERVICE_STATUS[RUNNING]}" ]] && continue
-		
-		# 更新状态
-		update_service_status "$service" "${SERVICE_STATUS[EXECUTING]}"
-		
-		# 执行函数
-		if execute_service_func "$service" "close"; then
-			update_service_status "$service" "${SERVICE_STATUS[STOPPED]}"
-		else
-			update_service_status "$service" "${SERVICE_STATUS[FAILURE]}"
-			print_log "ERROR" "关闭 $service 失败!"
-		fi
-	done
+	# 执行关闭
+	service_loop "close"
 }
 
 # ============================================================================
