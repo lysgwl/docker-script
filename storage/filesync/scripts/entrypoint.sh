@@ -29,25 +29,17 @@ if [[ "${BASH_SOURCE[0]}" = "$0" ]]; then
 	if [[ "$1" = "run" ]]; then
 		print_section "启动服务 ($1)"
 		
-		# 捕获 SIGTERM 信号
-		#trap close_modules SIGTERM
-		trap 'close_modules; exit 143' SIGTERM
+		# 处理信号
+		setup_signal_handler "close_modules"
 		
-		# 重新加载cron配置
-		crond -l 2 -L /dev/stdout &
-
+		if ! start_state_watcher; then
+			exit 1
+		fi
+		
 		# 执行业务模块
-		exec_as_user ${USER_CONFIG[user]} "
-			run_modules
-		" &
+		run_modules
 		
-		CHILD_PID=$!
-		logger "INFO" "业务进程启动 (PID: $CHILD_PID)"
-		
-		# 等待业务进程退出
-		wait $CHILD_PID
-		
-		local EXIT_CODE=$?
-		logger "INFO" "业务进程退出, 退出码: $EXIT_CODE"
+		EXIT_CODE=$?
+		logger "INFO" "业务进程退出, 返回码: $EXIT_CODE"
 	fi
 fi

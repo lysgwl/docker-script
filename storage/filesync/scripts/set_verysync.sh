@@ -313,26 +313,31 @@ run_verysync_service()
 	local log_file=$(get_service_log_file "verysync")
 	
 	# 启动服务
-	"$bin_file" serve \
-		--config "${etc_path}" \
-		--data "${data_path}" \
-		--no-browser \
-		--gui-address="0.0.0.0:${http_port}" \
-		--logfile="${log_file}" \
-		--log-max-size 10485760 \
-		--log-max-old-files 5 > /dev/null 2>&1 &
-	local verysync_pid=$!
+	local verysync_pid=$(exec_as_user ${USER_CONFIG[user]} "
+		\"$bin_file\" serve \\
+			--config \"${etc_path}\" \\
+			--data \"${data_path}\" \\
+			--no-browser \\
+			--gui-address=\"0.0.0.0:${http_port}\" \\
+			--logfile=\"${log_file}\" \\
+			--log-max-size 10485760 \\
+			--log-max-old-files 5 > /dev/null 2>&1 &
+		echo \$!
+	") || {
+		echo "[verysync] 执行启动命令失败"
+		return 2
+	}
 	
 	# 等待进程
 	wait_for_pid 5 "$verysync_pid" || {
-		logger "ERROR" "[verysync] 进程启动失败!"
-		return 2
+		logger "ERROR" "[verysync] 进程启动失败 (pid=$verysync_pid)"
+		return 3
 	}
 	
 	# 端口检测
 	if ! wait_for_ports "${http_port}" "${trans_port}"; then
 		logger "ERROR" "[verysync] 检测服务端口未就绪!"
-		return 3
+		return 4
 	fi
 	
 	echo "$verysync_pid" > "$pid_file"

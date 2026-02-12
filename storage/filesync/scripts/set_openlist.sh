@@ -450,6 +450,7 @@ init_openlist_service()
 # 运行 openlist 服务
 run_openlist_service()
 {
+	local -n pid_ref="${1:-}"
 	logger "INFO" "[openlist] 运行服务"
 	
 	# 获取服务配置
@@ -471,28 +472,32 @@ run_openlist_service()
 		return 0
 	fi
 	
-	# 清理PID文件
-	local pid_file=$(get_service_pid_file "openlist")
-	echo "" > "$pid_file"
-	
 	# 启动服务
-	"$bin_file" server --data "$etc_path" &> /dev/null &
-	local openlist_pid=$!
+	local openlist_pid=$(exec_as_user ${USER_CONFIG[user]} "
+		\"$bin_file\" server --data \"$etc_path\" &> /dev/null &
+		echo \$!
+	") || {
+		echo "[openlist] 执行启动命令失败"
+		return 2
+	}
 	
 	# 等待进程
 	wait_for_pid 5 "$openlist_pid" || {
-		logger "ERROR" "[openlist] 进程启动失败!"
-		return 2
+		logger "ERROR" "[openlist] 进程启动失败 (pid=$openlist_pid)"
+		return 3
 	}
+	
 	# 端口检测
 	if ! wait_for_ports "$http_port"; then
 		logger "ERROR" "[openlist] 检测服务端口未就绪!"
-		return 3
+		return 4
 	fi
-
-	echo "$openlist_pid" > "$pid_file"
-	update_service_pid "openlist" "$openlist_pid"
 	
+	# 写入 PID 文件
+	local pid_file=$(get_service_pid_file "openlist")
+	echo "$openlist_pid" > "$pid_file"
+	
+	pid_ref="$openlist_pid"
 	logger "INFO" "[openlist] ✓ 启动服务完成!"
 }
 
@@ -558,6 +563,7 @@ update_openlist_service()
 		# 停止运行中的服务
 		if check_service_alive "openlist"; then
 			logger "INFO" "[openlist] 停止运行中的服务"
+			
 			close_openlist_service
 			sleep 2
 		fi
@@ -609,7 +615,5 @@ close_openlist_service()
 	
 	# 清理PID文件
 	rm -f "$pid_file" 2>/dev/null
-	update_service_pid "openlist" "null"
-	
 	logger "INFO" "[openlist] ✓ 服务已停止"
 }

@@ -114,7 +114,7 @@ RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositorie
 RUN apk update && apk add --no-cache bash ca-certificates coreutils dcron gawk openssl su-exec tzdata
 
 # 安装运维工具 (cifs-utils git netcat-openbsd openssh openssh-server-pam samba vsftpd) (tar wget)
-RUN apk add --no-cache bc curl jq rsync xmlstarlet
+RUN apk add --no-cache bc curl jq rsync xmlstarlet inotify-tools
 
 RUN rm -rf /var/cache/apk/*
 

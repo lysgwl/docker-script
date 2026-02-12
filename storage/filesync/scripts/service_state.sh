@@ -1,18 +1,32 @@
 #!/bin/bash
 
+# 状态文件
+readonly SERVICE_STATES_FILE="/var/run/service_states.json"
+
+# 服务操作状态
+declare -A SERVICE_ACTIONS=(
+	["UNKNOWN"]="unknown"			# 未初始化
+	["INIT"]="init"					# 初始化
+	["RUN"]="run"					# 运行
+	["CLOSE"]="close"				# 关闭
+	["UPDATE"]="update"				# 更新
+	["RESTART"]="retart"			# 重启
+)
+readonly -A SERVICE_ACTIONS
+
 # 服务状态枚举
 declare -A SERVICE_STATUS=(
-	["INIT"]="init"					# 初始化
+	["UNKNOWN"]="unknown"			# 未初始化
 	["ENABLED"]="enabled"			# 已启用
 	["DISABLED"]="disabled"			# 已禁用
 	["RUNNING"]="running"			# 运行中
+	["STOPPING"]="stopping"			# 停止中
 	["STOPPED"]="stopped"			# 已停止
 	["SUCCESS"]="success"			# 成功
 	["FAILURE"]="failure"			# 失败
 	["EXECUTING"]="executing"		# 执行中
 	["SKIPPED"]="skipped"			# 跳过
 	["UPDATING"]="updating"			# 更新中
-	["UNKNOWN"]="unknown"			# 未初始化
 )
 readonly -A SERVICE_STATUS
 
@@ -65,7 +79,7 @@ register_service()
 	local log_file=$(jq -r '.log_file // empty' <<<"$opts")
 	local config=$(jq -c '.config // {}' <<<"$opts")
 	
-	local register_time=$(date '+%Y-%m-%d %H:%M:%S')
+	local register_time=$(date '+%s')
 	
 	local register_json=$(jq -n \
 		--arg service "$service" \
@@ -89,6 +103,7 @@ register_service()
 			log_file: $log_file,
 			register_time: $time,
 			timestamp: $time,
+			action: "none",
 			state: {
 				status: "unknown",
 				pid: null,
@@ -102,7 +117,7 @@ register_service()
 		
 	# 注册到服务
 	SERVICE_REGISTRY["$service"]="$register_json"
-	logger "INFO" "注册服务: $service (enabled: $enabled, updated: $updated)"
+	logger "DEBUG" "注册服务: $service (enabled: $enabled, updated: $updated)"
 }
 
 # 导入模板
@@ -186,6 +201,8 @@ load_service_states()
 		sync_service_states
 	fi
 	
+	# 导出状态
+	export_service_states || true 
 	logger "INFO" "服务状态加载完成"
 }
 
@@ -216,9 +233,6 @@ init_service_states()
 		
 		chmod 666 "$SERVICE_STATES_FILE" 2>/dev/null || true
 	fi
-	
-	# 导出状态
-	export_service_states || true 
 }
 
 # 导入服务状态
@@ -298,9 +312,6 @@ sync_service_states()
 		# 同步 updated 字段
 		_sync_field "$service" "updated" "$update"
 	done
-	
-	# 导出状态
-	export_service_states || true 
 }
 
 # 导出服务状态
@@ -314,7 +325,7 @@ export_service_states()
 		
 		# 更新时间戳
 		service_json=$(echo "$service_json" | jq -c \
-			--arg timestamp "$(date '+%Y-%m-%d %H:%M:%S')" \
+			--arg timestamp "$(date '+%s')" \
 			'.timestamp = $timestamp')
 			
 		states_array+=("$service_json")
@@ -326,15 +337,15 @@ export_service_states()
 		json_array=$(printf '%s\n' "${states_array[@]}" | jq -sc '.')
 	fi
 	
-	# 写入文件
-	if ! echo "$json_array" > "$SERVICE_STATES_FILE" 2>/dev/null; then
-		logger "WARNING" "无法写入状态文件: $SERVICE_STATES_FILE" >&2
+	# 写入文件  2>/dev/null
+	if ! echo "$json_array" > "$SERVICE_STATES_FILE"; then
+		logger "WARNING" "无法写入状态文件: $SERVICE_STATES_FILE"
 		return 1
 	fi
 }
 
 # ============================================================================
-# 服务状态操作函数
+# 服务状态操作
 
 # 获取服务字段
 get_service_field()
@@ -408,9 +419,6 @@ set_service_field()
 			)
 			;;
 	esac
-	
-	# 导出状态
-	export_service_states || true 
 }
 
 # 更新服务PID
@@ -507,7 +515,7 @@ get_service_info()
 }
 
 # ============================================================================
-# 服务管理函数
+# 服务管理
 
 # 检查服务是否启用
 check_service_enabled()
@@ -561,6 +569,70 @@ get_service_log_file()
 	fi
 }
 
+# 设置服务操作状态
+set_service_action()
+{
+	local service="$1"
+	local action="$2"
+	
+	[[ -z "$service" || -z "$action" ]] && return 1
+	
+	# 验证操作状态
+	local valid_action=false
+	for op in "${SERVICE_ACTIONS[@]}"; do
+		if [[ "$action" == "$op" ]]; then
+			valid_action=true
+			break
+		fi
+	done
+	
+	[[ "$valid_action" == "false" ]] && {
+		logger "ERROR" "无效的操作状态: $action (有效值: ${SERVICE_ACTIONS[*]})"
+		return 1
+	}
+	
+	# 获取当前操作状态
+	local current_action
+	current_action=$(get_service_field "$service" "action" 2>/dev/null)
+	
+	# 状态未变化
+	[[ "$current_action" == "$action" ]] && return 0
+	
+	# 更新操作状态
+	set_service_field "$service" "action" "$action"
+	
+	case "$action" in
+		"${SERVICE_ACTIONS[INIT]}")
+			logger "INFO" "设置为初始化操作状态"
+			;;
+		"${SERVICE_ACTIONS[CLOSE]}")
+			logger "INFO" "设置为关闭操作状态"
+			;;
+		"${SERVICE_ACTIONS[RUN]}")
+			logger "INFO" "设置为运行操作状态"
+			;;
+		"${SERVICE_ACTIONS[UPDATE]}")
+			logger "INFO" "设置为更新操作状态"
+			;;
+		"${SERVICE_ACTIONS[UNKNOWN]}")
+			logger "DEBUG" "清除操作状态"
+			;;
+	esac
+	
+	logger "DEBUG" "操作状态更新: $service ($current_action → $action)"
+}
+
+# 获取服务操作状态
+get_service_action()
+{
+	local service="$1"
+	
+	local action
+	action=$(get_service_field "$service" "action" 2>/dev/null)
+	
+	echo "${action:-${SERVICE_ACTIONS[UNKNOWN]}}"
+}
+
 # 更新服务状态
 update_service_states()
 {
@@ -585,11 +657,11 @@ update_service_states()
 	# 更新额外依赖字段
 	case "$status" in
 		"${SERVICE_STATUS[RUNNING]}")
-			set_service_field "$service" "state.last_start" "$(date '+%Y-%m-%d %H:%M:%S')"
+			set_service_field "$service" "state.last_start" "$(date '+%s')"
 			set_service_field "$service" "state.health" "healthy"
 			;;
 		"${SERVICE_STATUS[STOPPED]}")
-			set_service_field "$service" "state.last_stop" "$(date '+%Y-%m-%d %H:%M:%S')"
+			set_service_field "$service" "state.last_stop" "$(date '+%s')"
 			set_service_field "$service" "state.pid" "null"
 			;;
 		"${SERVICE_STATUS[FAILURE]}")
@@ -597,7 +669,7 @@ update_service_states()
 			;;
 	esac
 	
-	logger "INFO" "状态更新: $service ($current_status -> $status)"
+	logger "DEBUG" "状态更新: $service ($current_status -> $status)"
 }
 
 # 获取服务状态
@@ -622,12 +694,123 @@ get_service_reason()
 	echo "${reason:-}"
 }
 
+# 处理服务状态
+handle_service_status()
+{
+	local phase="$1"
+	local service="$2"
+	local action="$3"
+	local context="$4"
+	local data_json="${5:-}"
+	
+	[[ -z "$service" || -z "$action" ]] && return 1
+	
+	# JSON 校验
+	if ! jq empty <<<"$data_json" 2>/dev/null; then
+		data_json="{}"
+	fi
+	
+	# 解析 JSON 数据
+	local result=$(jq -r '.result // 0' <<<"$data_json")
+	local pid=$(jq -r '.pid // empty' <<<"$data_json")
+	
+	local is_main=false
+	[[ "$context" == "main" ]] && is_main=true
+	
+	# 设置操作状态 
+	if $is_main && [[ "$phase" == "pre" ]]; then
+		if ! set_service_action "$service" "$action"; then
+			logger "ERROR" "设置操作状态失败: $service -> $action"
+			return 2
+		fi
+	fi
+	
+	# 处理执行失败 
+	if [[ "$result" -ne 0 ]]; then
+		if $is_main; then
+			update_service_states "$service" "${SERVICE_STATUS[FAILURE]}" "$action 执行失败"
+			export_service_states || true
+		else
+			update_shared_state "$service" "{
+					\"action\": \"${action}\",
+					\"status\": \"${SERVICE_STATUS[FAILURE]}\"
+				}"
+		fi
+		return 0
+	fi
+	
+	# 执行状态更新
+	case "$action" in
+		"${SERVICE_ACTIONS[INIT]}")
+			$is_main || return 0
+			if [[ "$phase" == "pre" ]]; then
+				update_service_states "$service" "${SERVICE_STATUS[EXECUTING]}" "正在初始化"
+			else
+				update_service_states "$service" "${SERVICE_STATUS[SUCCESS]}" "初始化成功"
+			fi
+			;;
+		"${SERVICE_ACTIONS[CLOSE]}")
+			$is_main || return 0
+			if [[ "$phase" == "pre" ]]; then
+				update_service_states "$service" "${SERVICE_STATUS[STOPPING]}" "正在停止"
+			else
+				update_service_states "$service" "${SERVICE_STATUS[STOPPED]}" "停止成功"
+				update_service_pid "$service" "null"
+			fi
+			;;
+		"${SERVICE_ACTIONS[RUN]}")
+			if $is_main; then
+				if [[ "$phase" == "post" ]]; then
+					update_service_states "$service" "${SERVICE_STATUS[RUNNING]}" "启动成功"
+					update_service_pid "$service" "$pid"
+				fi
+			else
+				if [[ "$phase" == "pre" ]]; then
+					update_shared_state "$service" "{
+							\"action\": \"${action}\",
+							\"status\": \"${SERVICE_STATUS[EXECUTING]}\",
+							\"reason\": \"正在启动\"
+						}"
+				else
+					update_shared_state "$service" "{
+							\"action\": \"${action}\",
+							\"status\": \"${SERVICE_STATUS[RUNNING]}\",
+							\"pid\": \"$pid\",
+							\"reason\": \"启动成功\"
+						}"
+				fi
+			fi
+			;;
+		"${SERVICE_ACTIONS[UPDATE]}")
+			if $is_main; then
+				if [[ "$phase" == "pre" ]]; then
+					update_service_states "$service" "${SERVICE_STATUS[UPDATING]}" "正在更新"
+				fi
+			else
+				update_shared_state "$service" "{
+						\"action\": \"${action}\",
+						\"status\": \"${SERVICE_STATUS[UPDATING]}\",
+						\"reason\": \"正在更新\"
+					}"
+			fi
+			;;
+		*)
+			logger "WARNING" "未知的操作类型: $action"
+			return 1
+			;;
+	esac
+	
+	# 主进程统一导出
+	$is_main && export_service_states || true
+}
+
 # 动态构建执行函数
 execute_service_func()
 {
 	local service="$1"
-	local operation="$2"
-	local param="${3:-}"
+	local action="$2"
+	local context="${3:-main}"
+	local param="${4:-}"
 	
 	# 验证服务注册
 	[[ -z "${SERVICE_REGISTRY[$service]:-}" ]] && {
@@ -637,46 +820,109 @@ execute_service_func()
 	
 	# 检查服务是否启用
 	check_service_enabled "$service" || {
-		logger "DEBUG" "服务 $service 未启用, 跳过 $operation 操作"
+		logger "DEBUG" "服务 $service 未启用, 跳过 $action 操作"
 		return 0
 	}
 	
-	# 动态构建函数名
-	local function_name="${operation}_${service}_service"
+	# 构建函数名
+	local function_name="${action}_${service}_service"
 	
-	# 检查函数是否存在
+	# 检查函数存在
 	if ! type -t "$function_name" &>/dev/null; then
 		logger "WARNING" "函数 '$function_name' 未定义"
-		[[ "$operation" =~ ^(init|run|close)$ ]] && {
-			update_service_states "$service" "${SERVICE_STATUS[FAILURE]}" "函数不存在"
-		}
 		return 1
 	fi
 	
-	[[ "$(get_service_states "$service")" == "${SERVICE_STATUS[EXECUTING]}" ]] && {
-		logger "WARNING" "服务 $service 正在执行中, 跳过 $operation 操作"
-		return 0
-	}
+	local returned_pid=""
 	
-	# 标记执行中
-	update_service_states "$service" "${SERVICE_STATUS[EXECUTING]}"
+	# 操作前状态处理
+	handle_service_status "pre" "$service" "$action" "$context"
 	
-	# 执行函数
-	[[ -n "$param" ]] && $function_name "$param" || $function_name
+	# 执行操作
+	if [[ -n "$param" ]]; then
+		$function_name "$param"
+	else
+		$function_name "returned_pid"
+	fi
+	
 	local result=$?
+	local data_json=$(jq -n \
+		--argjson result "$result" \
+		--arg pid "$returned_pid" \
+		--argjson timestamp "$(date +%s)" \
+		'{
+			result: $result,
+			pid: $pid,
+			timestamp: $timestamp
+		}')
 	
-	# 结果处理
-	if [[ $result -ne 0 ]]; then
-		update_service_states "$service" "${SERVICE_STATUS[FAILURE]}" "执行失败: $function_name"
-		return 1
-	fi
+	# 操作后状态处理
+	handle_service_status "post" "$service" "$action" "$context" "$data_json"
+	return $result
+}
+
+# ============================================================================
+# 服务统计
+_get_service_count_total()
+{
+	echo ${#SERVICE_REGISTRY[@]}
+}
+
+_get_service_count_enabled()
+{
+	local count=0
 	
-	case "$operation" in
-		init) update_service_states "$service" "${SERVICE_STATUS[SUCCESS]}" ;;
-		run) update_service_states "$service" "${SERVICE_STATUS[RUNNING]}" ;;
-		close) update_service_states "$service" "${SERVICE_STATUS[STOPPED]}" ;;
-		*) update_service_states "$service" "${SERVICE_STATUS[SUCCESS]}" ;;
+	for service in "${!SERVICE_REGISTRY[@]}"; do
+		check_service_enabled "$service" && ((count++))
+	done
+	
+	echo "$count"
+}
+
+_get_service_count_updated()
+{
+	local count=0
+	
+	for service in "${!SERVICE_REGISTRY[@]}"; do
+		check_service_enabled "$service" && check_service_updated "$service" && ((count++))
+	done
+	
+	echo "$count"
+}
+
+_get_service_count_status()
+{
+	local status="$1"
+	local count=0
+	
+	for service in "${!SERVICE_REGISTRY[@]}"; do
+		[[ "$(get_service_status "$service")" == "$status" ]] && ((count++))
+	done
+	
+	echo "$count"
+}
+
+get_service_count()
+{
+	local type="$1"
+	local arg="$2"
+	
+	case "$type" in
+		total)
+			_get_service_count_total
+			;;
+		enabled)
+			_get_service_count_enabled
+			;;
+		updated)
+			_get_service_count_updated
+			;;
+		status)
+			_get_service_count_status "$arg"
+			;;
+		*)
+			logger "ERROR" "未知的统计类型: $type"
+			return 1
+			;;
 	esac
-	
-	return 0
 }

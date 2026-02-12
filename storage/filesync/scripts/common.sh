@@ -7,8 +7,8 @@ _COMMON_SH_LOADED="$$:${BASH_SOURCE[0]}"
 
 export ENABLE_FILEBROWSER=false
 export ENABLE_OPENLIST=true
-export ENABLE_SYNCTHING=true
-export ENABLE_VERYSYNC=true
+export ENABLE_SYNCTHING=false
+export ENABLE_VERYSYNC=false
 
 # root 用户密码
 readonly ROOT_PASSWORD="123456"
@@ -21,12 +21,6 @@ readonly INIT_LOCK="/var/run/init.lock"
 
 # 更新锁
 readonly UPDATE_LOCK="/var/run/update.lock"
-
-# 状态文件
-readonly SERVICE_STATES_FILE="/var/run/service_states.json"
-
-# 状态变量
-: "${SERVICE_STATES_ENV:=_SERVICE_STATES_JSON}"
 
 # utils模块目录
 : ${UTILS_DIR:=${WORK_DIR:-/app}/utils}
@@ -62,6 +56,7 @@ declare -A SYSTEM_CONFIG=(
 	["arch"]="$(uname -m)"								# 系统架构
 	["type"]="$(uname | tr '[A-Z]' '[a-z]')"			# 系统类型
 	["log_file"]="${LOG_FILE:-/var/log/filesync.log}"	# 日志文件
+	["update_log"]="${UPDATE_LOG:-/var/log/update.log}"	# 更新日志
 )
 readonly -A SYSTEM_CONFIG
 
@@ -69,6 +64,9 @@ umask ${UMASK:-022}
 
 # 加载服务状态脚本
 source $WORK_DIR/scripts/service_state.sh
+
+# 加载共享服务脚本
+source $WORK_DIR/scripts/shared_state.sh
 
 # 加载服务脚本
 source $WORK_DIR/scripts/set_service.sh
@@ -92,22 +90,35 @@ source $WORK_DIR/scripts/set_filebrowser.sh
 logger()
 {
 	local log_level="$1"
-	local message="$2"
-	local func_type="${3:-}"
-	local output_type="${4:-console}"
-	
-	local log_file
-	[[ "$output_type" = "file" ]] && {
-		log_file="${SYSTEM_CONFIG[log_file]}"
-	}
+	local message="${2:-}"
+	local func="${3:-}"
+	local file="${4:-}"
 	
 	if [[ "$log_level" == "START_TITLE" || "$log_level" == "END_TITLE" ]]; then
-		print_title "$log_file"
-		print_log "TEXT" "$message" "" "$log_file"
-		print_title "$log_file"
+		print_title "$file"
+		print_log "TEXT" "$message" "" "$file"
+		print_title "$file"
 	else
-		print_log "$log_level" "$message" "$func_type" "$log_file"
+		print_log "$log_level" "$message" "$func" "$file"
 	fi
+}
+
+# 主日志文件输出
+log_main()
+{
+	logger "$1" "${2:-}" "${3:-}" "${SYSTEM_CONFIG[log_file]}"
+}
+
+# 更新日志文件输出
+log_update()
+{
+	logger "$1" "${2:-}" "${3:-}" "${SYSTEM_CONFIG[update_log]}"
+}
+
+# 控制台输出
+log_console()
+{
+	logger "$1" "${2:-}" "${3:-}"
 }
 
 # 获取服务安装包
@@ -206,30 +217,30 @@ exec_as_user()
 	fi
 	
 	# 导出状态
-	export_service_states
+	#export_service_states
 	
-	su-exec "$user" bash -c "
-		#echo '[DEBUG] su-exec: ID($$)=' \$\$ >&2
-		#echo '[DEBUG] su-exec: BASHPID=' \$BASHPID >&2
-		#echo '[DEBUG] su-exec: ID(PPID)=' \$PPID >&2
-		
+	# 执行命令
+	local output
+	output=$(su-exec "$user" bash -c "
 		# 取消所有加载标记
-		unset _COMMON_SH_LOADED UTILS_MODULE_LOADED 2>/dev/null || true
+		#unset _COMMON_SH_LOADED UTILS_MODULE_LOADED 2>/dev/null || true
 		
 		# 重新加载 common.sh
-		if ! source \"$WORK_DIR/scripts/common.sh\" 2>/dev/null; then
-			echo '[ERROR] 加载脚本 common.sh 失败!' >&2
-			exit 1
-		fi
+		#if ! source \"$WORK_DIR/scripts/common.sh\" 2>/dev/null; then
+		#	echo '[ERROR] 加载脚本 common.sh 失败!' >&2
+		#	exit 1
+		#fi
 		
 		# 加载服务状态
-		load_service_states
+		#load_service_states
 		
-		# 执行命令
 		$cmd
-	"
+	")
 	
-	return $?
+	local result=$?
+	
+	[[ -n "$output" ]] && echo "$output"
+	return $result
 }
 
 # ============================================================================
@@ -252,7 +263,7 @@ init_modules()
 	fi
 
 	# 执行初始化
-	if ! service_loop "init" "$param"; then
+	if ! execute_services_action "${SERVICE_ACTIONS[INIT]}" "$param"; then
 		return 1
 	fi
 	
@@ -263,15 +274,18 @@ init_modules()
 # 运行业务模块
 run_modules()
 {
+	# 重新加载cron配置
+	crond -l 2 -L /dev/stdout &
+		
 	# 启动服务
-	service_loop "run"
+	execute_services_action "${SERVICE_ACTIONS[RUN]}"
 	
 	# 等待所有服务进程退出
 	wait_for_services 0
 	local exit_code=$?
 	
 	if [[ $exit_code -ne 0 ]]; then
-		logger "ERROR" "服务进程异常退出，退出码: $exit_code"
+		logger "ERROR" "服务进程异常退出, 退出码: $exit_code"
 		return $exit_code
 	fi
 }
@@ -280,7 +294,7 @@ run_modules()
 close_modules()
 {
 	# 执行关闭
-	service_loop "close"
+	execute_services_action "${SERVICE_ACTIONS[CLOSE]}"
 }
 
 # ============================================================================
@@ -292,7 +306,7 @@ auto_load_utils()
 	
 	# 检查 UTILS_DIR 目录
 	if [[ ! -d "${UTILS_DIR}" ]]; then
-		echo "[ERROR] utils目录不存在: ${UTILS_DIR}"
+		echo "[ERROR] utils目录不存在: ${UTILS_DIR}" >&2
 		return 1
 	fi
 	
@@ -300,7 +314,7 @@ auto_load_utils()
 	local feature_file="${UTILS_DIR}/feature.sh"
 	
 	if [[ ! -f "${feature_file}" ]]; then
-		echo "[ERROR] feature.sh文件不存在: ${feature_file}"
+		echo "[ERROR] feature.sh文件不存在: ${feature_file}" >&2
 		return 2
 	fi
 	
@@ -313,7 +327,7 @@ auto_load_utils()
 	
 	# 检查load_feature函数是否存在
 	if ! declare -f load_feature >/dev/null; then
-		echo "[ERROR] load_feature函数未定义!"
+		echo "[ERROR] load_feature函数未定义!" >&2
 		return 4
 	fi
 	

@@ -433,27 +433,32 @@ run_syncthing_service()
 	local log_file=$(get_service_log_file "syncthing")
 	
 	# 启动服务
-	"$bin_file" serve \
-		--config "${etc_path}" \
-		--data "${data_path}" \
-		--no-browser \
-		--gui-address="0.0.0.0:${http_port}" \
-		--log-file "${log_file}" \
-		--log-max-size 10485760 \
-		--log-max-old-files 5 \
-		--log-level "${LOG_LEVEL}" > /dev/null 2>&1 &
-	local syncthing_pid=$!
+	local syncthing_pid=$(exec_as_user ${USER_CONFIG[user]} "
+		\"$bin_file\" serve \\
+			--config \"${etc_path}\" \\
+			--data \"${data_path}\" \\
+			--no-browser \\
+			--gui-address=\"0.0.0.0:${http_port}\" \\
+			--log-file \"${log_file}\" \\
+			--log-max-size 10485760 \\
+			--log-max-old-files 5 \\
+			--log-level \"${LOG_LEVEL}\" > /dev/null 2>&1 &
+		echo \$!
+	") || {
+		echo "[syncthing] 执行启动命令失败"
+		return 2
+	}
 	
 	# 等待进程
 	wait_for_pid 5 "$syncthing_pid" || {
-		logger "ERROR" "[syncthing] 进程启动失败!"
-		return 2
+		logger "ERROR" "[syncthing] 进程启动失败 (pid=$syncthing_pid)"
+		return 3
 	}
 	
 	# 端口检测
 	if ! wait_for_ports "${http_port}" "${trans_port}"; then
 		logger "ERROR" "[syncthing] 检测服务端口未就绪!"
-		return 3
+		return 4
 	fi
 	
 	echo "$syncthing_pid" > "$pid_file"

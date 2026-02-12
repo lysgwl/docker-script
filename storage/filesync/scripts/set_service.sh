@@ -70,9 +70,9 @@ get_service_config()
 }
 
 # 执行所有服务
-service_loop()
+execute_services_action()
 {
-	local operation="$1"
+	local action="$1"
 	local param="${2:-}"
 	
 	local failed=0
@@ -80,7 +80,10 @@ service_loop()
 	
 	for service in "${!SERVICE_REGISTRY[@]}"; do
 		# 检查服务是否启用
-		! check_service_enabled "$service" && continue
+		if ! check_service_enabled "$service"; then
+			#update_service_states "$service" "${SERVICE_STATUS[DISABLED]}" "未启用"
+			continue
+		fi
 		
 		services+=("$service")
 	done
@@ -92,8 +95,8 @@ service_loop()
 	
 	for service in "${services[@]}"; do
 		# 执行函数
-		if ! execute_service_func "$service" "$operation" "$param"; then
-			logger "ERROR" "[$operation] 服务 $service 执行失败"
+		if ! execute_service_func "$service" "$action" "main" "$param"; then
+			logger "ERROR" "[$action] 服务 $service 执行失败"
 			failed=1
 		fi
 	done
@@ -107,62 +110,64 @@ wait_for_services()
 	local timeout="${1:-0}"			# 0表示无限等待
 	local check_interval="${2:-5}"	# 检查间隔(秒)
 	
-	local service_pid_array=()
-	
-	for service in "${!SERVICE_REGISTRY[@]}"; do
-		# 检查服务是否启用
-		! check_service_enabled "$service" && continue
-		
-		# 检查服务是否存活
-		! check_service_alive "$service" && continue
-		
-		# 获取服务的pid
-		local pid=$(get_service_pid "$service" 2>/dev/null)
-		[[ -z "$pid" || "$pid" == "null" ]] && continue
-		
-		service_pid_array+=("$service:$pid")
-	done
-	
-	if [[ ${#service_pid_array[@]} -eq 0 ]]; then
-		logger "WARNING" "没有需要等待的服务进程"
-		return 0
-	fi
-	
-	local exit_code=0
 	local start_time=$(date +%s)
+	local exit_code=0
 	
 	# 等待循环
 	while true; do
-		local new_array=()
-		local alive_count=0
+		local pending_count=0
 		
-		for entry in "${service_pid_array[@]}"; do
-			IFS=':' read -r service pid <<< "$entry"
+		for service in "${!SERVICE_REGISTRY[@]}"; do
+			# 检查服务是否启用
+			! check_service_enabled "$service" && continue
+		
+			# 获取服务的操作状态
+			local action=$(get_service_action "$service")
+		
+			# 获取服务的pid
+			local pid=$(get_service_pid "$service" 2>/dev/null)
 			
-			# 检查服务是否存活
-			if check_service_alive "$service" "$pid"; then
-				new_array+=("$entry")
-				alive_count=$((alive_count + 1))
-			else
-				# 服务已退出
-				logger "INFO" "服务 $service 已退出 (PID=$pid)"
-				exit_code=1	# 标记有进程异常退出
-				
-				# 清理状态
-				set_service_field "$service" "state.pid" "null"
-				set_service_field "$service" "state.status" "stopped"
+			#local state=$(get_service_states "$service")
+			#logger "WARNING" "service=$service, action=$action, pid=$pid, state=$state" "wait_for_services"
+		
+			# 检查服务存活
+			if [[ -n "$pid" ]] && check_service_alive "$service" "$pid"; then
+				pending_count=$((pending_count + 1))
+				continue
 			fi
+			
+			# 进程退出, 检查操作状态
+			case "$action" in
+				"${SERVICE_ACTIONS[UPDATE]}")
+					logger "INFO" "服务 $service 更新操作中，忽略进程退出"
+					pending_count=$((pending_count + 1))
+					#update_service_pid "$service" "null"
+					;;
+				"${SERVICE_ACTIONS[RUN]}")
+					logger "DEBUG" "[$service] RUN 阶段，等待进程就绪"
+					pending_count=$((pending_count + 1))
+					;;
+				"${SERVICE_ACTIONS[CLOSE]}")
+					logger "INFO" "服务 $service 关闭操作中，进程退出正常"
+					update_service_pid "$service" "null"
+					;;
+				*)	# 异常退出
+					exit_code=1
+					logger "ERROR" "服务 $service 服务异常退出 (PID=$pid)"
+					
+					update_service_pid "$service" "null"
+					update_service_states "$service" "${SERVICE_STATUS[FAILURE]}" "进程异常退出"
+					;;
+			esac
 		done
 		
-		service_pid_array=("${new_array[@]}")
-		
-		# 全部退出
-		[[ $alive_count -eq 0 ]] && {
+		# 服务生命周期结束
+		if [[ "$pending_count" -eq 0 ]]; then
 			logger "INFO" "所有服务进程已退出"
 			break
-		}
+		fi
 		
-		# 超时判断
+		# 超时控制
 		if [[ "$timeout" -gt 0 ]]; then
 			local now=$(date +%s)
 			local elapsed=$((now - start_time))
