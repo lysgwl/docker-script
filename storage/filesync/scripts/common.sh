@@ -14,7 +14,7 @@ export ENABLE_VERYSYNC=true
 readonly ROOT_PASSWORD="123456"
 
 # 定时计划(0 3 * * 0) (* * * * *)
-readonly UPDATE_CHECK_SCHEDULE="0 3 * * 0"
+readonly UPDATE_CHECK_SCHEDULE="0 3 */15 * *"
 
 # 初始锁
 readonly INIT_LOCK="/var/run/init.lock"
