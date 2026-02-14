@@ -7,8 +7,8 @@ _COMMON_SH_LOADED="$$:${BASH_SOURCE[0]}"
 
 export ENABLE_FILEBROWSER=false
 export ENABLE_OPENLIST=true
-export ENABLE_SYNCTHING=false
-export ENABLE_VERYSYNC=false
+export ENABLE_SYNCTHING=true
+export ENABLE_VERYSYNC=true
 
 # root 用户密码
 readonly ROOT_PASSWORD="123456"

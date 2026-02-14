@@ -33,7 +33,7 @@ get_service_config()
 	
 	# 获取配置JSON
 	local field_value
-	field_value=$(get_service_field "$service" "$field" 2>/dev/null) || return 1
+	field_value=$(get_service_field "$service" "$field" 2>/dev/null)
 	
 	if [[ -z "$field_value" ]] || [[ "$field_value" == "null" ]]; then
 		logger "WARNING" "服务 $service 的 $field 配置信息为空"

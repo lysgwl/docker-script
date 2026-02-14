@@ -402,6 +402,7 @@ init_syncthing_service()
 # 运行 syncthing 服务
 run_syncthing_service()
 {
+	local -n pid_ref="${1:-}"
 	logger "INFO" "[syncthing] 运行服务"
 	
 	# 获取服务配置
@@ -425,10 +426,6 @@ run_syncthing_service()
 		return 0
 	fi
 	
-	# 清理PID文件
-	local pid_file=$(get_service_pid_file "syncthing")
-	echo "" > "$pid_file"
-	
 	# 日志文件
 	local log_file=$(get_service_log_file "syncthing")
 	
@@ -445,7 +442,7 @@ run_syncthing_service()
 			--log-level \"${LOG_LEVEL}\" > /dev/null 2>&1 &
 		echo \$!
 	") || {
-		echo "[syncthing] 执行启动命令失败"
+		logger "ERROR" "[syncthing] 执行启动命令失败"
 		return 2
 	}
 	
@@ -461,9 +458,11 @@ run_syncthing_service()
 		return 4
 	fi
 	
+	# 写入 PID 文件
+	local pid_file=$(get_service_pid_file "syncthing")
 	echo "$syncthing_pid" > "$pid_file"
-	update_service_pid "syncthing" "$syncthing_pid"
 	
+	pid_ref="$syncthing_pid"
 	logger "INFO" "[syncthing] ✓ 启动服务完成!"
 }
 
@@ -581,7 +580,5 @@ close_syncthing_service()
 	
 	# 清理PID文件
 	rm -f "$pid_file" 2>/dev/null
-	update_service_pid "syncthing" "null"
-	
 	logger "INFO" "[syncthing] ✓ 服务已停止"
 }

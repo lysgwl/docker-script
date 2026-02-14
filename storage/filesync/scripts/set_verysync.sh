@@ -35,14 +35,14 @@ install_verysync_env()
 	logger "INFO" "[verysync] 安装服务环境"
 	local arg=$1
 	
-	local target_path="${SYSTEM_CONFIG[install_dir]}/${verysync_cfg[name]}"
+	local target_path="${SYSTEM_CONFIG[install_dir]}/verysync"
 	if [[ "$arg" = "init" ]]; then
 		if [[ ! -d "$target_path" ]]; then
 			local downloads_dir="${SYSTEM_CONFIG[downloads_dir]}"
 			
 			# 获取安装包
 			local latest_path
-			latest_path=$(get_service_archive "${verysync_cfg[name]}" "$downloads_dir" download_verysync "*.sig") || {
+			latest_path=$(get_service_archive "verysync" "$downloads_dir" download_verysync "*.sig") || {
 				logger "ERROR" "[verysync] 获取服务安装包失败, 请检查!" >&2
 				return 1
 			}
@@ -282,6 +282,7 @@ init_verysync_service()
 # 运行 verysync 服务
 run_verysync_service()
 {
+	local -n pid_ref="${1:-}"
 	logger "INFO" "[verysync] 运行服务"
 	
 	# 获取服务配置
@@ -305,10 +306,6 @@ run_verysync_service()
 		return 0
 	fi
 	
-	# 清理PID文件
-	local pid_file=$(get_service_pid_file "verysync")
-	echo "" > "$pid_file"
-	
 	# 日志文件
 	local log_file=$(get_service_log_file "verysync")
 	
@@ -324,7 +321,7 @@ run_verysync_service()
 			--log-max-old-files 5 > /dev/null 2>&1 &
 		echo \$!
 	") || {
-		echo "[verysync] 执行启动命令失败"
+		logger "ERROR" "[verysync] 执行启动命令失败"
 		return 2
 	}
 	
@@ -340,9 +337,11 @@ run_verysync_service()
 		return 4
 	fi
 	
+	# 写入 PID 文件
+	local pid_file=$(get_service_pid_file "verysync")
 	echo "$verysync_pid" > "$pid_file"
-	update_service_pid "verysync" "$verysync_pid"
 	
+	pid_ref="$verysync_pid"
 	logger "INFO" "[verysync] ✓ 启动服务完成!"
 }
 
@@ -370,7 +369,7 @@ update_verysync_service()
 	
 	# 获取更新包
 	local latest_path
-	latest_path=$(get_service_archive "$verysync" "$downloads_dir" download_verysync) || {
+	latest_path=$(get_service_archive "verysync" "$downloads_dir" download_verysync "*.sig") || {
 		logger "ERROR" "[verysync] 下载更新包失败"
 		return 2
 	}
@@ -379,8 +378,8 @@ update_verysync_service()
 	if [[ -f "$bin_file" ]] && [[ -x "$bin_file" ]]; then
 		local current_version new_version
 		
-		current_version=$(${VERYSYNC_CONFIG[bin_file]} --version | awk '{print $2}' | tr -d 'v')
-		new_version=$($latest_path --version | awk '{print $2}' | tr -d 'v')
+		current_version=$("$bin_file" --version | awk '{print $2}' | tr -d 'v')
+		new_version=$("$latest_path" --version | awk '{print $2}' | tr -d 'v')
 		
 		if [[ -z "$current_version" ]] || [[ -z "$new_version" ]]; then
 			logger "WARNING" "[verysync] 无法获取版本信息, 强制更新"
@@ -408,6 +407,7 @@ update_verysync_service()
 		# 停止运行中的服务
 		if check_service_alive "verysync"; then
 			logger "INFO" "[verysync] 停止运行中的服务"
+			
 			close_verysync_service
 			sleep 2
 		fi
@@ -459,7 +459,5 @@ close_verysync_service()
 	
 	# 清理PID文件
 	rm -f "$pid_file" 2>/dev/null
-	update_service_pid "verysync" "null"
-	
 	logger "INFO" "[verysync] ✓ 服务已停止"
 }

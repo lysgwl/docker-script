@@ -61,14 +61,14 @@ install_openlist_env()
 	logger "INFO" "[openlist] 安装服务环境"
 	local arg=$1
 	
-	local target_path="${SYSTEM_CONFIG[install_dir]}/${openlist_cfg[name]}"
+	local target_path="${SYSTEM_CONFIG[install_dir]}/openlist"
 	if [[ "$arg" = "init" ]]; then
 		if [[ ! -d "$target_path" ]]; then
 			local downloads_dir="${SYSTEM_CONFIG[downloads_dir]}"
 			
 			# 获取安装包
 			local latest_path
-			latest_path=$(get_service_archive "${openlist_cfg[name]}" "$downloads_dir" download_openlist) || {
+			latest_path=$(get_service_archive "openlist" "$downloads_dir" download_openlist) || {
 				logger "ERROR" "[openlist] 获取服务安装包失败, 请检查!" >&2
 				return 1
 			}
@@ -477,7 +477,7 @@ run_openlist_service()
 		\"$bin_file\" server --data \"$etc_path\" &> /dev/null &
 		echo \$!
 	") || {
-		echo "[openlist] 执行启动命令失败"
+		logger "ERROR" "[openlist] 执行启动命令失败"
 		return 2
 	}
 	
@@ -525,7 +525,7 @@ update_openlist_service()
 	
 	# 获取更新包
 	local latest_path
-	latest_path=$(get_service_archive "${openlist_cfg[name]}" "$downloads_dir" download_openlist) || {
+	latest_path=$(get_service_archive "openlist" "$downloads_dir" download_openlist) || {
 		logger "ERROR" "[openlist] 下载更新包失败"
 		return 2
 	}
