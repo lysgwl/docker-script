@@ -288,19 +288,19 @@ schedule_updates()
 	local schedule=${UPDATE_CHECK_SCHEDULE:-$default_schedule}
 	
 	if [[ $(echo "$schedule" | wc -w) -ne 5 ]]; then
-		logger "ERROR" "cron表达式格式不正确, 请检查!"
+		logger "ERROR" "cron表达式格式不正确"
 		return
 	fi
 	
 	if ! [[ "$schedule" =~ ^([0-9*/,\-]+[[:space:]]+){4}[0-9*/,\-]+$ ]]; then
-		logger "ERROR" "cron表达式包含无效字符, 请检查!"
+		logger "ERROR" "cron表达式包含无效字符"
 		return 1
 	fi
 	
 	# 检查 dcron
 	local cron_file="/etc/crontabs/root"
 	if [[ ! -f "$cron_file" ]]; then
-		logger "ERROR" "cron 配置文件不存在, 请检查!"
+		logger "ERROR" "cron 配置文件不存在"
 		return 2
 	fi
 	

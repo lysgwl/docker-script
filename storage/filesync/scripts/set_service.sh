@@ -13,14 +13,14 @@ set_service_user()
 			 "${SYSTEM_CONFIG[usr_dir]}"
 	
 	# 设置目录拥有者
-	logger "DEBUG" "正在设置目录拥有者(${user_config[user]}:${user_config[group]})"
-	chown -R ${user_config[user]}:${user_config[group]} \
+	logger "DEBUG" "正在设置目录拥有者(${USER_CONFIG[user]}:${USER_CONFIG[group]})"
+	chown -R ${USER_CONFIG[user]}:${USER_CONFIG[group]} \
 			 "${SYSTEM_CONFIG[downloads_dir]}" \
 			 "${SYSTEM_CONFIG[update_dir]}" \
 			"${SYSTEM_CONFIG[config_dir]}" \
 			"${SYSTEM_CONFIG[data_dir]}"
 			
-	chown "${user_config[user]}:${user_config[group]}" \
+	chown "${USER_CONFIG[user]}:${USER_CONFIG[group]}" \
 			"${SYSTEM_CONFIG[usr_dir]}"
 }
 
@@ -127,9 +127,6 @@ wait_for_services()
 			# 获取服务的pid
 			local pid=$(get_service_pid "$service" 2>/dev/null)
 			
-			#local state=$(get_service_states "$service")
-			#logger "WARNING" "service=$service, action=$action, pid=$pid, state=$state" "wait_for_services"
-		
 			# 检查服务存活
 			if [[ -n "$pid" ]] && check_service_alive "$service" "$pid"; then
 				pending_count=$((pending_count + 1))
@@ -139,16 +136,16 @@ wait_for_services()
 			# 进程退出, 检查操作状态
 			case "$action" in
 				"${SERVICE_ACTIONS[UPDATE]}")
-					logger "INFO" "服务 $service 更新操作中，忽略进程退出"
+					logger "INFO" "服务 $service 更新操作中, 忽略进程退出"
 					pending_count=$((pending_count + 1))
 					#update_service_pid "$service" "null"
 					;;
 				"${SERVICE_ACTIONS[RUN]}")
-					logger "DEBUG" "[$service] RUN 阶段，等待进程就绪"
+					logger "DEBUG" "[$service] RUN 阶段, 等待进程就绪"
 					pending_count=$((pending_count + 1))
 					;;
 				"${SERVICE_ACTIONS[CLOSE]}")
-					logger "INFO" "服务 $service 关闭操作中，进程退出正常"
+					logger "INFO" "服务 $service 关闭操作中, 进程退出正常"
 					update_service_pid "$service" "null"
 					;;
 				*)	# 异常退出

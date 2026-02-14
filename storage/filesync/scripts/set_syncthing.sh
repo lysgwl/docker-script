@@ -13,7 +13,7 @@ download_syncthing()
 	local mapped_arch=$(jq -r ".\"${SYSTEM_CONFIG[arch]}\" // empty" <<< "$arch_map")
 	
 	if [[ -z "$mapped_arch" ]]; then
-		logger "ERROR" "[syncthing] 不支持的架构 ${SYSTEM_CONFIG[arch]}, 请检查!" >&2
+		logger "ERROR" "[syncthing] 不支持的架构 ${SYSTEM_CONFIG[arch]}" >&2
 		return 1
 	fi
 	
@@ -43,7 +43,7 @@ download_syncthing()
 	# 调用下载函数
 	local latest_file
 	if ! latest_file=$(download_package "$json_config" "$downloads_dir"); then
-		logger "ERROR" "[syncthing] 下载服务文件失败, 请检查!" >&2
+		logger "ERROR" "[syncthing] 下载服务文件失败" >&2
 		return 2
 	fi
 	
@@ -64,13 +64,13 @@ install_syncthing_env()
 			# 获取安装包
 			local latest_path
 			latest_path=$(get_service_archive "syncthing" "$downloads_dir" download_syncthing) || {
-				logger "ERROR" "[syncthing] 获取服务安装包失败, 请检查!" >&2
+				logger "ERROR" "[syncthing] 获取服务安装包失败" >&2
 				return 1
 			}
 			
 			# 安装软件包
 			install_binary "$latest_path" "$target_path" || {
-				logger "ERROR" "[syncthing] 安装服务失败, 请检查!" >&2
+				logger "ERROR" "[syncthing] 安装服务失败" >&2
 				return 2
 			}
 					
@@ -83,13 +83,13 @@ install_syncthing_env()
 			
 			# 安装软件包
 			install_binary "$target_path" "$install_dir" || {
-				logger "ERROR" "[syncthing] 安装服务失败, 请检查!" >&2
+				logger "ERROR" "[syncthing] 安装服务失败" >&2
 				return 2
 			}
 			
 			# 创建符号链接
 			install_binary "${syncthing_cfg[bin_file]}" "" "${syncthing_cfg[symlink_file]}" || {
-				logger "ERROR" "[syncthing] 创建服务符号链接失败, 请检查!" >&2
+				logger "ERROR" "[syncthing] 创建服务符号链接失败" >&2
 				return 4
 			}
 			
@@ -268,7 +268,7 @@ set_syncthing_paths()
 	# 获取 PID 文件路径
 	local pid_file=$(get_service_pid_file "syncthing")
 	if [[ -z "$pid_file" ]]; then
-		logger "ERROR" "[syncthing] 无法获取服务的 PID 文件"
+		logger "ERROR" "[syncthing] 无法获取服务 PID 文件"
 		return 1
 	fi
 	

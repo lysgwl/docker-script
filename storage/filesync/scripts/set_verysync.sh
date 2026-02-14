@@ -22,7 +22,7 @@ download_verysync()
 	# 调用下载函数
 	local latest_file
 	if ! latest_file=$(download_package "$json_config" "$downloads_dir"); then
-		logger "ERROR" "[verysync] 下载服务文件失败, 请检查!" >&2
+		logger "ERROR" "[verysync] 下载服务文件失败" >&2
 		return 2
 	fi
 	
@@ -43,13 +43,13 @@ install_verysync_env()
 			# 获取安装包
 			local latest_path
 			latest_path=$(get_service_archive "verysync" "$downloads_dir" download_verysync "*.sig") || {
-				logger "ERROR" "[verysync] 获取服务安装包失败, 请检查!" >&2
+				logger "ERROR" "[verysync] 获取服务安装包失败" >&2
 				return 1
 			}
 			
 			# 安装软件包
 			install_binary "$latest_path" "$target_path" || {
-				logger "ERROR" "[verysync] 安装服务失败, 请检查!" >&2
+				logger "ERROR" "[verysync] 安装服务失败" >&2
 				return 2
 			}
 					
@@ -62,13 +62,13 @@ install_verysync_env()
 			
 			# 安装软件包
 			install_binary "$target_path" "$install_dir" || {
-				logger "ERROR" "[verysync] 安装服务失败, 请检查!" >&2
+				logger "ERROR" "[verysync] 安装服务失败" >&2
 				return 2
 			}
 			
 			# 创建符号链接
 			install_binary "${verysync_cfg[bin_file]}" "" "${verysync_cfg[symlink_file]}" || {
-				logger "ERROR" "[verysync] 创建服务符号链接失败, 请检查!" >&2
+				logger "ERROR" "[verysync] 创建服务符号链接失败" >&2
 				return 4
 			}
 			
@@ -148,7 +148,7 @@ set_verysync_paths()
 	# 获取 PID 文件路径
 	local pid_file=$(get_service_pid_file "verysync")
 	if [[ -z "$pid_file" ]]; then
-		logger "ERROR" "[verysync] 无法获取服务的 PID 文件"
+		logger "ERROR" "[verysync] 无法获取服务 PID 文件"
 		return 1
 	fi
 	

@@ -141,13 +141,13 @@ get_service_archive()
 		# 回调函数下载文件
 		local download_file
 		download_file=$($download_callback "$downloads_dir") && [ -n "$download_file" ] || {
-			logger "ERROR" "下载 $name 软件包失败, 请检查!" >&2
+			logger "ERROR" "下载 $name 软件包失败" >&2
 			return 2
 		}
 		
 		# 提取并验证下载的文件
 		archive_path=$(extract_and_validate "$download_file" "$output_dir" ".*${name}.*") || {
-			logger "ERROR" "解压 $name 文件失败, 请检查!" >&2
+			logger "ERROR" "解压 $name 文件失败" >&2
 			return 3
 		}
 		
@@ -160,13 +160,13 @@ get_service_archive()
 		
 		# 验证文件类型
 		if [[ -z "$archive_type" ]] || ! [[ "$archive_type" =~ ^(file|directory)$ ]]; then
-			logger "ERROR" "解析 $name 文件失败, 请检查!" >&2
+			logger "ERROR" "解析 $name 文件失败" >&2
 			return 1
 		fi
 		
 		if [ "$archive_type" = "file" ]; then
 			archive_path=$(extract_and_validate "$archive_path" "$output_dir" ".*${name}.*") || {
-				logger "ERROR" "解压 $name 文件失败, 请检查!" >&2
+				logger "ERROR" "解压 $name 文件失败" >&2
 				return 3
 			}
 		fi
@@ -194,7 +194,7 @@ get_service_archive()
 		fi
 		
 		if [[ -z "$latest_path" ]] || [[ ! -f "$latest_path" ]]; then
-			logger "ERROR" "可执行文件 $name 不存在, 请检查!" >&2
+			logger "ERROR" "可执行文件 $name 不存在" >&2
 			return 1
 		fi
 	fi
@@ -212,28 +212,13 @@ exec_as_user()
 	
 	# 验证用户存在
 	if ! id "$user" &>/dev/null; then
-		logger "ERROR" "用户 '$user' 不存在, 请检查!"
+		logger "ERROR" "用户 $user 不存在"
 		return 1
 	fi
-	
-	# 导出状态
-	#export_service_states
 	
 	# 执行命令
 	local output
 	output=$(su-exec "$user" bash -c "
-		# 取消所有加载标记
-		#unset _COMMON_SH_LOADED UTILS_MODULE_LOADED 2>/dev/null || true
-		
-		# 重新加载 common.sh
-		#if ! source \"$WORK_DIR/scripts/common.sh\" 2>/dev/null; then
-		#	echo '[ERROR] 加载脚本 common.sh 失败!' >&2
-		#	exit 1
-		#fi
-		
-		# 加载服务状态
-		#load_service_states
-		
 		$cmd
 	")
 	
@@ -266,9 +251,6 @@ init_modules()
 	if ! execute_services_action "${SERVICE_ACTIONS[INIT]}" "$param"; then
 		return 1
 	fi
-	
-	logger "INFO" "业务模块初始化完成"
-	return 0
 }
 
 # 运行业务模块
