@@ -10,7 +10,7 @@ services:
       - PGID=${PGID}
       - TZ=${TZ}
       - MOUNT_NAMES=${MOUNT_NAMES}
-      - MOUNT_CHECK_INTERVAL=10
+      - MOUNT_CHECK_INTERVAL=30
       - MOUNT_MAX_FAILURES=1
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     volumes:
