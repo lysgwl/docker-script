@@ -1,16 +1,16 @@
 #!/bin/bash
 
-# nginx 源码数组
+# nginx 源码配置
 declare -A NGINX_SOURCES=(
 	["pcre"]='{"repo":"PCRE2Project/pcre2", "version":"latest"}'
 	["nginx"]='{"repo":"nginx/nginx", "version":"latest"}'
 	["upstream-check"]='{"repo":"", "version":""}'
 )
 
-# 获取 nginx 源码版本
+# 获取 nginx 源码
 fetch_nginx_source()
 {
-	logger "INFO" "[nginx] 获取 nginx 相关源码"
+	logger "INFO" "[nginx] 获取源码 ..."
 	local downloads_dir=$1
 	
 	for key in "${!NGINX_SOURCES[@]}"; do
@@ -23,7 +23,7 @@ fetch_nginx_source()
 		local repo=$(jq -r '.repo // empty' <<< "$source_config")
 		local version=$(jq -r '.version // empty' <<< "$source_config")
 		
-		# 如果repo为空，跳过该源码获取
+		# 如果repo为空, 跳过该源码获取
 		if [[ -z "$repo" ]]; then
 			logger "WARNING" "[nginx] 跳过获取 $name 源码, 未配置仓库"
 			continue
@@ -85,22 +85,23 @@ COMMENT_BLOCK
 # 编译安装 nginx 源码
 setup_nginx_source()
 {
-	logger "INFO" "编译 nginx 相关源码"
+	logger "INFO" "[nginx] 编译源码 ..."
+	
 	local pcre_path=$(jq -r '.path // empty' <<< "${NGINX_SOURCES[pcre]}" 2>/dev/null || echo '{}')
 	if [[ ! -d "$pcre_path" ]]; then
-		logger "ERROR" "[nginx] 获取 pcre 源码路径失败($pcre_path)"
+		logger "ERROR" "[nginx] 获取 pcre 源码失败: ($pcre_path)"
 		return 1
 	fi
 	
 	local nginx_path=$(jq -r '.path // empty' <<< "${NGINX_SOURCES[nginx]}" 2>/dev/null || echo '{}')
 	if [[ ! -d "$nginx_path" ]]; then
-		logger "ERROR" "[nginx] 获取 nginx 源码路径失败($nginx_path)"
+		logger "ERROR" "[nginx] 获取 nginx 源码失败: ($nginx_path)"
 		return 1
 	fi
 	
 	local upstream_check_path=$(jq -r '.path // empty' <<< "${NGINX_SOURCES[upstream-check]}" 2>/dev/null || echo '{}')
 	if [[ ! -d "$upstream_check_path" ]]; then
-		logger "WARNING" "[nginx] 没有检测到 upstream_check 源码路径失败($upstream_check_path)"
+		logger "WARNING" "[nginx] 获取 upstream_check 源码失败: ($upstream_check_path)"
 	fi
 	
 	# 进入 nginx 源码目录
@@ -190,7 +191,7 @@ install_nginx_env()
 		if [[ ! -d "${target_path}" ]]; then
 			local downloads_dir="${SYSTEM_CONFIG[downloads_dir]}"
 			
-			# 获取 nginx 源码路径
+			# 获取 nginx 源码
 			if ! fetch_nginx_source "$downloads_dir"; then
 				logger "ERROR" "[nginx] 获取源码失败"
 				return 1
