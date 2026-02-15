@@ -1,29 +1,5 @@
 #!/bin/bash
 
-# 设置系统用户
-set_service_user()
-{
-	# 创建用户目录
-	logger "DEBUG" "正在创建用户目录"
-	mkdir -p "${SYSTEM_CONFIG[downloads_dir]}" \
-			 "${SYSTEM_CONFIG[install_dir]}" \
-			 "${SYSTEM_CONFIG[update_dir]}" \
-			 "${SYSTEM_CONFIG[config_dir]}" \
-			 "${SYSTEM_CONFIG[data_dir]}" \
-			 "${SYSTEM_CONFIG[usr_dir]}"
-	
-	# 设置目录拥有者
-	logger "DEBUG" "正在设置目录拥有者(${USER_CONFIG[user]}:${USER_CONFIG[group]})"
-	chown -R ${USER_CONFIG[user]}:${USER_CONFIG[group]} \
-			 "${SYSTEM_CONFIG[downloads_dir]}" \
-			 "${SYSTEM_CONFIG[update_dir]}" \
-			"${SYSTEM_CONFIG[config_dir]}" \
-			"${SYSTEM_CONFIG[data_dir]}"
-			
-	chown "${USER_CONFIG[user]}:${USER_CONFIG[group]}" \
-			"${SYSTEM_CONFIG[usr_dir]}"
-}
-
 # 获取服务配置
 get_service_config()
 {
@@ -182,6 +158,30 @@ wait_for_services()
 	return $exit_code
 }
 
+# 设置系统用户
+set_service_user()
+{
+	# 创建用户目录
+	logger "DEBUG" "正在创建用户目录"
+	mkdir -p "${SYSTEM_CONFIG[downloads_dir]}" \
+			 "${SYSTEM_CONFIG[install_dir]}" \
+			 "${SYSTEM_CONFIG[update_dir]}" \
+			 "${SYSTEM_CONFIG[config_dir]}" \
+			 "${SYSTEM_CONFIG[data_dir]}" \
+			 "${SYSTEM_CONFIG[usr_dir]}"
+	
+	# 设置目录拥有者
+	logger "DEBUG" "正在设置目录拥有者(${USER_CONFIG[user]}:${USER_CONFIG[group]})"
+	chown -R ${USER_CONFIG[user]}:${USER_CONFIG[group]} \
+			 "${SYSTEM_CONFIG[downloads_dir]}" \
+			 "${SYSTEM_CONFIG[update_dir]}" \
+			"${SYSTEM_CONFIG[config_dir]}" \
+			"${SYSTEM_CONFIG[data_dir]}"
+			
+	chown "${USER_CONFIG[user]}:${USER_CONFIG[group]}" \
+			"${SYSTEM_CONFIG[usr_dir]}"
+}
+
 # 设置服务
 set_service_env()
 {
@@ -233,7 +233,7 @@ run_service()
 close_service()
 {
 	if pgrep -x "sshd" > /dev/null; then
-		logger "INFO" "sshd服务即将关闭中..." "close_service" "file"
+		logger "INFO" "sshd服务即将关闭中..."
 		killall -q "sshd"
 	fi
 }

@@ -60,6 +60,14 @@ declare -A SYSTEM_CONFIG=(
 )
 readonly -A SYSTEM_CONFIG
 
+# 服务列表模板
+SERVICE_TEMPLATES=(
+	"filebrowser:${ENABLE_FILEBROWSER:-false}:false:文件浏览器"
+	"openlist:${ENABLE_OPENLIST:-true}:true:文件管理器"
+	"syncthing:${ENABLE_SYNCTHING:-false}:true:文件同步工具"
+	"verysync:${ENABLE_VERYSYNC:-false}:false:微力同步工具"
+)
+
 umask ${UMASK:-022}
 
 # 加载服务状态脚本

@@ -692,8 +692,7 @@ handle_service_status()
 	local phase="$1"
 	local service="$2"
 	local action="$3"
-	local context="$4"
-	local data_json="${5:-}"
+	local data_json="${4:-}"
 	
 	[[ -z "$service" || -z "$action" ]] && return 1
 	
@@ -706,11 +705,8 @@ handle_service_status()
 	local result=$(jq -r '.result // 0' <<<"$data_json")
 	local pid=$(jq -r '.pid // empty' <<<"$data_json")
 	
-	local is_main=false
-	[[ "$context" == "main" ]] && is_main=true
-	
 	# 设置操作状态 
-	if $is_main && [[ "$phase" == "pre" ]]; then
+	if [[ "$phase" == "pre" ]]; then
 		if ! set_service_action "$service" "$action"; then
 			logger "ERROR" "设置操作状态失败: $service -> $action"
 			return 2
@@ -719,22 +715,15 @@ handle_service_status()
 	
 	# 处理执行失败 
 	if [[ "$result" -ne 0 ]]; then
-		if $is_main; then
-			update_service_states "$service" "${SERVICE_STATUS[FAILURE]}" "$action 执行失败"
-			export_service_states || true
-		else
-			update_shared_state "$service" "{
-					\"action\": \"${action}\",
-					\"status\": \"${SERVICE_STATUS[FAILURE]}\"
-				}"
-		fi
+		update_service_states "$service" "${SERVICE_STATUS[FAILURE]}" "$action 执行失败"
+		
+		export_service_states || true
 		return 0
 	fi
 	
 	# 执行状态更新
 	case "$action" in
 		"${SERVICE_ACTIONS[INIT]}")
-			$is_main || return 0
 			if [[ "$phase" == "pre" ]]; then
 				update_service_states "$service" "${SERVICE_STATUS[EXECUTING]}" "正在初始化"
 			else
@@ -742,7 +731,6 @@ handle_service_status()
 			fi
 			;;
 		"${SERVICE_ACTIONS[CLOSE]}")
-			$is_main || return 0
 			if [[ "$phase" == "pre" ]]; then
 				update_service_states "$service" "${SERVICE_STATUS[STOPPING]}" "正在停止"
 			else
@@ -751,39 +739,14 @@ handle_service_status()
 			fi
 			;;
 		"${SERVICE_ACTIONS[RUN]}")
-			if $is_main; then
-				if [[ "$phase" == "post" ]]; then
-					update_service_states "$service" "${SERVICE_STATUS[RUNNING]}" "启动成功"
-					update_service_pid "$service" "$pid"
-				fi
-			else
-				if [[ "$phase" == "pre" ]]; then
-					update_shared_state "$service" "{
-							\"action\": \"${action}\",
-							\"status\": \"${SERVICE_STATUS[EXECUTING]}\",
-							\"reason\": \"正在启动\"
-						}"
-				else
-					update_shared_state "$service" "{
-							\"action\": \"${action}\",
-							\"status\": \"${SERVICE_STATUS[RUNNING]}\",
-							\"pid\": \"$pid\",
-							\"reason\": \"启动成功\"
-						}"
-				fi
+			if [[ "$phase" == "post" ]]; then
+				update_service_states "$service" "${SERVICE_STATUS[RUNNING]}" "启动成功"
+				update_service_pid "$service" "$pid"
 			fi
 			;;
 		"${SERVICE_ACTIONS[UPDATE]}")
-			if $is_main; then
-				if [[ "$phase" == "pre" ]]; then
-					update_service_states "$service" "${SERVICE_STATUS[UPDATING]}" "正在更新"
-				fi
-			else
-				update_shared_state "$service" "{
-						\"action\": \"${action}\",
-						\"status\": \"${SERVICE_STATUS[UPDATING]}\",
-						\"reason\": \"正在更新\"
-					}"
+			if [[ "$phase" == "pre" ]]; then
+				update_service_states "$service" "${SERVICE_STATUS[UPDATING]}" "正在更新"
 			fi
 			;;
 		*)
@@ -793,7 +756,7 @@ handle_service_status()
 	esac
 	
 	# 主进程统一导出
-	$is_main && export_service_states || true
+	export_service_states || true
 }
 
 # 动态构建执行函数
@@ -801,7 +764,6 @@ execute_service_func()
 {
 	local service="$1"
 	local action="$2"
-	local context="${3:-main}"
 	local param="${4:-}"
 	
 	# 验证服务注册
@@ -828,7 +790,7 @@ execute_service_func()
 	local returned_pid=""
 	
 	# 操作前状态处理
-	handle_service_status "pre" "$service" "$action" "$context"
+	handle_service_status "pre" "$service" "$action"
 	
 	# 执行操作
 	if [[ -n "$param" ]]; then
@@ -849,7 +811,7 @@ execute_service_func()
 		}')
 	
 	# 操作后状态处理
-	handle_service_status "post" "$service" "$action" "$context" "$data_json"
+	handle_service_status "post" "$service" "$action" "$data_json"
 	return $result
 }
 

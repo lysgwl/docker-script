@@ -4,14 +4,19 @@
 [[ "${_COMMON_SH_LOADED}" == "$$:${BASH_SOURCE[0]}" ]] && return 0
 _COMMON_SH_LOADED="$$:${BASH_SOURCE[0]}"
 
+export ENABLE_NGINX=true
+
 # root 用户密码
 readonly ROOT_PASSWORD="123456"
 
-# 首次运行标识
+# 初始锁
 readonly INIT_LOCK="/var/run/init.lock"
 
 # utils模块目录
 : ${UTILS_DIR:=${WORK_DIR:-/app}/utils}
+
+# 回调函数变量
+SHUTDOWN_CALLBACK=""
 
 # 用户配置
 declare -A USER_CONFIG=(
@@ -34,18 +39,27 @@ readonly -A SSHD_CONFIG
 
 # 系统配置
 declare -A SYSTEM_CONFIG=(
-	["downloads_dir"]="${WORK_DIR}/downloads"		# 下载目录
-	["install_dir"]="${WORK_DIR}/install"			# 安装目录
-	["conf_dir"]="${WORK_DIR}/config"				# 预配置目录
-	["config_dir"]="/config"						# 配置目录
-	["data_dir"]="/data"							# 数据目录
-	["usr_dir"]="/mnt/usr"							# 用户目录
-	["arch"]="$(uname -m)"							# 系统架构
-	["type"]="$(uname | tr '[A-Z]' '[a-z]')"		# 系统类型
+	["downloads_dir"]="${WORK_DIR}/downloads"			# 下载目录
+	["install_dir"]="${WORK_DIR}/install"				# 安装目录
+	["conf_dir"]="${WORK_DIR}/config"					# 预配置目录
+	["config_dir"]="/config"							# 配置目录
+	["data_dir"]="/data"								# 数据目录
+	["usr_dir"]="/mnt/usr"								# 用户目录
+	["arch"]="$(uname -m)"								# 系统架构
+	["type"]="$(uname | tr '[A-Z]' '[a-z]')"			# 系统类型
+	["log_file"]="${LOG_FILE:-/var/log/filesync.log}"	# 日志文件
 )
 readonly -A SYSTEM_CONFIG
 
+# 服务列表模板
+SERVICE_TEMPLATES=(
+	"nginx:${ENABLE_NGINX:-false}:false:WEB服务器"
+)
+
 umask ${UMASK:-022}
+
+# 加载服务状态脚本
+source $WORK_DIR/scripts/service_state.sh
 
 # 加载服务脚本
 source $WORK_DIR/scripts/set_service.sh
@@ -56,6 +70,35 @@ source $WORK_DIR/scripts/set_nginx.sh
 # ============================================================================
 # 工具函数
 
+# 打印日志
+logger()
+{
+	local log_level="$1"
+	local message="${2:-}"
+	local func="${3:-}"
+	local file="${4:-}"
+	
+	if [[ "$log_level" == "START_TITLE" || "$log_level" == "END_TITLE" ]]; then
+		print_title "$file"
+		print_log "TEXT" "$message" "" "$file"
+		print_title "$file"
+	else
+		print_log "$log_level" "$message" "$func" "$file"
+	fi
+}
+
+# 主日志文件输出
+log_main()
+{
+	logger "$1" "${2:-}" "${3:-}" "${SYSTEM_CONFIG[log_file]}"
+}
+
+# 控制台输出
+log_console()
+{
+	logger "$1" "${2:-}" "${3:-}"
+}
+
 # 获取服务源码
 get_service_sources()
 {
@@ -63,7 +106,7 @@ get_service_sources()
 	local downloads_dir="$2"
 	local json_config="$3"
 	
-	# 创建输出目录，存放解压后的源代码
+	# 创建输出目录, 存放解压后的源代码
 	local output_dir="$downloads_dir/output"
 	mkdir -p "$output_dir" || return 1
 	
@@ -72,11 +115,11 @@ get_service_sources()
 	
 	# 在下载目录, 查找现有归档文件
 	if ! findpath=$(find_latest_archive "$downloads_dir" ".*${name}.*"); then
-		print_log "WARNING" "未匹配到 $name 软件包..." >&2
+		logger "WARNING" "未匹配到 $name 软件包..." >&2
 		
 		# 克隆Git仓库到下载目录
 		archive_path=$(clone_repo "$json_config" "$downloads_dir") || {
-			print_log "ERROR" "克隆 $name 源代码失败, 请检查!" >&2
+			logger "ERROR" "克隆 $name 源代码失败" >&2
 			return 2
 		}
 		
@@ -91,14 +134,14 @@ get_service_sources()
 		
 		# 验证文件类型
 		if [[ -z "$archive_type" ]] || ! [[ "$archive_type" =~ ^(file|directory)$ ]]; then
-			print_log "ERROR" "解析 $name 文件失败, 请检查!" >&2
+			logger "ERROR" "解析 $name 文件失败" >&2
 			return 1
 		fi
 		
 		# 解压源码文件
 		if [ "$archive_type" = "file" ]; then
 			archive_path=$(extract_and_validate "$archive_path" "$output_dir" "$name.*") || {
-				print_log "ERROR" "解压 $name 源码文件失败, 请检查!" >&2
+				logger "ERROR" "解压 $name 源码文件失败" >&2
 				return 3
 			}
 			
@@ -126,7 +169,6 @@ get_service_sources()
 	
 	# 返回源代码路径
 	echo "$latest_path"
-	return 0
 }
 
 # 执行命令作为指定用户
@@ -139,25 +181,48 @@ exec_as_user()
 	
 	# 验证用户存在
 	if ! id "$user" &>/dev/null; then
-		print_log "ERROR" "用户 '$user' 不存在, 请检查!"
+		logger "ERROR" "用户 $user 不存在"
 		return 1
 	fi
 	
-	su-exec "$user" bash -c "
-		# 取消所有加载标记
-		unset _COMMON_SH_LOADED UTILS_MODULE_LOADED 2>/dev/null || true
-		
-		# 重新加载 common.sh
-		if ! source \"$WORK_DIR/scripts/common.sh\" 2>/dev/null; then
-			echo '[ERROR] 加载脚本 common.sh 失败!' >&2
-			exit 1
-		fi
-		
-		# 执行命令
+	# 执行命令
+	local output
+	output=$(su-exec "$user" bash -c "
 		$cmd
-	"
+	")
 	
-	return $?
+	local result=$?
+	
+	[[ -n "$output" ]] && echo "$output"
+	return $result
+}
+
+# 设置信号处理器
+setup_signal_handler()
+{
+	local callback="$1"
+	
+	if [[ -n "$callback" ]]; then
+		if declare -f "$callback" >/dev/null 2>&1; then
+			SHUTDOWN_CALLBACK="$callback"
+		fi
+	fi
+	
+	# 处理终止信号
+	trap 'handle_shutdown' TERM INT
+}
+
+# 处理关闭信号
+handle_shutdown()
+{
+	# 执行业务回调
+	if [[ -n "$SHUTDOWN_CALLBACK" ]] && declare -f "$SHUTDOWN_CALLBACK" >/dev/null 2>&1; then
+		logger "INFO" "执行业务关闭回调: $SHUTDOWN_CALLBACK"
+		"$SHUTDOWN_CALLBACK"
+	fi
+	
+	# 退出码
+	exit 143
 }
 
 # ============================================================================
@@ -166,40 +231,46 @@ exec_as_user()
 # 初始化业务模块
 init_modules()
 {
-	if [ "$(id -u)" -ne 0 ]; then
-		print_log "ERROR" "非root用户权限无法初始环境, 请检查!"
+	if [[ "$(id -u)" -ne 0 ]]; then
+		logger "ERROR" "非root用户权限无法初始环境"
 		return 1
 	fi
 	
 	local param=$1
-	[ "$param" = "run" ] && param="config"
+	[[ "$param" = "run" ]] && param="config"
 	
 	# 初始服务环境
 	if ! init_service "$param"; then
 		return 1
 	fi
 	
-	# nginx 服务
-	if ! init_nginx_service "$param"; then
-		print_log "ERROR" "初始化 nginx 失败!"
+	# 执行初始化
+	if ! execute_services_action "${SERVICE_ACTIONS[INIT]}" "$param"; then
 		return 1
 	fi
-	
-	return 0
 }
 
 # 运行业务模块
 run_modules()
 {
-	# 启动 nginx 服务
-	run_nginx_service
+	# 启动服务
+	execute_services_action "${SERVICE_ACTIONS[RUN]}"
+	
+	# 等待所有服务进程退出
+	wait_for_services 0
+	local exit_code=$?
+	
+	if [[ $exit_code -ne 0 ]]; then
+		logger "ERROR" "服务进程异常退出, 退出码: $exit_code"
+		return $exit_code
+	fi
 }
 
 # 关闭业务模块
 close_modules()
 {
-	# 关闭 nginx 服务
-	close_nginx_service
+	# 执行关闭
+	execute_services_action "${SERVICE_ACTIONS[CLOSE]}"
 }
 
 # ============================================================================

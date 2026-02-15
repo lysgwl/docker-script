@@ -43,13 +43,13 @@ install_verysync_env()
 			# 获取安装包
 			local latest_path
 			latest_path=$(get_service_archive "verysync" "$downloads_dir" download_verysync "*.sig") || {
-				logger "ERROR" "[verysync] 获取服务安装包失败" >&2
+				logger "ERROR" "[verysync] 获取服务安装包失败"
 				return 1
 			}
 			
 			# 安装软件包
 			install_binary "$latest_path" "$target_path" || {
-				logger "ERROR" "[verysync] 安装服务失败" >&2
+				logger "ERROR" "[verysync] 安装服务失败"
 				return 2
 			}
 					
@@ -62,13 +62,13 @@ install_verysync_env()
 			
 			# 安装软件包
 			install_binary "$target_path" "$install_dir" || {
-				logger "ERROR" "[verysync] 安装服务失败" >&2
+				logger "ERROR" "[verysync] 安装服务失败"
 				return 2
 			}
 			
 			# 创建符号链接
 			install_binary "${verysync_cfg[bin_file]}" "" "${verysync_cfg[symlink_file]}" || {
-				logger "ERROR" "[verysync] 创建服务符号链接失败" >&2
+				logger "ERROR" "[verysync] 创建服务符号链接失败"
 				return 4
 			}
 			
@@ -88,17 +88,25 @@ set_verysync_user()
 	local user="${USER_CONFIG[user]}"
 	local group="${USER_CONFIG[group]}"
 	
-	# 获取相关路径
+	# 获取配置路径
 	local sys_path="${verysync_cfg[sys_path]}"
 	local etc_path="${verysync_cfg[etc_path]}"
 	local data_path="${verysync_cfg[data_path]}"
 	
-	chown -R "$user:$group" \
-		"${sys_path}" \
-		"${etc_path}" \
-		"${data_path}" 2>/dev/null || return 1
+	# 设置目录权限
+	for dir in "$sys_path" "$etc_path" "$data_path"; do
+		if [[ -z "$dir" ]]; then
+			logger "ERROR" "[syncthing] 目录 $dir 变量为空"
+			return 1
+		fi
+		
+		chown -R "$user:$group" "$dir" 2>/dev/null || {
+			logger "ERROR" "[syncthing] 设置目录权限失败: $dir"
+			return 2
+		}
+	done
 	
-	# 获取 PID 文件路径
+	# 获取PID文件
 	local pid_file=$(get_service_pid_file "verysync")
 	if [[ -n "$pid_file" ]]; then
 		chown "$user:$group" "$pid_file" 2>/dev/null || true
@@ -145,35 +153,45 @@ set_verysync_paths()
 {
 	logger "INFO" "[verysync] 设置服务环境目录"
 	
-	# 获取 PID 文件路径
-	local pid_file=$(get_service_pid_file "verysync")
-	if [[ -z "$pid_file" ]]; then
-		logger "ERROR" "[verysync] 无法获取服务 PID 文件"
-		return 1
-	fi
-	
-	# 提取 PID 文件所在目录
-	local pid_dir=$(dirname "$pid_file")
-	mkdir -p "$pid_dir" || {
-		logger "ERROR" "[verysync] 无法创建 PID 目录: $pid_dir"
-		return 1
-	}
-	
-	# 创建 PID 文件
-	touch "$pid_file" || {
-		logger "ERROR" "[verysync] 无法创建 PID 文件: $pid_file"
-		return 1
-	}
-	
-	# 获取其他配置路径
+	# 获取配置路径
 	local sys_path="${verysync_cfg[sys_path]}"
 	local etc_path="${verysync_cfg[etc_path]}"
 	local data_path="${verysync_cfg[data_path]}"
 	
-	mkdir -p \
-		"${sys_path}" \
-		"${etc_path}" \
-		"${data_path}"
+	# 获取PID文件
+	local pid_file=$(get_service_pid_file "verysync")
+	
+	# 创建目录
+	for dir in "$sys_path" "$etc_path" "$data_path"; do
+		if [[ -z "$dir" ]]; then
+			logger "ERROR" "[verysync] 目录 $dir 变量为空"
+			return 1
+		fi
+		
+		if ! mkdir -p "$dir"; then
+			logger "ERROR" "[verysync] 目录创建失败: $dir"
+			return 2
+		fi
+	done
+	
+	# 创建文件
+	for file in "$pid_file"; do
+		if [[ -z "$file" ]]; then
+			logger "ERROR" "[verysync] 文件 $file 路径为空"
+			return 1
+		fi
+		
+		local parent=$(dirname "$file")
+		if ! mkdir -p "$parent"; then
+			logger "ERROR" "[verysync] 父目录创建失败: $parent"
+			return 1
+		fi
+		
+		if ! touch "$file"; then
+			logger "ERROR" "[verysync] 文件创建失败: $file"
+			return 3
+		fi
+	done
 	
 	logger "INFO" "[verysync] 设置目录完成"
 }
