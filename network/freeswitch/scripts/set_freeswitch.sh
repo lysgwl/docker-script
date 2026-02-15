@@ -1,21 +1,6 @@
 #!/bin/bash
 
-# freeswitch 配置数组
-declare -A FREESWITCH_CONFIG=(
-	["name"]="freeswitch"
-	["passwd"]="123456"
-	["sys_path"]="/usr/local/freeswitch"
-	["etc_path"]="${SYSTEM_CONFIG[config_dir]}"
-	["data_path"]="${SYSTEM_CONFIG[data_dir]}"
-	["bin_path"]="/usr/local/freeswitch/bin"
-	["lib_path"]="${SYSTEM_CONFIG[data_dir]}/lib/freeswitch"
-	["log_path"]="${SYSTEM_CONFIG[data_dir]}/log/freeswitch"
-	["run_path"]="${SYSTEM_CONFIG[data_dir]}/run/freeswitch"
-	["external_ip"]="$(echo "${EXTERNAL_IP:-}" | tr -d '"')"
-)
-readonly -A FREESWITCH_CONFIG
-
-# freeswitch 源码数组
+# freeswitch 源码配置
 declare -A FREESWITCH_SOURCES=(
 	["libks"]='{"repo":"signalwire/libks", "version":"latest"}'
 	["sofia-sip"]='{"repo":"freeswitch/sofia-sip", "version":"latest"}'
@@ -27,29 +12,27 @@ declare -A FREESWITCH_SOURCES=(
 # 获取 freeswitch 源码
 fetch_freeswitch_source()
 {
-	print_log "TRACE" "获取 ${FREESWITCH_CONFIG[name]} 源码" >&2
+	logger "INFO" "[freeswitch] 获取相关源码"
 	local downloads_dir=$1
 
 	for key in "${!FREESWITCH_SOURCES[@]}"; do
 		local name="$key"
 		local source_config="${FREESWITCH_SOURCES[$name]}"
 		
-		if [[ -z "$source_config" ]]; then
-			continue
-		fi
+		[[ -z "$source_config" ]] && continue
 		
 		# 解析 JSON 配置
 		local repo=$(jq -r '.repo' <<< "$source_config")
 		local version=$(jq -r '.version' <<< "$source_config")
 		
-		# 如果repo为空，跳过该源码获取
+		# 如果repo为空, 跳过该源码获取
 		if [[ -z "$repo" ]]; then
-			print_log "INFO" "跳过 $name 源码获取,未配置仓库" >&2
+			logger "WARNING" "[freeswitch] 跳过获取 $name 源码,未配置仓库"
 			continue
 		fi
 		
 		local url="https://github.com/$repo.git"
-		print_log "INFO" "正在获取 $name 源码..." >&2
+		logger "INFO" "[freeswitch] 正在获取 $name 源码 ..." 
 		
 		# 构建克隆仓库的配置
 		local json_config=$(jq -n \
@@ -72,7 +55,7 @@ fetch_freeswitch_source()
 		
 		local ret=$?
 		if [ $ret -ne 0 ]; then
-			print_log "ERROR" "获取 $name 源码失败，错误码: $ret" >&2
+			logger "ERROR" "[freeswitch] 获取 $name 源码失败, 错误码: $ret"
 			break
 		fi
 	
@@ -85,45 +68,48 @@ fetch_freeswitch_source()
 # 编译 libks 源码
 build_libks_source()
 {
+	logger "INFO" "[libks] 编译源码 ..."
+	
 	# 获取 libks 源码路径
 	local path=$(jq -r '.path // empty' <<< "${FREESWITCH_SOURCES[libks]}" 2>/dev/null || echo '{}')
 	if [ ! -d "$path" ]; then
-		echo "[ERROR] 获取 libks 源码路径失败! ($path)"
+		logger "ERROR" "[libks] 获取源码失败: ($path)"
 		return 1
 	fi
 	
 	cd "$path"
 	
-	# 配置 CMake	-DWITH_LIBBACKTRACE=1
-	cmake . -DCMAKE_INSTALL_PREFIX:PATH=$(dirname "${FREESWITCH_CONFIG[sys_path]}") -DCMAKE_BUILD_TYPE=Release || {
-		echo "[ERROR] libks源码CMake配置失败,请检查!"
+	# 配置 CMake -DWITH_LIBBACKTRACE=1
+	cmake . -DCMAKE_INSTALL_PREFIX:PATH=/usr/local -DCMAKE_BUILD_TYPE=Release || {
+		logger "ERROR" "[libks] 源码CMake配置失败"
 		return 2
 	}
 	
 	# 编译 libks
 	make -j$(nproc) || {
-		echo "[ERROR] libks源码编译失败,请检查!"
+		logger "ERROR" "[libks] 源码编译失败"
 		return 3
 	}
 	
 	# 安装 libks
 	make install || {
-		echo "[ERROR] libks安装失败,请检查!"
+		logger "ERROR" "[libks] 安装失败"
 		return 4
 	}
 	
 	# 清理源码
 	rm -rf "$path"
-	return 0
 }
 
 # 编译 sofia-sip 源码
 build_sofia-sip_source()
 {
+	logger "INFO" "[sofia-sip] 编译源码 ..."
+	
 	# 获取 sofia-sip 源码路径
 	local path=$(jq -r '.path // empty' <<< "${FREESWITCH_SOURCES[sofia-sip]}" 2>/dev/null || echo '{}')
 	if [ ! -d "$path" ]; then
-		print_log "ERROR" "获取 sofia-sip 源码路径失败! ($path)"
+		logger "ERROR" "[sofia-sip] 获取源码失败: ($path)"
 		return 1
 	fi
 	
@@ -136,32 +122,33 @@ build_sofia-sip_source()
 		--with-glib=no \
 		--without-doxygen \
 		--disable-stun \
-		--prefix="$(dirname "${FREESWITCH_CONFIG[sys_path]}")"
+		--prefix=/usr/local
 	
 	# 编译 sofia-sip
 	make -j$(nproc) || {
-		print_log "ERROR" "sofia-sip 源码编译失败, 请检查!"
+		logger "ERROR" "[sofia-sip] 源码编译失败"
 		return 3
 	}
 	
 	# 安装 sofia-sip
 	make install || {
-		print_log "ERROR" "sofia-sip 安装失败, 请检查!"
+		logger "ERROR" "[sofia-sip] 安装失败"
 		return 4
 	}
 	
 	# 清理源码
 	rm -rf "$path"
-	return 0
 }
 
 # 编译 spandsp 源码
 build_spandsp_source()
 {
+	logger "INFO" "[spandsp] 编译源码 ..."
+	
 	# 获取 spandsp 源码路径
 	local path=$(jq -r '.path // empty' <<< "${FREESWITCH_SOURCES[spandsp]}" 2>/dev/null || echo '{}')
 	if [ ! -d "$path" ]; then
-		print_log "ERROR" "获取 spandsp 源码路径失败! ($path)"
+		logger "ERROR" "[spandsp] 获取源码失败: ($path)"
 		return 1
 	fi
 	
@@ -173,18 +160,18 @@ build_spandsp_source()
 	# 配置 configure 源码编译环境
 	./bootstrap.sh
 	./configure CFLAGS="-g -ggdb" \
-		--with-pic 
-		--prefix="$(dirname "${FREESWITCH_CONFIG[sys_path]}")"
-	
+		--with-pic \
+		--prefix=/usr/local
+		
 	# 编译 spandsp
 	make -j$(nproc) || {
-		print_log "ERROR" "spandsp 源码编译失败, 请检查!"
+		logger "ERROR" "[spandsp] 源码编译失败"
 		return 3
 	}
 	
 	# 安装 spandsp
 	make install || {
-		print_log "ERROR" "spandsp 安装失败, 请检查!"
+		logger "ERROR" "[spandsp] 安装失败"
 		return 4
 	}
 	
@@ -200,51 +187,53 @@ build_spandsp_source()
 	
 	# 清理源码
 	rm -rf "$path"
-	return 0
 }
 
 # 编译 signalwire-c 源码
 build_signalwire-c_source()
 {
+	logger "INFO" "[signalwire-c] 编译源码 ..."
+	
 	# 获取 signalwire-c 源码路径
 	local path=$(jq -r '.path // empty' <<< "${FREESWITCH_SOURCES[signalwire-c]}" 2>/dev/null || echo '{}')
 	if [ ! -d "$path" ]; then
-		print_log "ERROR" "获取 signalwire-c 源码路径失败! ($path)"
+		logger "ERROR" "[signalwire-c] 获取源码失败: ($path)"
 		return 1
 	fi
 	
 	cd "$path"
 	
 	# 配置 CMake
-	cmake . -DCMAKE_INSTALL_PREFIX:PATH="$(dirname "${FREESWITCH_CONFIG[sys_path]}")" -DCMAKE_BUILD_TYPE=Release || {
-		print_log "ERROR" "signalwire-c 源码CMake配置失败, 请检查!"
+	cmake . -DCMAKE_INSTALL_PREFIX:PATH=/usr/local -DCMAKE_BUILD_TYPE=Release || {
+		logger "ERROR" "[signalwire-c] 源码CMake配置失败"
 		return 2
 	}
 	
 	# 编译 signalwire-c
 	make -j$(nproc) || {
-		print_log "ERROR" "signalwire-c 源码编译失败, 请检查!"
+		logger "ERROR" "[signalwire-c] 源码编译失败"
 		return 3
 	}
 	
 	# 安装 signalwire-c
 	make install || {
-		print_log "ERROR" "signalwire-c 安装失败, 请检查!"
+		logger "ERROR" "[signalwire-c] 安装失败"
 		return 4
 	}
 	
 	# 清理源码
 	rm -rf "$path"
-	return 0
 }
 
 # 编译 freeswitch 源码
 build_freeswitch_source()
 {
+	logger "INFO" "[freeswitch] 编译源码 ..."
+	
 	# 获取 signalwire-c 源码路径
 	local path=$(jq -r '.path // empty' <<< "${FREESWITCH_SOURCES[freeswitch]}" 2>/dev/null || echo '{}')
 	if [ ! -d "$path" ]; then
-		print_log "ERROR" "获取 freeswitch 源码路径失败! ($path)"
+		logger "ERROR" "[freeswitch] 获取源码失败: ($path)"
 		return 1
 	fi
 	
@@ -270,18 +259,18 @@ build_freeswitch_source()
 
 	# 编译 freeswitch
 	make -j$(nproc)|| {
-		print_log "ERROR" "freeswitch 源码编译失败, 请检查!"
+		logger "ERROR" "[freeswitch] 源码编译失败"
 		return 3
 	}
 	
 	# 安装 freeswitch
 	make install || {
-		print_log "ERROR" "freeswitch 安装失败, 请检查!"
+		logger "ERROR" "[freeswitch] 安装失败"
 		return 4
 	}
 	
-	make sounds-install		# 安装所有语音提示音 (8kHz / 16kHz)
-	make moh-install		# 安装所有音乐保持音
+	#make sounds-install		# 安装所有语音提示音 (8kHz / 16kHz)
+	#make moh-install		# 安装所有音乐保持音
 	
 	#make hd-sounds-install  # 安装 HD 质量提示音 (16kHz)
 	#make hd-moh-install 	# 安装 HD 质量保持音
@@ -294,63 +283,50 @@ build_freeswitch_source()
 
 	# 清理源码
 	rm -rf "$path"
-	return 0
 }
 
 # 编译 freeswitch 源码
 setup_freeswitch_source()
 {
-	print_log "TRACE" "编译 ${FREESWITCH_CONFIG[name]} 源码"
+	logger "INFO" "编译 freeswitch 相关源码"
 	
 	# 编译 libks 源码
-	if ! build_libks_source; then
-		return 1
-	fi
-	
+	! build_libks_source && return 1
+
 	# 编译 sofia-sip 源码
-	if ! build_sofia-sip_source; then
-		return 2
-	fi
+	! build_sofia-sip_source && return 2
 	
 	# 编译 spandsp 源码
-	if ! build_spandsp_source; then
-		return 3
-	fi
+	! build_spandsp_source && return 3
 	
 	# 编译 signalwire-c 源码
-	if ! build_signalwire-c_source; then
-		return 4
-	fi
+	! build_signalwire-c_source && return 4
 	
 	# 编译 freeswitch 源码
-	if ! build_freeswitch_source; then
-		return 5
-	fi
-	
-	return 0
+	! build_freeswitch_source && return 5
 }
 
 # 安装 freeswitch 环境
 install_freeswitch_env()
 {
-	print_log "TRACE" "安装 ${FREESWITCH_CONFIG[name]} 服务"
+	logger "INFO" "[freeswitch] 安装服务环境"
 	local arg=$1
 	
-	local target_dir="${FREESWITCH_CONFIG[sys_path]}"
+	local target_dir="${freeswitch_cfg[sys_path]}"
 	if [ "$arg" = "init" ]; then
 		if [ ! -d "${target_dir}" ]; then
 			local downloads_dir="${SYSTEM_CONFIG[downloads_dir]}"
 			
 			# 获取 freeswitch 源码
-			if ! fetch_freeswitch_source "${downloads_dir}"; then
-				print_log "ERROR" "获取 ${FREESWITCH_CONFIG[name]} 失败, 请检查!"
-				return 2
+			if ! fetch_freeswitch_source "$downloads_dir"; then
+				logger "ERROR" "[freeswitch] 获取源码失败"
+				return 1
 			fi
 			
 			# 编译 freeswitch 源码
 			if ! setup_freeswitch_source; then
-				print_log "ERROR" "编译 ${FREESWITCH_CONFIG[name]} 失败, 请检查!"
-				return 3
+				logger "ERROR" "[freeswitch] 编译源码失败" 
+				return 2
 			fi
 			
 			# 清理临时文件
@@ -359,37 +335,65 @@ install_freeswitch_env()
 	elif [ "$arg" = "config" ]; then
 		if [ -d "${target_dir}" ]; then
 		
-			# 创建freeswitch符号链接
-			install_binary "${FREESWITCH_CONFIG[bin_path]}/${FREESWITCH_CONFIG[name]}" "" "/usr/local/bin/${FREESWITCH_CONFIG[name]}"
+			# 创建符号链接
+			install_binary "${freeswitch_cfg[bin_path]}/freeswitch" "" "${freeswitch_cfg[symlink_path]}/freeswitch"
 
 			# 创建fs_cli符号链接
-			install_binary "${FREESWITCH_CONFIG[bin_path]}/fs_cli" "" "/usr/local/bin/fs_cli"
+			install_binary "${freeswitch_cfg[bin_path]}/fs_cli" "" "${freeswitch_cfg[symlink_path]}/fs_cli"
 		fi
 	fi
 	
-	print_log "TRACE" "编译 ${FREESWITCH_CONFIG[name]} 完成!"
-	return 0
+	logger "INFO" "[freeswitch] 服务安装完成"
+}
+
+# 设置 freeswitch 用户
+set_freeswitch_user()
+{
+	logger "INFO" "[freeswitch] 设置服务用户权限"
+	
+	local user="${USER_CONFIG[user]}"
+	local group="${USER_CONFIG[group]}"
+	
+	# 获取配置路径
+	local sys_path="${freeswitch_cfg[sys_path]}"
+	local etc_path="${freeswitch_cfg[etc_path]}"
+	local data_path="${freeswitch_cfg[data_path]}"
+	
+	# 设置目录权限
+	for dir in "$sys_path" "$etc_path" "$data_path"; do
+		if [[ -z "$dir" ]]; then
+			logger "ERROR" "[freeswitch] 目录 $dir 变量为空"
+			return 1
+		fi
+		
+		chown -R "$user:$group" "$dir" 2>/dev/null || {
+			logger "ERROR" "[freeswitch] 设置目录权限失败: $dir"
+			return 2
+		}
+	done
+	
+	logger "INFO" "[freeswitch] 服务权限完成"
 }
 
 # 设置配置文件变量
 set_freeswitch_vars()
 {
-	print_log "TRACE" "设置配置文件变量"
+	logger "INFO" "[freeswitch] 设置配置变量"
 	
-	local vars_conf="${FREESWITCH_CONFIG[etc_path]}/freeswitch/vars.xml"
+	local vars_conf="${freeswitch_cfg[etc_path]}/freeswitch/vars.xml"
 	if [ -f "$vars_conf" ]; then
 		modify_xml_config -f "$vars_conf" -m replace \
 			-o '//X-PRE-PROCESS[@data="default_password=1234"]' \
-			-n '<X-PRE-PROCESS cmd="set" data="default_password='"${FREESWITCH_CONFIG[passwd]}"'"/>' \
+			-n '<X-PRE-PROCESS cmd="set" data="default_password='"${freeswitch_cfg[passwd]}"'"/>' \
 			-p after
 			
-		if [ -n "${FREESWITCH_CONFIG[external_ip]}" ]; then
+		if [ -n "${freeswitch_cfg[external_ip]}" ]; then
 			modify_xml_config -f "$vars_conf" -m insert \
 				-o '//X-PRE-PROCESS[@data="domain=$${local_ip_v4}"]' \
-				-n '<X-PRE-PROCESS cmd="set" data="local_ip_v4='"${FREESWITCH_CONFIG[external_ip]}"'"/>' \
+				-n '<X-PRE-PROCESS cmd="set" data="local_ip_v4='"${freeswitch_cfg[external_ip]}"'"/>' \
 				-p before
 			
-			# '"${FREESWITCH_CONFIG[external_ip]}"'
+			# '"${freeswitch_cfg[external_ip]}"'
 			modify_xml_config -f "$vars_conf" -m replace \
 				-o '//X-PRE-PROCESS[@data="external_rtp_ip=stun:stun.freeswitch.org"]' \
 				-n '<X-PRE-PROCESS cmd="set" data="external_rtp_ip=$${local_ip_v4}"/>' \
@@ -402,7 +406,7 @@ set_freeswitch_vars()
 		fi	
 	fi
 	
-	local event_socket_conf="${FREESWITCH_CONFIG[etc_path]}/freeswitch/autoload_configs/event_socket.conf.xml"
+	local event_socket_conf="${freeswitch_cfg[etc_path]}/freeswitch/autoload_configs/event_socket.conf.xml"
 	if [ -f "$event_socket_conf" ]; then
 		modify_xml_config -f "$event_socket_conf" -m update \
 			-o '//param[@name="listen-ip"]' \
@@ -412,66 +416,85 @@ set_freeswitch_vars()
 			-o '//param[@name="password"]' \
 			-n 'value="ClueCon"'
 	fi
+}
+
+# 同步配置数据
+sync_freeswitch_conf()
+{
+	local src="$1"
+	local dst="$2"
+	local desc="$3"
 	
-	print_log "TRACE" "完成配置文件(vars.xml)设置"
+	[[ ! -d "$src" ]] && return 1
+	
+	if find "$src" -mindepth 1 -maxdepth 1 -quit 2>/dev/null; then
+		if ! rsync -a --remove-source-files "$src"/ "$dst"/ >/dev/null 2>&1; then
+			logger "ERROR" "[freeswitch] 复制 $desc 失败"
+			return 1
+		fi
+		
+		rm -rf "$src" 
+		logger "DEBUG" "[freeswitch] 复制 $desc 完成: $src → $dst"
+	fi
+	
+	return 0
 }
 
 # 设置 freeswitch 配置
 set_freeswitch_conf()
 {
-	print_log "TRACE" "设置 ${FREESWITCH_CONFIG[name]} 配置文件"
+	logger "INFO" "[freeswitch] 设置服务配置文件"
 	
-	# freeswitch 预设数据
-	local target_dir="${SYSTEM_CONFIG[conf_dir]}/data"
-	local dest_dir="${SYSTEM_CONFIG[data_dir]}"
+	# freeswitch 预设数据(data)
+	sync_freeswitch_conf "${SYSTEM_CONFIG[conf_dir]}/data" "${freeswitch_cfg[data_path]}" "数据文件" || return 1
 	
-	if [[ -d "$target_dir" ]] && find "$target_dir" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null; then
-		mkdir -p "$dest_dir"
-		
-		#mv "$target_dir"/* "${SYSTEM_CONFIG[data_dir]}"
-		if rsync -av --remove-source-files "$target_dir"/ "$dest_dir"/ >/dev/null; then
-			rm -rf "$target_dir"
-		fi
-	fi
+	# freeswitch 预设配置(etc)
+	sync_freeswitch_conf "${SYSTEM_CONFIG[conf_dir]}/etc" "${freeswitch_cfg[etc_path]}" "配置文件" || return 1
 	
-	# freeswitch 预设配置
-	target_dir="${SYSTEM_CONFIG[conf_dir]}/etc"
-	dest_dir="${SYSTEM_CONFIG[config_dir]}"
-	
-	if [[ -d "$target_dir" ]] && find "$target_dir" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null; then
-		mkdir -p "$dest_dir"
-		
-		#mv "$target_dir"/* "${SYSTEM_CONFIG[config_dir]}"
-		if rsync -av --remove-source-files "$target_dir"/ "$dest_dir"/ >/dev/null; then
-			rm -rf "$target_dir"
-		fi
-	fi
 	
 	# 设置配置文件变量
 	set_freeswitch_vars
 	
-	print_log "TRACE" "设置 ${FREESWITCH_CONFIG[name]} 配置完成!"
+	logger "INFO" "[freeswitch] 服务配置完成"
 }
 
-# 设置 freeswitch 用户
-set_freeswitch_user()
+# 设置 freeswitch 路径
+set_freeswitch_paths()
 {
-	print_log "TRACE" "设置 ${FREESWITCH_CONFIG[name]} 用户权限"
-
-	chown -R ${USER_CONFIG[user]}:${USER_CONFIG[group]} \
-			"${FREESWITCH_CONFIG[sys_path]}" \
-			"${SYSTEM_CONFIG[config_dir]}"
+	logger "INFO" "[freeswitch] 设置服务环境目录"
 	
-	print_log "TRACE" "设置 ${FREESWITCH_CONFIG[name]} 权限完成!"
+	# 获取配置路径
+	local etc_path="${freeswitch_cfg[etc_path]}"
+	local data_path="${freeswitch_cfg[data_path]}"
+	
+	# 创建目录
+	for dir in "$etc_path" "$data_path"; do
+		if [[ -z "$dir" ]]; then
+			logger "ERROR" "[freeswitch] 目录 $dir 变量为空"
+			return 1
+		fi
+		
+		if ! mkdir -p "$dir"; then
+			logger "ERROR" "[freeswitch] 目录创建失败: $dir"
+			return 2
+		fi
+	done
+	
+	logger "INFO" "[freeswitch] 设置目录完成"
 }
 
 # 设置 freeswitch 环境
 set_freeswitch_env()
 {
-	print_log "TRACE" "设置 ${FREESWITCH_CONFIG[name]} 服务配置"
-	local arg=$1
+	logger "INFO" "[freeswitch] 设置服务环境"
 	
-	if [ "$arg" = "config" ]; then	
+	# 设置路径
+	if ! set_freeswitch_paths; then
+		logger "ERROR" "[freeswitch] 路径设置失败"
+		return 1
+	fi
+	
+	if [ "$1" = "config" ]; then
 		# 设置 freeswitch 配置
 		set_freeswitch_conf
 		
@@ -479,96 +502,166 @@ set_freeswitch_env()
 		set_freeswitch_user
 	fi
 	
-	print_log "TRACE" "设置 ${FREESWITCH_CONFIG[name]} 完成!"
-	return 0
+	logger "INFO" "[freeswitch] 设置服务完成"
+}
+
+# 设置 freeswitch 模板
+set_freeswitch_template()
+{
+	# 获取配置路径
+	local data_dir="${SYSTEM_CONFIG[data_dir]}"
+	local etc_dir="${SYSTEM_CONFIG[config_dir]}"
+	local sys_dir="/usr/local/freeswitch"
+	local bin_dir="${sys_dir}/bin"
+	local lib_dir="${data_dir}/lib/freeswitch"
+	local log_dir="${data_dir}/log/freeswitch"
+	local run_dir="${data_dir}/run/freeswitch"
+	local symlink_dir="/usr/local/bin"
+	local external_ip="$(echo "${EXTERNAL_IP:-}" | tr -d '"')"
+	
+	local freeswitch_json=$(jq -n \
+		--arg name "freeswitch" \
+		--arg passwd "123456" \
+		--arg etc "${etc_dir}" \
+		--arg data "${data_dir}" \
+		--arg sys "${sys_dir}" \
+		--arg bin "${bin_dir}" \
+		--arg symlink "${symlink_dir}" \
+		--arg lib "${lib_dir}" \
+		--arg log "${log_dir}" \
+		--arg run "${run_dir}" \
+		--arg external "${external_ip}" \
+		'{
+			name: $name,
+			passwd: $passwd,
+			etc_path: $etc,
+			data_path: $data,
+			sys_path: $sys,
+			bin_path: $bin,
+			symlink_path: $symlink,
+			lib_path: $lib,
+			log_path: $log,
+			run_path: $run,
+			external_ip: $external
+		}')
+		
+	import_service_config "freeswitch" "" "" "$freeswitch_json"
+	return $?
 }
 
 # 初始化 freeswitch 环境
 init_freeswitch_service()
 {
-	print_log "TRACE" "初始化 ${FREESWITCH_CONFIG[name]} 服务"
-	local arg=$1
+	logger "INFO" "[freeswitch] 初始化服务"
+	
+	# 设置 freeswitch 模板
+	if ! set_freeswitch_template; then
+		logger "ERROR" "[freeswitch] 设置模板失败"
+		return 1
+	fi
+	
+	# 获取服务配置
+	get_service_config "freeswitch" "config" "freeswitch_cfg" || {
+		logger "ERROR" "[freeswitch] 无法获取服务配置"
+		return 2
+	}
 	
 	# 编译 freeswitch 源码
-	if ! install_freeswitch_env "$arg"; then
-		return 1
+	if ! install_freeswitch_env "$1"; then
+		logger "ERROR" "[freeswitch] 安装环境失败"
+		return 3
 	fi
 	
 	# 设置 freeswitch 环境
-	if ! set_freeswitch_env "$arg"; then
-		return 1
+	if ! set_freeswitch_env "$1"; then
+		logger "ERROR" "[freeswitch] 设置环境失败"
+		return 4
 	fi
 	
-	print_log "TRACE" "初始化 ${FREESWITCH_CONFIG[name]} 服务成功!"
-	return 0
+	logger "INFO" "[freeswitch] ✓ 初始化服务完成"
 }
 
 # 运行 freeswitch 服务
 run_freeswitch_service()
 {
-	print_log "TRACE" "运行 ${FREESWITCH_CONFIG[name]} 服务"
+	local -n pid_ref="${1:-}"
+	logger "INFO" "[freeswitch] 运行服务"
 	
-	if [[ ! -e "${FREESWITCH_CONFIG[bin_path]}/freeswitch" || ! -e "${FREESWITCH_CONFIG[bin_path]}/fs_cli" ]]; then
-		print_log "ERROR" "${FREESWITCH_CONFIG[name]} 服务运行失败, 请检查!"
-		return
-	fi
-	
-	# 标识文件
-	local pid_file="${FREESWITCH_CONFIG[run_path]}/${FREESWITCH_CONFIG[name]}.pid"
-	
-	# 检查服务是否已运行
-	if [ -f "$pid_file" ]; then
-		local pid=$(cat "$pid_file" 2>/dev/null)
-		if ! kill -0 "$pid" >/dev/null 2>&1; then
-			rm -f "$pid_file"
-		else
-			if ! grep -qF "${FREESWITCH_CONFIG[name]}" "/proc/$pid/cmdline" 2>/dev/null; then
-				rm -f "$pid_file"
-			else
-				print_log "WARNING" "${FREESWITCH_CONFIG[name]} 服务已经在运行(PID:$pid), 请检查!"
-				return 0
-			fi
-		fi
-	fi
-	
-	# 后台运行 freeswitch
-	nohup ${FREESWITCH_CONFIG[bin_path]}/freeswitch -nonat -nc >/dev/null 2>&1 &
-	
-	# 等待 PID 生效
-	if ! wait_for_pid 10 "$pid_file"; then
+	# 获取服务配置
+	get_service_config "freeswitch" "config" "freeswitch_cfg" || {
+		logger "ERROR" "[freeswitch] 无法获取服务配置"
 		return 1
+	}
+	
+	local bin_file="${freeswitch_cfg[bin_path]}/freeswitch"
+	local fs_cli="${freeswitch_cfg[bin_path]}/fs_cli"
+	local pid_file="${freeswitch_cfg[run_path]}/freeswitch.pid"
+	
+	[[ ! -f "$bin_file" ]] && { logger "ERROR" "[freeswitch] 可执行文件不存在"; return 1; }
+	[[ ! -f "$fs_cli" ]] && { logger "ERROR" "[fs_cli] 可执行文件不存在"; return 1; }
+	
+	# 检查是否已运行
+	if check_service_alive "freeswitch"; then
+		logger "WARNING" "[freeswitch] 检测服务已经在运行!"
+		return 0
 	fi
 	
-	print_log "TRACE" "启动${FREESWITCH_CONFIG[name]} 服务成功!"
+	# 启动服务
+	exec_as_user ${USER_CONFIG[user]} "
+		\"$bin_file\" -nonat -nc >/dev/null 2>&1 &
+	" || {
+		logger "ERROR" "[freeswitch] 执行启动命令失败"
+		return 2
+	}
+
+	# 等待进程
+	if ! wait_for_pid 5 "$pid_file"; then
+		return 3
+	fi
+	
+	pid_ref=$(cat "$pid_file" 2>/dev/null | tr -d ' \n')
+	logger "INFO" "[freeswitch] ✓ 启动服务完成!"
 }
 
 # 停止 freeswitch 服务
 close_freeswitch_service()
 {
-	print_log "TRACE" "关闭 ${FREESWITCH_CONFIG[name]} 服务"
+	logger "INFO" "[freeswitch] 开始停止服务"
 	
-	if [ ! -e "${FREESWITCH_CONFIG[bin_path]}/freeswitch" ]; then
-		print_log "ERROR" "${FREESWITCH_CONFIG[name]} 服务不存在, 请检查!"
-		return
-	fi
+	# 获取服务配置
+	get_service_config "freeswitch" "config" "freeswitch_cfg" || {
+		logger "ERROR" "[freeswitch] 无法获取服务配置"
+		return 1
+	}
 	
 	# 标识文件
-	local pid_file="${FREESWITCH_CONFIG[run_path]}/${FREESWITCH_CONFIG[name]}.pid"
+	local pid_file="${freeswitch_cfg[run_path]}/freeswitch.pid"
 	
-	# 检查 freeswitch 服务进程
-	if [ -e "$pid_file" ]; then
-		for PID in $(cat "$pid_file" 2>/dev/null); do
-			print_log "INFO" "${FREESWITCH_CONFIG[name]} 服务进程: ${PID}"
-			kill $PID
+	# 获取PID
+	local pid=$(get_service_pid "freeswitch" 2>/dev/null)
+	[[ -z "$pid" && -f "$pid_file" ]] && pid=$(cat "$pid_file" 2>/dev/null)
+	
+	# 停止服务
+	if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+		logger "INFO" "[freeswitch] 停止进程 (PID: $pid)"
+		
+		# 优雅停止
+		kill -TERM "$pid" 2>/dev/null
+		
+		# 等待最多5秒
+		for i in {1..5}; do
+			kill -0 "$pid" 2>/dev/null || break
+			sleep 1
 		done
 		
-		rm -rf "$pid_file"
+		# 强制停止
+		if kill -0 "$pid" 2>/dev/null; then
+			logger "WARNING" "[freeswitch] 进程未响应, 强制停止"
+			kill -KILL "$pid" 2>/dev/null
+		fi
 	fi
 	
-	for PID in $(pidof ${FREESWITCH_CONFIG[name]}); do
-		print_log "INFO" "${FREESWITCH_CONFIG[name]} 服务进程:$PID"
-		kill "$PID"
-	done
-	
-	print_log "TRACE" "关闭 ${FREESWITCH_CONFIG[name]} 服务成功!"
+	# 清理PID文件
+	rm -f "$pid_file" 2>/dev/null
+	logger "INFO" "[freeswitch] ✓ 服务已停止"
 }

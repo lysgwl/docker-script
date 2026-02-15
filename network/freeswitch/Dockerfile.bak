@@ -1,0 +1,219 @@
+# ========================
+# 全局参数
+# ========================
+ARG WORK_DIR=/app
+ARG BASE_IMAGE=debian:bookworm-slim
+ARG BUILD_VERSION=1.0
+ARG UTILS_IMAGE_NAME=docker-utils
+ARG UTILS_VERSION=latest
+
+# Perl 镜像源
+ARG CPAN_MIRROR="http://mirrors.ustc.edu.cn/CPAN/"
+
+# ========================
+# 阶段1: 定义utils镜像源
+# ========================
+FROM ${UTILS_IMAGE_NAME}:${UTILS_VERSION} AS utils-source
+
+# ========================
+# 阶段2: 编译构建阶段
+# ========================
+FROM ${BASE_IMAGE} AS builder
+LABEL stage=builder
+
+ARG WORK_DIR
+ARG CPAN_MIRROR
+
+# 环境变量
+ENV WORK_DIR=$WORK_DIR \
+	UTILS_DIR=$WORK_DIR/utils
+	
+ENV LANG=C.UTF-8 \
+	LC_ALL=C.UTF-8 \
+	DEBIAN_FRONTEND=noninteractive \
+	PERL_MM_USE_DEFAULT=1
+
+# ENV HTTP_PROXY=http://192.168.2.11:10808
+# ENV HTTPS_PROXY=http://192.168.2.11:10808
+
+# 设置镜像源
+RUN sed -i 's@deb.debian.org@mirrors.ustc.edu.cn@g' /etc/apt/sources.list.d/debian.sources
+
+# 设置PERL源
+RUN mkdir -p /usr/share/perl5/CPAN/Config/ && \
+	{ \
+		echo "mirror $CPAN_MIRROR"; \
+		echo "urllist $CPAN_MIRROR"; \
+	} > /usr/share/perl5/CPAN/Config/Mirrors.pm
+
+# 安装软件包
+RUN apt-get update && \
+	apt-get install -y --no-install-recommends \
+		ca-certificates \
+		cpanminus \
+		curl \
+		git \
+		jq \
+		rsync \
+		wget \
+		tzdata && \
+	apt-get clean && \
+	rm -rf /var/lib/apt/lists/*
+
+# 设置时区	
+RUN ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
+	echo 'Asia/Shanghai' > /etc/timezone && \
+	dpkg-reconfigure -f noninteractive tzdata
+	
+# 工作目录
+WORKDIR $WORK_DIR
+
+# 复制文件
+COPY --from=utils-source /app/utils $WORK_DIR/utils
+COPY scripts/ $WORK_DIR/scripts
+COPY usr/ $WORK_DIR/downloads
+
+# 运行权限
+RUN chmod +x $WORK_DIR/scripts/*.sh && \
+	find $WORK_DIR/utils -name "*.sh" -type f -exec chmod +x {} \; 2>/dev/null || true
+
+# 执行初始化
+RUN $WORK_DIR/scripts/entrypoint.sh init
+
+# 安装Perl模块
+RUN cpanm --local-lib=/usr/local/perl \
+		  --mirror $CPAN_MIRROR \
+		  --mirror-only \
+		  XML::LibXML \
+	      XML::LibXML::PrettyPrint && \
+	rm -rf /root/.cpanm /root/.cpan
+	
+# CMD ["/bin/sh", "-c", "while true; do echo 'Running...'; sleep 60; done"]
+
+# ========================
+# 阶段3: 主构建阶段
+# ========================
+FROM ${BASE_IMAGE} AS master
+
+# 定义工作目录
+ARG WORK_DIR
+
+# 定义用户和组
+ARG PUID=1000
+ARG PGID=1000
+ARG USERNAME=freeswitch
+ARG GROUPNAME=freeswitch
+
+# 定义版本号
+ARG BUILD_VERSION
+
+LABEL version="$BUILD_VERSION"
+LABEL author="wanglei<lysgwl@163.com>"
+LABEL description="freeswitch For Debian"
+
+# 导出用户和组
+ENV PUID=$PUID \
+	PGID=$PGID \
+	USERNAME=$USERNAME \
+	GROUPNAME=$GROUPNAME \
+	LANG=C.UTF-8 \
+	DEBIAN_FRONTEND=noninteractive
+	
+ENV WORK_DIR=$WORK_DIR \
+	UTILS_DIR=$WORK_DIR/utils \
+	PERL5LIB=/usr/local/perl/lib/perl5
+
+# 设置时区
+RUN ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
+	echo 'Asia/Shanghai' > /etc/timezone
+
+# 创建用户和组
+RUN groupadd -g $PGID $GROUPNAME && \
+	useradd -m -s /bin/bash -g $GROUPNAME -u $PUID $USERNAME
+
+# 设置镜像源
+RUN sed -i 's@deb.debian.org@mirrors.ustc.edu.cn@g' /etc/apt/sources.list.d/debian.sources
+
+# 安装核心依赖
+RUN apt-get update && \
+	apt-get install -y --no-install-recommends \
+		ca-certificates \
+		gosu \
+		locales \
+		xmlstarlet \
+		tzdata
+
+# 安装多媒体运行库
+RUN apt-get install -y --no-install-recommends \
+		libavformat59 \
+		libcurl4 \
+		libedit2 \
+		libexpat1 \
+		libflac12 \
+		libjpeg62-turbo \
+		liblua5.1-0 \
+		libmp3lame0 \
+		libmpg123-0 \
+		libogg0 \
+		libopus0 \
+		libpcre3 \
+		libpq5 \
+		libshout3 \
+		libsndfile1 \
+		libspeex1 \
+		libspeexdsp1 \
+		libsqlite3-0 \
+		libssl3 \
+		libswscale6 \
+		libtiff6 \
+		libvorbis0a \
+		libxml2 \
+		unixodbc \
+		zlib1g
+
+# 安装运维工具
+RUN apt-get install -y --no-install-recommends \
+		curl \
+		git \
+		jq \
+		wget \
+		rsync \
+		perl \
+		openssh-client \
+		openssh-server && \
+	apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# 工作目录
+WORKDIR $WORK_DIR
+
+# 复制文件
+COPY --from=utils-source /app/utils $WORK_DIR/utils
+COPY --from=builder /usr/local /usr/local
+COPY --from=builder /data $WORK_DIR/config/data
+COPY --from=builder /config $WORK_DIR/config/etc
+
+COPY --chown=$USERNAME:$GROUPNAME scripts/ $WORK_DIR/scripts
+COPY 1.sh $WORK_DIR/1.sh
+
+# 设置权限
+RUN chown -R $USERNAME:$GROUPNAME $WORK_DIR && \
+	chmod +x $WORK_DIR/scripts/*.sh
+
+# 持久化目录
+VOLUME /config /data
+
+# 暴露端口
+EXPOSE 22
+EXPOSE 8021/tcp	
+EXPOSE 5060/tcp 5060/udp 5080/tcp 5080/udp
+EXPOSE 5061/tcp 5061/udp 5081/tcp 5081/udp
+EXPOSE 5066/tcp
+EXPOSE 7443/tcp
+EXPOSE 8081/tcp 8082/tcp
+EXPOSE 16384-32768/udp
+EXPOSE 64535-65535/udp
+
+SHELL ["/bin/bash", "-c"]
+
+# 启动执行脚本
+ENTRYPOINT ["/bin/bash", "/app/scripts/entrypoint.sh", "run"]
