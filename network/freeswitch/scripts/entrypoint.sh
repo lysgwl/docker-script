@@ -27,8 +27,6 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
 		lock_manager "create" "$INIT_LOCK"
 	fi
 	
-	#install_service_env "init"
-	
 	if [[ "$1" = "run" ]]; then
 		print_section "启动服务 ($1)"
 		
@@ -43,6 +41,8 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
 	fi
 	
 	if [[ "$1" = "test" ]]; then
-		init_modules "init"
+		run_modules
+		#tail -f /dev/null
 	fi
+	
 fi

@@ -248,15 +248,15 @@ build_freeswitch_source()
 	
 	# 配置 configure 源码编译环境
 	./configure --enable-portable-binary \
-				--prefix="${FREESWITCH_CONFIG[sys_path]}" \
-				--sysconfdir="${FREESWITCH_CONFIG[etc_path]}" \
-				--localstatedir="${FREESWITCH_CONFIG[data_path]}" \
+				--prefix="${freeswitch_cfg[sys_path]}" \
+				--sysconfdir="${freeswitch_cfg[etc_path]}" \
+				--localstatedir="${freeswitch_cfg[data_path]}" \
 				--with-gnu-ld \
 				--with-openssl \
 				--enable-core-odbc-support \
 				--enable-zrtp \
 				--disable-signalwire
-
+				
 	# 编译 freeswitch
 	make -j$(nproc)|| {
 		logger "ERROR" "[freeswitch] 源码编译失败"
@@ -269,18 +269,18 @@ build_freeswitch_source()
 		return 4
 	}
 	
-	#make sounds-install		# 安装所有语音提示音 (8kHz / 16kHz)
-	#make moh-install		# 安装所有音乐保持音
+	make sounds-install			# 安装所有语音提示音 (8kHz / 16kHz)
+	make moh-install			# 安装所有音乐保持音
 	
-	#make hd-sounds-install  # 安装 HD 质量提示音 (16kHz)
-	#make hd-moh-install 	# 安装 HD 质量保持音
+	#make hd-sounds-install  	# 安装 HD 质量提示音 (16kHz)
+	#make hd-moh-install 		# 安装 HD 质量保持音
 	
-	#make uhd-sounds-install # 安装 UHD 质量提示音 (Ultra HD, 48kHz)
-	#make uhd-moh-install 	# 安装 UHD 质量保持音
+	#make uhd-sounds-install 	# 安装 UHD 质量提示音 (Ultra HD, 48kHz)
+	#make uhd-moh-install 		# 安装 UHD 质量保持音
 	
-	#make cd-sounds-install  # 安装 CD 质量提示音 (16-bit, 44.1kHz)
-	#make cd-moh-install 	# 安装 CD 质量保持音 
-
+	#make cd-sounds-install  	# 安装 CD 质量提示音 (16-bit, 44.1kHz)
+	#make cd-moh-install 		# 安装 CD 质量保持音 
+	
 	# 清理源码
 	rm -rf "$path"
 }
@@ -291,19 +291,29 @@ setup_freeswitch_source()
 	logger "INFO" "编译 freeswitch 相关源码"
 	
 	# 编译 libks 源码
-	! build_libks_source && return 1
-
+	if ! build_libks_source; then
+		return 1
+	fi
+	
 	# 编译 sofia-sip 源码
-	! build_sofia-sip_source && return 2
+	if ! build_sofia-sip_source; then
+		return 2
+	fi
 	
 	# 编译 spandsp 源码
-	! build_spandsp_source && return 3
+	if ! build_spandsp_source; then
+		return 3
+	fi
 	
 	# 编译 signalwire-c 源码
-	! build_signalwire-c_source && return 4
-	
+	if ! build_signalwire-c_source; then
+		return 4
+	fi
+
 	# 编译 freeswitch 源码
-	! build_freeswitch_source && return 5
+	if ! build_freeswitch_source; then
+		return 5
+	fi
 }
 
 # 安装 freeswitch 环境
@@ -314,6 +324,7 @@ install_freeswitch_env()
 	
 	local target_dir="${freeswitch_cfg[sys_path]}"
 	if [ "$arg" = "init" ]; then
+	
 		if [ ! -d "${target_dir}" ]; then
 			local downloads_dir="${SYSTEM_CONFIG[downloads_dir]}"
 			
@@ -332,9 +343,10 @@ install_freeswitch_env()
 			# 清理临时文件
 			rm -rf "$downloads_dir/output"
 		fi
-	elif [ "$arg" = "config" ]; then
-		if [ -d "${target_dir}" ]; then
 		
+	elif [ "$arg" = "config" ]; then
+	
+		if [ -d "${target_dir}" ]; then
 			# 创建符号链接
 			install_binary "${freeswitch_cfg[bin_path]}/freeswitch" "" "${freeswitch_cfg[symlink_path]}/freeswitch"
 
@@ -382,12 +394,14 @@ set_freeswitch_vars()
 	
 	local vars_conf="${freeswitch_cfg[etc_path]}/freeswitch/vars.xml"
 	if [ -f "$vars_conf" ]; then
+	
 		modify_xml_config -f "$vars_conf" -m replace \
 			-o '//X-PRE-PROCESS[@data="default_password=1234"]' \
 			-n '<X-PRE-PROCESS cmd="set" data="default_password='"${freeswitch_cfg[passwd]}"'"/>' \
 			-p after
 			
 		if [ -n "${freeswitch_cfg[external_ip]}" ]; then
+		
 			modify_xml_config -f "$vars_conf" -m insert \
 				-o '//X-PRE-PROCESS[@data="domain=$${local_ip_v4}"]' \
 				-n '<X-PRE-PROCESS cmd="set" data="local_ip_v4='"${freeswitch_cfg[external_ip]}"'"/>' \
@@ -408,6 +422,7 @@ set_freeswitch_vars()
 	
 	local event_socket_conf="${freeswitch_cfg[etc_path]}/freeswitch/autoload_configs/event_socket.conf.xml"
 	if [ -f "$event_socket_conf" ]; then
+	
 		modify_xml_config -f "$event_socket_conf" -m update \
 			-o '//param[@name="listen-ip"]' \
 			-n 'value="0.0.0.0"'
@@ -428,6 +443,7 @@ sync_freeswitch_conf()
 	[[ ! -d "$src" ]] && return 1
 	
 	if find "$src" -mindepth 1 -maxdepth 1 -quit 2>/dev/null; then
+	
 		if ! rsync -a --remove-source-files "$src"/ "$dst"/ >/dev/null 2>&1; then
 			logger "ERROR" "[freeswitch] 复制 $desc 失败"
 			return 1
@@ -469,6 +485,7 @@ set_freeswitch_paths()
 	
 	# 创建目录
 	for dir in "$etc_path" "$data_path"; do
+	
 		if [[ -z "$dir" ]]; then
 			logger "ERROR" "[freeswitch] 目录 $dir 变量为空"
 			return 1
@@ -478,6 +495,7 @@ set_freeswitch_paths()
 			logger "ERROR" "[freeswitch] 目录创建失败: $dir"
 			return 2
 		fi
+		
 	done
 	
 	logger "INFO" "[freeswitch] 设置目录完成"

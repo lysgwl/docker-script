@@ -195,9 +195,8 @@ exec_as_user()
 	local result=$?
 	
 	[[ -n "$output" ]] && echo "$output"
-	return $?
+	return $result
 }
-
 
 # 设置信号处理器
 setup_signal_handler()

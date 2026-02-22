@@ -57,7 +57,6 @@ execute_services_action()
 	for service in "${!SERVICE_REGISTRY[@]}"; do
 		# 检查服务是否启用
 		if ! check_service_enabled "$service"; then
-			#update_service_states "$service" "${SERVICE_STATUS[DISABLED]}" "未启用"
 			continue
 		fi
 		
