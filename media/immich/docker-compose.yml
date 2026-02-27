@@ -1,5 +1,3 @@
-# https://github.com/immich-app/immich/releases/latest/download/docker-compose.yml
-
 name: immich
 
 services:
@@ -8,15 +6,15 @@ services:
     image: ghcr.io/immich-app/immich-server:${IMMICH_VERSION:-release}
     extends:
       file: hwaccel.transcoding.yml
-      service: quicksync    # [nvenc, quicksync, rkmpp, vaapi, vaapi-wsl]
+      service: quicksync            # [nvenc, quicksync, rkmpp, vaapi, vaapi-wsl]
     volumes:
       - /etc/localtime:/etc/localtime:ro
-      - ${DATA_PATH}/server:/data
+      - ${IMMICH_DIR}/data/server:/data
+      - /mnt/nas/images:/usr/src/app/external/images:ro
+      - /mnt/nas/photos:/usr/src/app/external/photos:ro
       - ${UPLOAD_PATH}:/usr/src/app/upload
       - ${RES_GEODATA_PATH}:/build/geodata
       - ${RES_COUNTRIES_PATH}/langs:/usr/src/app/node_modules/i18n-iso-countries/langs
-      - nas-images:/usr/src/app/external/images:ro
-      - nas-photos:/usr/src/app/external/photos:ro
     env_file:
       - .env
     ports:
@@ -24,37 +22,37 @@ services:
     depends_on:
       - redis
       - database
-    healthcheck:
-      disable: false
     networks:
       - immich
     restart: always
+    healthcheck:
+      disable: false
 
   immich-machine-learning:
     container_name: immich_machine_learning
     image: ghcr.io/immich-app/immich-machine-learning:${IMMICH_VERSION:-release}-openvino
     extends:
       file: hwaccel.ml.yml
-      service: openvino     # [armnn, cuda, openvino, openvino-wsl]
+      service: openvino             # [armnn, cuda, openvino, openvino-wsl]
     volumes:
       - ${MODEL_CACHE_PATH}:/cache
     env_file:
       - .env
-    healthcheck:
-      disable: false
     networks:
       - immich
     restart: always
+    healthcheck:
+      disable: false
 
   redis:
     container_name: immich_redis
-    image: docker.io/valkey/valkey:8@sha256:81db6d39e1bba3b3ff32bd3a1b19a6d69690f94a3954ec131277b9a26b95b3aa
+    image: docker.io/valkey/valkey:9@sha256:546304417feac0874c3dd576e0952c6bb8f06bb4093ea0c9ca303c73cf458f63
     volumes:
-      - ${DATA_PATH}/redis:/data
-    healthcheck:
-      test: redis-cli ping || exit 1  
+      - ${IMMICH_DIR}/data/redis:/data
     networks:
       - immich
+    healthcheck:
+      test: redis-cli ping || exit 1 
     restart: always
 
   database:
@@ -66,7 +64,9 @@ services:
       POSTGRES_DB: ${DB_DATABASE_NAME}
       POSTGRES_INITDB_ARGS: '--data-checksums'
     volumes:
-      - ${DATA_PATH}/postgres:/var/lib/postgresql/data
+      - ${IMMICH_DIR}/data/postgres:/var/lib/postgresql/data
+    ports:
+      - '5432:5432'
     shm_size: 128mb
     networks:
       - immich
@@ -76,9 +76,3 @@ networks:
   immich:
     name: immich
     driver: bridge
-    
-volumes:
-  nas-images:
-    external: true
-  nas-photos:
-    external: true
