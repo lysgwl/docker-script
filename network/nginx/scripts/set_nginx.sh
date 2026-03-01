@@ -224,12 +224,15 @@ set_nginx_user()
 	local group="${USER_CONFIG[group]}"
 	
 	# 获取配置路径
-	local sys_path="${nginx_cfg[sys_path]}"
-	local etc_path="${nginx_cfg[etc_path]}"
-	local data_path="${nginx_cfg[data_path]}"
+	local dirs=(
+		"${nginx_cfg[sys_path]}"
+		"${nginx_cfg[etc_path]}"
+		"${nginx_cfg[data_path]}"
+		"${nginx_cfg[sys_path]}/temp"
+	)
 	
 	# 设置目录权限
-	for dir in "$sys_path" "$etc_path" "$data_path"; do
+	for dir in "${dirs[@]}"; do
 		if [[ -z "$dir" ]]; then
 			logger "ERROR" "[nginx] 目录 $dir 变量为空"
 			return 1
@@ -378,17 +381,21 @@ set_nginx_paths()
 {
 	logger "INFO" "[nginx] 设置服务环境目录"
 	
-	# 获取配置路径
-	local sys_path="${nginx_cfg[sys_path]}"
-	local etc_path="${nginx_cfg[etc_path]}"
-	local data_path="${nginx_cfg[data_path]}"
+	local dirs=(
+		"${nginx_cfg[sys_path]}"
+		"${nginx_cfg[etc_path]}"
+		"${nginx_cfg[data_path]}"
+		"${nginx_cfg[sys_path]}/temp"
+	)
 	
-	local pid_file="${nginx_cfg[pid_file]}"
-	local error_log="${nginx_cfg[error_log]}"
-	local access_log="${nginx_cfg[access_log]}"
+	local files=(
+		"${nginx_cfg[pid_file]}"
+		"${nginx_cfg[error_log]}"
+		"${nginx_cfg[access_log]}"
+	)
 	
 	# 创建目录
-	for dir in "$sys_path" "$etc_path" "$data_path" "$sys_path/temp"; do
+	for dir in "${dirs[@]}"; do
 		if [[ -z "$dir" ]]; then
 			logger "ERROR" "[nginx] 目录 $dir 变量为空"
 			return 1
@@ -401,7 +408,7 @@ set_nginx_paths()
 	done
 	
 	# 创建文件
-	for file in "$pid_file" "$error_log" "$access_log"; do
+	for file in "${files[@]}"; do
 		if [[ -z "$file" ]]; then
 			logger "ERROR" "[nginx] 文件 $file 路径为空"
 			return 1
@@ -554,12 +561,17 @@ run_nginx_service()
 	}
 	
 	# 启动服务
-	exec_as_user ${USER_CONFIG[user]} "
-		\"$bin_file\" -c \"${conf_file}\" > /dev/null 2>&1 &
-	" || {
+	"$bin_file" -c "$conf_file" > /dev/null 2>&1 || {
 		logger "ERROR" "[nginx] 执行启动命令失败"
 		return 3
 	}
+	
+	#exec_as_user ${USER_CONFIG[user]} "
+	#	\"$bin_file\" -c \"${conf_file}\" > /dev/null 2>&1 &
+	#" || {
+	#	logger "ERROR" "[nginx] 执行启动命令失败"
+	#	return 3
+	#}
 	
 	# 等待进程
 	if ! wait_for_pid 5 "$pid_file"; then
