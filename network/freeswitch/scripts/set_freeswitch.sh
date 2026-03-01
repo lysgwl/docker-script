@@ -14,7 +14,8 @@ fetch_freeswitch_source()
 {
 	logger "INFO" "[freeswitch] 获取相关源码"
 	local downloads_dir=$1
-
+	local ret=0
+	
 	for key in "${!FREESWITCH_SOURCES[@]}"; do
 		local name="$key"
 		local source_config="${FREESWITCH_SOURCES[$name]}"

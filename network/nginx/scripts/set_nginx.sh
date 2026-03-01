@@ -12,6 +12,7 @@ fetch_nginx_source()
 {
 	logger "INFO" "[nginx] 获取源码 ..."
 	local downloads_dir=$1
+	local ret=0
 	
 	for key in "${!NGINX_SOURCES[@]}"; do
 		local name="$key"
@@ -40,28 +41,6 @@ fetch_nginx_source()
 			--arg version "${version}"
 			--arg url "${url:-}"
 		)
-: <<'COMMENT_BLOCK'
-				local matcher_value=""
-				if [ -n "$repo" ]; then
-					matcher_value="[[ \$name =~ \\.tar\\.gz\$ ]] && [[ ! \$name =~ \\.tar\\.gz\\. ]]"
-				fi
-
-				jq_args+=(
-					--arg url "${url:-}"
-					--arg repo "${repo:-}"
-					--arg asset_matcher "${matcher_value}"
-				)
-
-				# 动态生成JSON配置
-				local json_config=$(jq -n "${jq_args[@]}" '
-					{ type: $type, name: $name, version: $version } +
-					if $type == "github" then
-						{ repo: $repo, asset_matcher: $asset_matcher }
-					else
-						{ url: $url }
-					end |
-					with_entries(select(.value != "")) ')
-COMMENT_BLOCK
 		
 		# 创建克隆的 JSON 配置
 		local json_config=$(jq -n "${jq_args[@]}" '{ type: $type, name: $name, repo: $repo, version: $version, url: $url }')
