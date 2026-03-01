@@ -158,32 +158,69 @@ wait_for_services()
 	return $exit_code
 }
 
-# 设置系统用户
+# 设置路径权限
 set_service_user()
 {
-	# 创建用户目录
-	logger "DEBUG" "正在创建用户目录"
-	mkdir -p "${SYSTEM_CONFIG[downloads_dir]}" \
-			 "${SYSTEM_CONFIG[install_dir]}" \
-			 "${SYSTEM_CONFIG[config_dir]}" \
-			 "${SYSTEM_CONFIG[data_dir]}" \
-			 "${SYSTEM_CONFIG[usr_dir]}"
-			 
-	# 设置目录拥有者
-	logger "DEBUG" "正在设置目录拥有者(${USER_CONFIG[user]}:${USER_CONFIG[group]})"
-	chown -R ${USER_CONFIG[user]}:${USER_CONFIG[group]} \
-			"${SYSTEM_CONFIG[config_dir]}" \
-			"${SYSTEM_CONFIG[data_dir]}"
-			
-	chown "${USER_CONFIG[user]}:${USER_CONFIG[group]}" \
-			"${SYSTEM_CONFIG[usr_dir]}"
+	local user="${USER_CONFIG[user]}"
+	local group="${USER_CONFIG[group]}"
+	
+	local dirs=(
+		"${SYSTEM_CONFIG[data_dir]}"
+		"${SYSTEM_CONFIG[config_dir]}"
+		"${SYSTEM_CONFIG[install_dir]}"
+		"${SYSTEM_CONFIG[downloads_dir]}"
+	)
+	
+	# 设置目录权限
+	for dir in "${dirs[@]}"; do
+		if [[ -z "$dir" ]]; then
+			logger "ERROR" "[openlist] 目录 $dir 变量为空"
+			return 1
+		fi
+		
+		chown -R "$user:$group" "$dir" 2>/dev/null || {
+			logger "ERROR" "[openlist] 设置目录权限失败: $dir"
+			return 2
+		}
+	done
+	
+	chown "$user:$group" "${SYSTEM_CONFIG[usr_dir]}" 2>/dev/null || true
+}
+
+# 设置环境路径
+set_service_paths()
+{
+	# 获取配置路径
+	local dirs=(
+		"${SYSTEM_CONFIG[data_dir]}"
+		"${SYSTEM_CONFIG[config_dir]}"
+		"${SYSTEM_CONFIG[usr_dir]}"
+		"${SYSTEM_CONFIG[install_dir]}"
+		"${SYSTEM_CONFIG[downloads_dir]}"
+	)
+	
+	# 创建目录
+	for dir in "${dirs[@]}"; do
+		if [[ -z "$dir" ]]; then
+			logger "ERROR" "目录 $dir 变量为空"
+			return 1
+		fi
+		
+		if ! mkdir -p "$dir"; then
+			logger "ERROR" "目录创建失败: $dir"
+			return 2
+		fi
+	done
 }
 
 # 设置服务
 set_service_env()
 {
-	# 设置系统用户
-	set_service_user
+	# 设置环境路径
+	if ! set_service_paths; then
+		logger "ERROR" "设置环境路径失败"
+		return 1
+	fi
 	
 	if [ "$1" = "config" ]; then
 : <<'COMMENT_BLOCK'	
@@ -193,6 +230,12 @@ set_service_env()
 			return 1
 		fi
 COMMENT_BLOCK
+		
+		# 设置用户权限
+		if ! set_service_user; then
+			logger "ERROR" "设置路径权限失败"
+			return 3
+		fi
 		
 		# 设置root用户密码
 		echo "root:$ROOT_PASSWORD" | chpasswd
